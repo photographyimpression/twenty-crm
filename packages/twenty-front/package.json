@@ -118,7 +118,10 @@
     "twenty-sdk": "workspace:*",
     "twenty-shared": "workspace:*",
     "twenty-ui": "workspace:*",
-    "use-debounce": "^10.0.0"
+    "use-debounce": "^10.0.0",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "sip.js": "^0.21.2"
   },
   "devDependencies": {
     "@lingui/cli": "^5.1.2",
