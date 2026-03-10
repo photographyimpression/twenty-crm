@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import { type FieldPhonesValue } from '@/object-record/record-field/ui/types/FieldMetadata';
 import { ExpandableList } from '@/ui/layout/expandable-list/components/ExpandableList';
 
+import { useCallContext } from '@/calls/contexts/CallProvider';
 import { styled } from '@linaria/react';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { isDefined } from 'twenty-shared/utils';
@@ -37,6 +38,8 @@ export const PhonesDisplay = ({
   isFocused,
   onPhoneNumberClick,
 }: PhonesDisplayProps) => {
+  const { dial } = useCallContext();
+
   const phones = useMemo(
     () =>
       [
@@ -82,13 +85,19 @@ export const PhonesDisplay = ({
         return (
           <RoundedLink
             key={index}
-            href={URI || ''}
+            href="#"
             label={
               parsedPhone ? parsedPhone.formatInternational() : invalidPhone
             }
-            onClick={(event) =>
-              onPhoneNumberClick?.(callingCode + number, event)
-            }
+            onClick={(event) => {
+              if (onPhoneNumberClick) {
+                onPhoneNumberClick(callingCode + number, event);
+              } else {
+                event.preventDefault();
+                event.stopPropagation();
+                dial(callingCode + number);
+              }
+            }}
           />
         );
       })}
@@ -102,13 +111,19 @@ export const PhonesDisplay = ({
         return (
           <RoundedLink
             key={index}
-            href={URI || ''}
+            href="#"
             label={
               parsedPhone ? parsedPhone.formatInternational() : invalidPhone
             }
-            onClick={(event) =>
-              onPhoneNumberClick?.(callingCode + number, event)
-            }
+            onClick={(event) => {
+              if (onPhoneNumberClick) {
+                onPhoneNumberClick(callingCode + number, event);
+              } else {
+                event.preventDefault();
+                event.stopPropagation();
+                dial(callingCode + number);
+              }
+            }}
           />
         );
       })}

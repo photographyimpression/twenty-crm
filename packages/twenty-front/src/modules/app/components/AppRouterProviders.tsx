@@ -1,21 +1,23 @@
 import { AgentChatProvider } from '@/ai/components/AgentChatProvider';
-import { CommandMenuConfirmationModalManager } from '@/command-menu-item/confirmation-modal/components/CommandMenuConfirmationModalManager';
 import { ApolloProvider } from '@/apollo/components/ApolloProvider';
-import { MetadataGater } from '@/metadata-store/components/MetadataGater';
-import { IsAppMetadataReadyEffect } from '@/metadata-store/effect-components/IsAppMetadataReadyEffect';
 import { GotoHotkeysEffectsProvider } from '@/app/effect-components/GotoHotkeysEffectsProvider';
-import { MetadataProviderInitialEffects } from '@/metadata-store/effect-components/MetadataProviderInitialEffects';
 import { PageChangeEffect } from '@/app/effect-components/PageChangeEffect';
 import { AuthProvider } from '@/auth/components/AuthProvider';
+import { WebRTCDialerWidget } from '@/calls/components/WebRTCDialerWidget';
+import { CallProvider } from '@/calls/contexts/CallProvider';
 import { CaptchaProvider } from '@/captcha/components/CaptchaProvider';
 import { ChromeExtensionSidecarEffect } from '@/chrome-extension-sidecar/components/ChromeExtensionSidecarEffect';
 import { ChromeExtensionSidecarProvider } from '@/chrome-extension-sidecar/components/ChromeExtensionSidecarProvider';
 import { ClientConfigProvider } from '@/client-config/components/ClientConfigProvider';
 import { ClientConfigProviderEffect } from '@/client-config/components/ClientConfigProviderEffect';
+import { CommandMenuConfirmationModalManager } from '@/command-menu-item/confirmation-modal/components/CommandMenuConfirmationModalManager';
 import { MainContextStoreProvider } from '@/context-store/components/MainContextStoreProvider';
 import { ErrorMessageEffect } from '@/error-handler/components/ErrorMessageEffect';
 import { PromiseRejectionEffect } from '@/error-handler/components/PromiseRejectionEffect';
 import { HeadlessFrontComponentMountRoot } from '@/front-components/components/HeadlessFrontComponentMountRoot';
+import { MetadataGater } from '@/metadata-store/components/MetadataGater';
+import { IsAppMetadataReadyEffect } from '@/metadata-store/effect-components/IsAppMetadataReadyEffect';
+import { MetadataProviderInitialEffects } from '@/metadata-store/effect-components/MetadataProviderInitialEffects';
 import { ApolloCoreProvider } from '@/object-metadata/components/ApolloCoreProvider';
 import { PreComputedChipGeneratorsProvider } from '@/object-metadata/components/PreComputedChipGeneratorsProvider';
 import { PrefetchDataProvider } from '@/prefetch/components/PrefetchDataProvider';
@@ -55,35 +57,38 @@ export const AppRouterProviders = () => {
                 <AuthProvider>
                   <ApolloCoreProvider>
                     <SSEProvider>
-                      <PreComputedChipGeneratorsProvider>
-                        <PrefetchDataProvider>
-                          <UserThemeProviderEffect />
-                          <SnackBarProvider>
-                            <ErrorMessageEffect />
-                            <AgentChatProvider>
-                              <DialogComponentInstanceContext.Provider
-                                value={{ instanceId: 'dialog-manager' }}
-                              >
-                                <DialogManager>
-                                  <StrictMode>
-                                    <PromiseRejectionEffect />
-                                    <GotoHotkeysEffectsProvider />
-                                    <PageTitle title={pageTitle} />
-                                    <PageFavicon />
-                                    <Outlet />
-                                    <GlobalFilePreviewModal />
-                                    <CommandMenuConfirmationModalManager />
-                                    <HeadlessFrontComponentMountRoot />
-                                  </StrictMode>
-                                </DialogManager>
-                              </DialogComponentInstanceContext.Provider>
-                            </AgentChatProvider>
-                          </SnackBarProvider>
-                          <MainContextStoreProvider />
-                          <SupportChatEffect />
-                        </PrefetchDataProvider>
-                        <PageChangeEffect />
-                      </PreComputedChipGeneratorsProvider>
+                      <CallProvider>
+                        <PreComputedChipGeneratorsProvider>
+                          <PrefetchDataProvider>
+                            <UserThemeProviderEffect />
+                            <SnackBarProvider>
+                              <ErrorMessageEffect />
+                              <AgentChatProvider>
+                                <DialogComponentInstanceContext.Provider
+                                  value={{ instanceId: 'dialog-manager' }}
+                                >
+                                  <DialogManager>
+                                    <StrictMode>
+                                      <PromiseRejectionEffect />
+                                      <GotoHotkeysEffectsProvider />
+                                      <PageTitle title={pageTitle} />
+                                      <PageFavicon />
+                                      <Outlet />
+                                      <GlobalFilePreviewModal />
+                                      <CommandMenuConfirmationModalManager />
+                                      <HeadlessFrontComponentMountRoot />
+                                      <WebRTCDialerWidget />
+                                    </StrictMode>
+                                  </DialogManager>
+                                </DialogComponentInstanceContext.Provider>
+                              </AgentChatProvider>
+                            </SnackBarProvider>
+                            <MainContextStoreProvider />
+                            <SupportChatEffect />
+                          </PrefetchDataProvider>
+                          <PageChangeEffect />
+                        </PreComputedChipGeneratorsProvider>
+                      </CallProvider>
                     </SSEProvider>
                   </ApolloCoreProvider>
                 </AuthProvider>

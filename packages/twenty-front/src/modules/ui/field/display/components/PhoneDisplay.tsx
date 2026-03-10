@@ -1,3 +1,4 @@
+import { useCallContext } from '@/calls/contexts/CallProvider';
 import { parsePhoneNumber, type PhoneNumber } from 'libphonenumber-js';
 import { type MouseEvent } from 'react';
 import { isDefined } from 'twenty-shared/utils';
@@ -32,13 +33,17 @@ export const PhoneDisplay = ({
     return <ContactLink href="#">{number}</ContactLink>;
   }
 
+  const { dial } = useCallContext();
+
   const URI = parsedPhoneNumber.getURI();
   const formatedPhoneNumber = parsedPhoneNumber.formatInternational();
   return (
     <ContactLink
-      href={URI}
+      href="#"
       onClick={(event: MouseEvent<HTMLElement>) => {
         event.stopPropagation();
+        event.preventDefault();
+        dial(number || '');
       }}
     >
       {formatedPhoneNumber || number}
