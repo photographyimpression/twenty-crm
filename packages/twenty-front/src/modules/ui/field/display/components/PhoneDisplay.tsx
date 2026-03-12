@@ -15,7 +15,7 @@ type PhoneDisplayValueProps = {
 export const PhoneDisplay = ({
   value: { number, callingCode },
 }: PhoneDisplayProps) => {
-  // Hook must be called before any conditional returns (Rules of Hooks)
+  // Hook must be called before any conditional return (Rules of Hooks)
   const { dial } = useCallContext();
 
   if (!isDefined(number)) return <ContactLink href="#">{number}</ContactLink>;
@@ -36,7 +36,6 @@ export const PhoneDisplay = ({
     return <ContactLink href="#">{number}</ContactLink>;
   }
 
-  const URI = parsedPhoneNumber.getURI();
   const formatedPhoneNumber = parsedPhoneNumber.formatInternational();
   return (
     <ContactLink

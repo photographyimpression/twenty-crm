@@ -48,11 +48,11 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-             NODE_ENV=production
-             VITE_PBX_DOMAIN=${{ secrets.VITE_PBX_DOMAIN }}
-             VITE_PBX_WSS_URL=${{ secrets.VITE_PBX_WSS_URL }}
-             VITE_PBX_USER=${{ secrets.VITE_PBX_USER }}
-             VITE_PBX_PASSWORD=${{ secrets.VITE_PBX_PASSWORD }}
+            NODE_ENV=production
+            VITE_PBX_DOMAIN=${{ secrets.VITE_PBX_DOMAIN }}
+            VITE_PBX_WSS_URL=${{ secrets.VITE_PBX_WSS_URL }}
+            VITE_PBX_USER=${{ secrets.VITE_PBX_USER }}
+            VITE_PBX_PASSWORD=${{ secrets.VITE_PBX_PASSWORD }}
 
   deploy-to-ovh:
     needs: build-and-push-image

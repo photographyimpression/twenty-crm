@@ -5,7 +5,13 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import { Inviter, SessionState, UserAgent, UserAgentOptions } from 'sip.js';
+import {
+  Inviter,
+  Registerer,
+  SessionState,
+  UserAgent,
+  UserAgentOptions,
+} from 'sip.js';
 
 export type CallContextType = {
   isRegistered: boolean;
@@ -14,6 +20,7 @@ export type CallContextType = {
   activeNumber: string | null;
   dial: (number: string) => void;
   hangup: () => void;
+  clearError: () => void;
   error: string | null;
 };
 
@@ -56,22 +63,27 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     const ua = new UserAgent(options);
+    let registerer: Registerer | null = null;
 
     console.log('SIP UserAgent started', { sipUser, sipDomain, sipWssUrl });
     ua.start()
       .then(() => {
-        console.log('SIP UserAgent registered successfully');
+        // Register the extension with FreePBX so outbound calls work
+        registerer = new Registerer(ua);
+        return registerer.register();
+      })
+      .then(() => {
         setIsRegistered(true);
       })
       .catch((err) => {
-        console.error('Failed to start UserAgent', err);
+        console.error('Failed to start or register UserAgent', err);
         setError('Failed to connect to PBX');
       });
 
     setUserAgent(ua);
 
     return () => {
-      ua.stop();
+      registerer?.unregister().finally(() => ua.stop());
     };
   }, []);
 
@@ -79,11 +91,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     (number: string) => {
       if (!userAgent) return;
 
-      // Clean phone number (remove spaces, etc)
+      const sipDomain =
+        import.meta.env.VITE_PBX_DOMAIN || 'pbx.impressionphotography.ca';
+
+      // Clean phone number (remove spaces, dashes, parens, etc.)
       const cleanNumber = number.replace(/[^\d+]/g, '');
-      const targetUri = UserAgent.makeURI(
-        `sip:${cleanNumber}@pbx.impressionphotography.ca`,
-      );
+      const targetUri = UserAgent.makeURI(`sip:${cleanNumber}@${sipDomain}`);
 
       if (!targetUri) {
         setError('Invalid phone number format');
@@ -141,6 +154,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [activeSession]);
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
   return (
     <CallContext.Provider
       value={{
@@ -150,6 +167,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         activeNumber,
         dial,
         hangup,
+        clearError,
         error,
       }}
     >
