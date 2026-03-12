@@ -1,0 +1,44 @@
+name: Diagnose WSS Connection
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check TLS cert and WebSocket connectivity
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 158.69.208.108
+          username: root
+          key: ${{ secrets.OVH_SSH_KEY }}
+          script: |
+            echo "=== TLS cert details for port 8089 ==="
+            echo | openssl s_client -connect pbx.impressionphotography.ca:8089 -servername pbx.impressionphotography.ca 2>/dev/null | openssl x509 -noout -subject -issuer -dates 2>/dev/null || echo "TLS handshake failed or no cert"
+
+            echo "=== Try connecting locally to 127.0.0.1:8089 ==="
+            echo | openssl s_client -connect 127.0.0.1:8089 2>/dev/null | openssl x509 -noout -subject -issuer 2>/dev/null || echo "Local TLS failed"
+
+            echo "=== Asterisk cert file subject ==="
+            docker exec freepbx-pbx-1 openssl x509 -in /etc/asterisk/keys/integration/certificate.pem -noout -subject -issuer -dates 2>/dev/null || echo "Could not read cert"
+
+            echo "=== Is Nginx running on host (outside container)? ==="
+            which nginx && nginx -v 2>&1 || echo "No nginx on host"
+            systemctl status nginx 2>/dev/null | head -5 || echo "No nginx service"
+
+            echo "=== What process is on port 8089 on host? ==="
+            ss -tlnp | grep 8089
+
+            echo "=== Try WebSocket handshake on port 8089 ==="
+            curl -sk --max-time 5 \
+              -H "Upgrade: websocket" \
+              -H "Connection: Upgrade" \
+              -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+              -H "Sec-WebSocket-Version: 13" \
+              https://pbx.impressionphotography.ca:8089/ws \
+              -o /dev/null -w "HTTP %{http_code}\n" || echo "WS test failed"
+
+            echo "=== UFW status for port 8089 ==="
+            ufw status | grep 8089 || echo "8089 not in UFW rules"
+            ufw status numbered | grep 8089 || echo "8089 not in UFW numbered"
