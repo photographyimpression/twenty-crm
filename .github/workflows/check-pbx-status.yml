@@ -1,0 +1,28 @@
+name: Check PBX Port Status
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check port 8089 and Asterisk config
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 158.69.208.108
+          username: root
+          key: ${{ secrets.OVH_SSH_KEY }}
+          script: |
+            echo "=== Port 8089 listening? ==="
+            ss -tlnp | grep 8089 || echo "NOTHING listening on 8089"
+
+            echo "=== FreePBX container ports ==="
+            docker ps --filter name=freepbx-pbx-1 --format "{{.Ports}}"
+
+            echo "=== Asterisk http.conf ==="
+            docker exec freepbx-pbx-1 cat /etc/asterisk/http.conf 2>/dev/null || echo "NOT FOUND at /etc/asterisk/http.conf"
+            docker exec freepbx-pbx-1 find /etc/asterisk -name "http*" 2>/dev/null
+
+            echo "=== WSS/WebSocket check ==="
+            curl -sk --max-time 5 https://pbx.impressionphotography.ca:8089/ws -o /dev/null -w "HTTP %{http_code}" && echo "" || echo "Connection failed"
