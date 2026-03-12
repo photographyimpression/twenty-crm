@@ -53,16 +53,20 @@ const ActionButton = styled.button<{ variant?: 'danger' | 'primary' }>`
 `;
 
 export const WebRTCDialerWidget: React.FC = () => {
-  const { isRinging, inCall, activeNumber, hangup, error } = useCallContext();
-  console.log('WebRTCDialerWidget state:', {
-    isRinging,
-    inCall,
-    activeNumber,
-    error,
-  });
+  const { isRinging, inCall, activeNumber, hangup, clearError, error } =
+    useCallContext();
+
   if (!isRinging && !inCall && !error) {
     return null;
   }
+
+  const handleClose = () => {
+    if (error) {
+      clearError();
+    } else {
+      hangup();
+    }
+  };
 
   return (
     <WidgetContainer>
@@ -78,7 +82,7 @@ export const WebRTCDialerWidget: React.FC = () => {
       )}
 
       <ButtonRow>
-        <ActionButton variant="danger" onClick={hangup}>
+        <ActionButton variant="danger" onClick={handleClose}>
           {error ? 'Close' : 'End Call'}
         </ActionButton>
       </ButtonRow>
