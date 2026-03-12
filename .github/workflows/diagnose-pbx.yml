@@ -1,0 +1,33 @@
+name: Diagnose FreePBX Connection
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Diagnose PBX via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 158.69.208.108
+          username: root
+          key: ${{ secrets.OVH_SSH_KEY }}
+          script: |
+            echo "=== Listening on port 8089 ==="
+            ss -tlnp | grep 8089 || echo "NOTHING listening on 8089"
+            echo ""
+            echo "=== Is Asterisk running? ==="
+            systemctl status asterisk 2>/dev/null | head -5 || docker ps | grep asterisk || echo "Asterisk not found as service or container"
+            echo ""
+            echo "=== Is FreePBX running? ==="
+            docker ps | grep -i pbx || docker ps | grep -i freepbx || echo "No FreePBX container found"
+            echo ""
+            echo "=== All running containers ==="
+            docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}"
+            echo ""
+            echo "=== UFW status ==="
+            ufw status | grep -E "8089|ALLOW"
+            echo ""
+            echo "=== What resolves pbx.impressionphotography.ca? ==="
+            dig +short pbx.impressionphotography.ca || nslookup pbx.impressionphotography.ca | grep Address
