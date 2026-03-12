@@ -36,6 +36,16 @@ RUN yarn workspaces focus --production twenty-emails twenty-shared twenty-server
 FROM common-deps AS twenty-front-build
 
 ARG REACT_APP_SERVER_BASE_URL
+ARG VITE_PBX_DOMAIN
+ARG VITE_PBX_WSS_URL
+ARG VITE_PBX_USER
+ARG VITE_PBX_PASSWORD
+
+# Make PBX env vars available to Vite at build time
+ENV VITE_PBX_DOMAIN=$VITE_PBX_DOMAIN
+ENV VITE_PBX_WSS_URL=$VITE_PBX_WSS_URL
+ENV VITE_PBX_USER=$VITE_PBX_USER
+ENV VITE_PBX_PASSWORD=$VITE_PBX_PASSWORD
 
 COPY ./packages/twenty-front /app/packages/twenty-front
 COPY ./packages/twenty-ui /app/packages/twenty-ui

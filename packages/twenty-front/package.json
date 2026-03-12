@@ -39,6 +39,8 @@
     "@cyntler/react-doc-viewer": "^1.17.0",
     "@dagrejs/dagre": "^1.1.8",
     "@dnd-kit/react": "^0.3.2",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
     "@floating-ui/react": "^0.24.3",
     "@graphiql/plugin-explorer": "^1.0.2",
     "@graphiql/react": "^0.23.0",
@@ -114,14 +116,12 @@
     "react-router-dom": "^6.4.4",
     "react-textarea-autosize": "^8.4.1",
     "remark-gfm": "^4.0.1",
+    "sip.js": "^0.21.2",
     "transliteration": "^2.3.5",
     "twenty-sdk": "workspace:*",
     "twenty-shared": "workspace:*",
     "twenty-ui": "workspace:*",
-    "use-debounce": "^10.0.0",
-    "@emotion/react": "^11.11.1",
-    "@emotion/styled": "^11.11.0",
-    "sip.js": "^0.21.2"
+    "use-debounce": "^10.0.0"
   },
   "devDependencies": {
     "@lingui/cli": "^5.1.2",

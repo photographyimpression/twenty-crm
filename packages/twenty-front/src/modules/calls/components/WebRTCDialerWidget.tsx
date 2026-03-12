@@ -54,7 +54,12 @@ const ActionButton = styled.button<{ variant?: 'danger' | 'primary' }>`
 
 export const WebRTCDialerWidget: React.FC = () => {
   const { isRinging, inCall, activeNumber, hangup, error } = useCallContext();
-
+  console.log('WebRTCDialerWidget state:', {
+    isRinging,
+    inCall,
+    activeNumber,
+    error,
+  });
   if (!isRinging && !inCall && !error) {
     return null;
   }

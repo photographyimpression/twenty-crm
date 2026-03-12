@@ -4400,7 +4400,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@emotion/react@npm:^11.14.0":
+"@emotion/react@npm:^11.11.1, @emotion/react@npm:^11.14.0":
   version: 11.14.0
   resolution: "@emotion/react@npm:11.14.0"
   dependencies:
@@ -4441,7 +4441,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@emotion/styled@npm:^11.14.0":
+"@emotion/styled@npm:^11.11.0, @emotion/styled@npm:^11.14.0":
   version: 11.14.1
   resolution: "@emotion/styled@npm:11.14.1"
   dependencies:
@@ -53164,6 +53164,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"sip.js@npm:^0.21.2":
+  version: 0.21.2
+  resolution: "sip.js@npm:0.21.2"
+  checksum: 10c0/febc4faaed20ec86bbd51f551d724fabbe4b35a45185fc535e142f57fe842dcef7a316bc8b90bbe64736c030a3e31a0f3c450afd2b7f934c94178d3a31149215
+  languageName: node
+  linkType: hard
+
 "sirv@npm:^3.0.2":
   version: 3.0.2
   resolution: "sirv@npm:3.0.2"
@@ -55755,6 +55762,8 @@ __metadata:
     "@cyntler/react-doc-viewer": "npm:^1.17.0"
     "@dagrejs/dagre": "npm:^1.1.8"
     "@dnd-kit/react": "npm:^0.3.2"
+    "@emotion/react": "npm:^11.11.1"
+    "@emotion/styled": "npm:^11.11.0"
     "@floating-ui/react": "npm:^0.24.3"
     "@graphiql/plugin-explorer": "npm:^1.0.2"
     "@graphiql/react": "npm:^0.23.0"
@@ -55847,6 +55856,7 @@ __metadata:
     react-textarea-autosize: "npm:^8.4.1"
     remark-gfm: "npm:^4.0.1"
     rollup-plugin-visualizer: "npm:^5.14.0"
+    sip.js: "npm:^0.21.2"
     transliteration: "npm:^2.3.5"
     twenty-sdk: "workspace:*"
     twenty-shared: "workspace:*"

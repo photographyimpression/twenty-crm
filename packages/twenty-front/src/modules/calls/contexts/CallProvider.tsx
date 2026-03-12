@@ -32,14 +32,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // In a real scenario, these come from .env or CRM user settings
+    // Vite exposes env vars via import.meta.env (not process.env)
     const sipDomain =
-      process.env.VITE_PBX_DOMAIN || 'pbx.impressionphotography.ca';
+      import.meta.env.VITE_PBX_DOMAIN || 'pbx.impressionphotography.ca';
     const sipWssUrl =
-      process.env.VITE_PBX_WSS_URL ||
+      import.meta.env.VITE_PBX_WSS_URL ||
       'wss://pbx.impressionphotography.ca:8089/ws';
-    const sipUser = process.env.VITE_PBX_USER || '100'; // Example extension
-    const sipPassword = process.env.VITE_PBX_PASSWORD || 'secret';
+    const sipUser = import.meta.env.VITE_PBX_USER || '100';
+    const sipPassword =
+      import.meta.env.VITE_PBX_PASSWORD ||
+      '31dd94e3bfea496dac8e14f9a3a48faa';
 
     const uri = UserAgent.makeURI(`sip:${sipUser}@${sipDomain}`);
     if (!uri) return;
@@ -55,8 +57,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const ua = new UserAgent(options);
 
+    console.log('SIP UserAgent started', { sipUser, sipDomain, sipWssUrl });
     ua.start()
       .then(() => {
+        console.log('SIP UserAgent registered successfully');
         setIsRegistered(true);
       })
       .catch((err) => {
@@ -110,9 +114,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       });
 
+      console.log('Dialing number...', number);
       session
         .invite()
         .then(() => {
+          console.log('Invite sent successfully');
           setActiveSession(session);
           setActiveNumber(number);
           setError(null);

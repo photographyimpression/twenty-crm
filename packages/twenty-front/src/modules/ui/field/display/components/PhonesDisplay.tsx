@@ -81,7 +81,6 @@ export const PhonesDisplay = ({
       {phones.map(({ number, callingCode }, index) => {
         const { parsedPhone, invalidPhone } =
           parsePhoneNumberOrReturnInvalidValue(callingCode + number);
-        const URI = parsedPhone?.getURI();
         return (
           <RoundedLink
             key={index}
@@ -107,7 +106,6 @@ export const PhonesDisplay = ({
       {phones.map(({ number, callingCode }, index) => {
         const { parsedPhone, invalidPhone } =
           parsePhoneNumberOrReturnInvalidValue(callingCode + number);
-        const URI = parsedPhone?.getURI();
         return (
           <RoundedLink
             key={index}
