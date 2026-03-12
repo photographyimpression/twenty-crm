@@ -1,0 +1,51 @@
+name: Fix FreePBX Port 8089
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-port:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fix port 8089 mapping and verify Asterisk config
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 158.69.208.108
+          username: root
+          key: ${{ secrets.OVH_SSH_KEY }}
+          script: |
+            echo "=== Finding FreePBX compose file ==="
+            COMPOSE_FILE=$(docker inspect freepbx-pbx-1 --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' 2>/dev/null)
+            echo "Compose file: $COMPOSE_FILE"
+            
+            if [ -z "$COMPOSE_FILE" ]; then
+              COMPOSE_DIR=$(docker inspect freepbx-pbx-1 --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null)
+              echo "Compose dir: $COMPOSE_DIR"
+              COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
+            fi
+            
+            echo "=== Current port mappings for FreePBX ==="
+            grep -A 30 "freepbx\|pbx" "$COMPOSE_FILE" | grep -A 20 "ports:" | head -30
+            
+            echo "=== Checking if 8089 already mapped ==="
+            if grep -q "8089" "$COMPOSE_FILE"; then
+              echo "Port 8089 already in compose file"
+            else
+              echo "Adding port 8089 to compose file..."
+              # Add 8089 port mapping after 8080->80 line
+              sed -i '/8080:80\|8080.*80/a\      - "8089:8089"' "$COMPOSE_FILE"
+              echo "Port added. Restarting FreePBX container..."
+              cd $(dirname "$COMPOSE_FILE")
+              docker compose up -d freepbx-pbx-1
+              sleep 5
+            fi
+            
+            echo "=== Checking Asterisk HTTP config inside container ==="
+            docker exec freepbx-pbx-1 cat /etc/asterisk/http.conf 2>/dev/null || echo "http.conf not found at that path"
+            docker exec freepbx-pbx-1 find /etc/asterisk -name "http*" 2>/dev/null
+            
+            echo "=== Current port 8089 status ==="
+            ss -tlnp | grep 8089 || echo "Still nothing on 8089"
+            
+            echo "=== Updated container ports ==="
+            docker ps --filter name=freepbx-pbx-1 --format "{{.Ports}}"
