@@ -18,13 +18,9 @@ jobs:
             docker exec freepbx-pbx-1 cat /etc/asterisk/http_additional.conf 2>/dev/null || echo "NOT FOUND"
 
             echo "=== Overwrite http_custom.conf with full bind settings ==="
-            docker exec freepbx-pbx-1 bash -c 'cat > /etc/asterisk/http_custom.conf << EOF
-[general]
-enabled=yes
-bindaddr=0.0.0.0
-bindport=8088
-EOF'
+            docker exec freepbx-pbx-1 bash -c 'printf "[general]\nenabled=yes\nbindaddr=0.0.0.0\nbindport=8088\n" > /etc/asterisk/http_custom.conf'
             echo "Written."
+            docker exec freepbx-pbx-1 cat /etc/asterisk/http_custom.conf
 
             echo "=== Reload Asterisk HTTP module ==="
             docker exec freepbx-pbx-1 asterisk -rx "module reload res_http.so" 2>/dev/null || true
