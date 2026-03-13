@@ -36,14 +36,17 @@ const ButtonRow = styled.div`
   margin-top: 8px;
 `;
 
-const ActionButton = styled.button<{ variant?: 'danger' | 'primary' }>`
+const ActionButton = styled.button<{ variant?: 'danger' | 'primary' | 'success' }>`
   padding: 10px 16px;
   border-radius: 8px;
   border: none;
   font-weight: 600;
   cursor: pointer;
-  background-color: ${(props) =>
-    props.variant === 'danger' ? '#ef4444' : '#3b82f6'};
+  background-color: ${(props) => {
+    if (props.variant === 'danger') return '#ef4444';
+    if (props.variant === 'success') return '#22c55e';
+    return '#3b82f6';
+  }};
   color: white;
   flex: 1;
 
@@ -53,26 +56,32 @@ const ActionButton = styled.button<{ variant?: 'danger' | 'primary' }>`
 `;
 
 export const WebRTCDialerWidget: React.FC = () => {
-  const { isRinging, inCall, activeNumber, hangup, clearError, error } =
-    useCallContext();
+  const {
+    isRinging,
+    isIncoming,
+    inCall,
+    activeNumber,
+    hangup,
+    answer,
+    clearError,
+    error,
+  } = useCallContext();
 
   if (!isRinging && !inCall && !error) {
     return null;
   }
 
-  const handleClose = () => {
-    if (error) {
-      clearError();
-    } else {
-      hangup();
-    }
-  };
+  const statusLabel = error
+    ? 'Error'
+    : isRinging && isIncoming
+      ? 'Incoming Call'
+      : isRinging
+        ? 'Ringing...'
+        : 'In Call';
 
   return (
     <WidgetContainer>
-      <StatusText>
-        {error ? 'Error' : isRinging ? 'Ringing...' : 'In Call'}
-      </StatusText>
+      <StatusText>{statusLabel}</StatusText>
 
       {activeNumber && <NumberText>{activeNumber}</NumberText>}
       {error && (
@@ -82,7 +91,15 @@ export const WebRTCDialerWidget: React.FC = () => {
       )}
 
       <ButtonRow>
-        <ActionButton variant="danger" onClick={handleClose}>
+        {isRinging && isIncoming && (
+          <ActionButton variant="success" onClick={answer}>
+            Answer
+          </ActionButton>
+        )}
+        <ActionButton
+          variant="danger"
+          onClick={error ? clearError : hangup}
+        >
           {error ? 'Close' : 'End Call'}
         </ActionButton>
       </ButtonRow>

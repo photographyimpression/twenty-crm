@@ -3,23 +3,29 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
-import {
-  Inviter,
-  Registerer,
-  SessionState,
-  UserAgent,
-  UserAgentOptions,
-} from 'sip.js';
+import { TelnyxRTC } from '@telnyx/webrtc';
+
+// Minimal interface for a Telnyx call instance
+type TelnyxCall = {
+  state: string;
+  direction: string;
+  hangup: () => void;
+  answer: () => void;
+  remoteCallerNumber?: string;
+};
 
 export type CallContextType = {
   isRegistered: boolean;
   isRinging: boolean;
+  isIncoming: boolean;
   inCall: boolean;
   activeNumber: string | null;
   dial: (number: string) => void;
   hangup: () => void;
+  answer: () => void;
   clearError: () => void;
   error: string | null;
 };
@@ -29,130 +35,122 @@ const CallContext = createContext<CallContextType | undefined>(undefined);
 export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [userAgent, setUserAgent] = useState<UserAgent | null>(null);
-  const [activeSession, setActiveSession] = useState<Inviter | null>(null);
+  const clientRef = useRef<TelnyxRTC | null>(null);
+  const [activeCall, setActiveCall] = useState<TelnyxCall | null>(null);
 
   const [isRegistered, setIsRegistered] = useState(false);
   const [isRinging, setIsRinging] = useState(false);
+  const [isIncoming, setIsIncoming] = useState(false);
   const [inCall, setInCall] = useState(false);
   const [activeNumber, setActiveNumber] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Vite exposes env vars via import.meta.env (not process.env)
-    const sipDomain =
-      import.meta.env.VITE_PBX_DOMAIN || 'pbx.impressionphotography.ca';
-    const sipWssUrl =
-      import.meta.env.VITE_PBX_WSS_URL ||
-      'wss://pbx.impressionphotography.ca:8089/ws';
-    const sipUser = import.meta.env.VITE_PBX_USER || '100';
-    const sipPassword =
-      import.meta.env.VITE_PBX_PASSWORD ||
-      '31dd94e3bfea496dac8e14f9a3a48faa';
+    const sipUsername = import.meta.env.VITE_TELNYX_SIP_USERNAME;
+    const sipPassword = import.meta.env.VITE_TELNYX_SIP_PASSWORD;
 
-    const uri = UserAgent.makeURI(`sip:${sipUser}@${sipDomain}`);
-    if (!uri) return;
+    if (!sipUsername || !sipPassword) {
+      setError('Telnyx credentials not configured');
+      return;
+    }
 
-    const options: UserAgentOptions = {
-      uri,
-      transportOptions: {
-        server: sipWssUrl,
+    const client = new TelnyxRTC({
+      login: sipUsername,
+      password: sipPassword,
+    });
+
+    client.on('telnyx.ready', () => {
+      setIsRegistered(true);
+      setError(null);
+      console.log('TelnyxRTC: connected and ready');
+    });
+
+    client.on('telnyx.error', (err: { message?: string }) => {
+      console.error('TelnyxRTC error:', err);
+      setError(err?.message ?? 'Telnyx connection error');
+      setIsRegistered(false);
+    });
+
+    client.on(
+      'telnyx.notification',
+      (notification: { type: string; call: TelnyxCall }) => {
+        if (notification.type !== 'callUpdate') return;
+
+        const call = notification.call;
+        switch (call.state) {
+          case 'ringing':
+            setActiveCall(call);
+            setIsRinging(true);
+            setIsIncoming(call.direction === 'inbound');
+            setActiveNumber(call.remoteCallerNumber ?? null);
+            break;
+          case 'active':
+            setIsRinging(false);
+            setInCall(true);
+            break;
+          case 'done':
+            setIsRinging(false);
+            setInCall(false);
+            setIsIncoming(false);
+            setActiveCall(null);
+            setActiveNumber(null);
+            break;
+        }
       },
-      authorizationUsername: sipUser,
-      authorizationPassword: sipPassword,
-    };
+    );
 
-    const ua = new UserAgent(options);
-    let registerer: Registerer | null = null;
-
-    console.log('SIP UserAgent started', { sipUser, sipDomain, sipWssUrl });
-    ua.start()
-      .then(() => {
-        // Register the extension with FreePBX so outbound calls work
-        registerer = new Registerer(ua);
-        return registerer.register();
-      })
-      .then(() => {
-        setIsRegistered(true);
-      })
-      .catch((err) => {
-        console.error('Failed to start or register UserAgent', err);
-        setError('Failed to connect to PBX');
-      });
-
-    setUserAgent(ua);
+    client.connect();
+    clientRef.current = client;
 
     return () => {
-      registerer?.unregister().finally(() => ua.stop());
+      client.off('telnyx.ready');
+      client.off('telnyx.error');
+      client.off('telnyx.notification');
+      client.disconnect();
+      clientRef.current = null;
     };
   }, []);
 
   const dial = useCallback(
     (number: string) => {
-      if (!userAgent) return;
-
-      const sipDomain =
-        import.meta.env.VITE_PBX_DOMAIN || 'pbx.impressionphotography.ca';
-
-      // Clean phone number (remove spaces, dashes, parens, etc.)
-      const cleanNumber = number.replace(/[^\d+]/g, '');
-      const targetUri = UserAgent.makeURI(`sip:${cleanNumber}@${sipDomain}`);
-
-      if (!targetUri) {
-        setError('Invalid phone number format');
+      if (!clientRef.current || !isRegistered) {
+        setError('Not connected to Telnyx');
         return;
       }
 
-      const session = new Inviter(userAgent, targetUri, {
-        sessionDescriptionHandlerOptions: {
-          constraints: { audio: true, video: false },
-        },
-      });
+      const fromNumber = import.meta.env.VITE_TELNYX_FROM_NUMBER ?? '';
+      const cleanNumber = number.replace(/[^\d+]/g, '');
 
-      session.stateChange.addListener((newState) => {
-        switch (newState) {
-          case SessionState.Establishing:
-            setIsRinging(true);
-            break;
-          case SessionState.Established:
-            setIsRinging(false);
-            setInCall(true);
-            break;
-          case SessionState.Terminated:
-            setIsRinging(false);
-            setInCall(false);
-            setActiveSession(null);
-            setActiveNumber(null);
-            break;
-        }
-      });
+      const call = clientRef.current.newCall({
+        destinationNumber: cleanNumber,
+        callerNumber: fromNumber,
+      }) as unknown as TelnyxCall;
 
-      console.log('Dialing number...', number);
-      session
-        .invite()
-        .then(() => {
-          console.log('Invite sent successfully');
-          setActiveSession(session);
-          setActiveNumber(number);
-          setError(null);
-        })
-        .catch((err) => {
-          console.error('Failed to invite', err);
-          setError('Failed to place call');
-        });
+      setActiveCall(call);
+      setActiveNumber(number);
+      setIsRinging(true);
+      setIsIncoming(false);
+      setError(null);
     },
-    [userAgent],
+    [isRegistered],
   );
 
   const hangup = useCallback(() => {
-    if (activeSession) {
-      activeSession.dispose();
-      setActiveSession(null);
+    if (activeCall) {
+      activeCall.hangup();
+      setActiveCall(null);
       setInCall(false);
       setIsRinging(false);
+      setIsIncoming(false);
       setActiveNumber(null);
     }
-  }, [activeSession]);
+  }, [activeCall]);
+
+  const answer = useCallback(() => {
+    if (activeCall && isIncoming) {
+      activeCall.answer();
+    }
+  }, [activeCall, isIncoming]);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -163,10 +161,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         isRegistered,
         isRinging,
+        isIncoming,
         inCall,
         activeNumber,
         dial,
         hangup,
+        answer,
         clearError,
         error,
       }}
