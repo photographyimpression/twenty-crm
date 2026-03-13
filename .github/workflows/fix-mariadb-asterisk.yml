@@ -1,0 +1,84 @@
+name: Fix MariaDB and Start Asterisk
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fix DB credentials and start Asterisk
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 158.69.208.108
+          username: root
+          key: ${{ secrets.OVH_SSH_KEY }}
+          command_timeout: 180s
+          script: |
+            echo "=== Check docker-compose DB env vars ==="
+            cd /opt/freepbx
+            grep -E "(DB_|MYSQL_|MARIA)" docker-compose.yml 2>/dev/null | head -20 || echo "Not found in docker-compose"
+
+            echo "=== Check .env file for DB creds ==="
+            cat .env 2>/dev/null | grep -iE "(db|mysql|maria|pass)" || echo "No .env or no DB vars"
+
+            echo "=== Check container env vars ==="
+            docker exec freepbx-pbx-1 env 2>/dev/null | grep -iE "(db|mysql|maria)" | head -20
+
+            echo "=== Test MariaDB root login ==="
+            docker exec freepbx-pbx-1 mysql -u root -e "SELECT 1" 2>&1 | head -5
+
+            echo "=== List MariaDB users ==="
+            docker exec freepbx-pbx-1 mysql -u root -e "SELECT user,host FROM mysql.user" 2>&1 | head -20
+
+            echo "=== Check freepbxuser grants ==="
+            docker exec freepbx-pbx-1 mysql -u root -e "SHOW GRANTS FOR 'freepbxuser'@'localhost'" 2>&1 | head -10
+
+            echo "=== Get DB password from FreePBX config ==="
+            docker exec freepbx-pbx-1 cat /etc/freepbx.conf 2>/dev/null | grep -i pass || echo "No freepbx.conf"
+
+            echo "=== Reset freepbxuser password to match config ==="
+            DBPASS=$(docker exec freepbx-pbx-1 grep "password" /etc/freepbx.conf 2>/dev/null | head -1 | sed "s/.*=> '//;s/'.*//" || echo "")
+            echo "Found password length: ${#DBPASS}"
+            if [ -n "$DBPASS" ]; then
+              docker exec freepbx-pbx-1 mysql -u root -e "ALTER USER 'freepbxuser'@'localhost' IDENTIFIED BY '$DBPASS'; FLUSH PRIVILEGES;" 2>&1
+              echo "Password reset attempted"
+            else
+              echo "Could not find password in config, trying to create user..."
+              docker exec freepbx-pbx-1 mysql -u root -e "CREATE USER IF NOT EXISTS 'freepbxuser'@'localhost' IDENTIFIED BY 'freepbxpass'; GRANT ALL ON asterisk.* TO 'freepbxuser'@'localhost'; GRANT ALL ON asteriskcdrdb.* TO 'freepbxuser'@'localhost'; FLUSH PRIVILEGES;" 2>&1
+            fi
+
+            echo "=== Test freepbxuser login ==="
+            docker exec freepbx-pbx-1 mysql -u freepbxuser -p"$DBPASS" -e "SELECT 1" 2>&1 | head -5
+
+            echo "=== Try fwconsole start ==="
+            docker exec freepbx-pbx-1 fwconsole start 2>&1 | tail -10
+            sleep 10
+
+            echo "=== Asterisk running? ==="
+            docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || echo "Asterisk NOT running"
+
+            echo "=== If still not running, start asterisk directly ==="
+            docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || {
+              echo "Starting asterisk directly..."
+              docker exec freepbx-pbx-1 bash -c "asterisk -U asterisk -G asterisk &"
+              sleep 10
+              docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || echo "Direct start also failed"
+            }
+
+            echo "=== HTTP show status ==="
+            docker exec freepbx-pbx-1 asterisk -rx "http show status" 2>/dev/null || echo "Could not query"
+
+            echo "=== Is 8088 listening? ==="
+            docker exec freepbx-pbx-1 ss -tlnp 2>/dev/null | grep 8088 || echo "NOT on 8088"
+
+            echo "=== WSS test ==="
+            curl -sk --max-time 5 \
+              -H "Upgrade: websocket" \
+              -H "Connection: Upgrade" \
+              -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+              -H "Sec-WebSocket-Version: 13" \
+              https://pbx.impressionphotography.ca:8089/ws \
+              -o /dev/null -w "WSS HTTP status: %{http_code}\n" || echo "WS test failed"
+
+            echo "=== DONE ==="
