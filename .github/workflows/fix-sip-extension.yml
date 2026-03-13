@@ -1,0 +1,56 @@
+name: Fix SIP Extension 100 Password
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update extension 100 password in FreePBX
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 158.69.208.108
+          username: root
+          key: ${{ secrets.OVH_SSH_KEY }}
+          command_timeout: 120s
+          script: |
+            echo "=== Check if Asterisk is still running ==="
+            docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || {
+              echo "Asterisk not running, starting directly..."
+              docker exec freepbx-pbx-1 bash -c "asterisk -U asterisk -G asterisk &"
+              sleep 10
+            }
+
+            echo "=== Current SIP/PJSIP extensions ==="
+            docker exec freepbx-pbx-1 asterisk -rx "pjsip show endpoints" 2>/dev/null | head -30 || echo "pjsip not available"
+            docker exec freepbx-pbx-1 asterisk -rx "sip show peers" 2>/dev/null | head -20 || echo "chan_sip not available"
+
+            echo "=== Check extension 100 in database ==="
+            docker exec freepbx-pbx-1 mysql -u root asterisk -e "SELECT id, data FROM sip WHERE id='100' AND keyword='secret'" 2>/dev/null || echo "Not in sip table"
+            docker exec freepbx-pbx-1 mysql -u root asterisk -e "SELECT id, keyword, data FROM pjsip WHERE id='100' AND keyword IN ('password','secret','md5secret')" 2>/dev/null || echo "Not in pjsip table"
+
+            echo "=== Check all extension 100 entries ==="
+            docker exec freepbx-pbx-1 mysql -u root asterisk -e "SELECT keyword, data FROM sip WHERE id='100'" 2>/dev/null | head -30 || echo "No sip entries"
+
+            echo "=== Update extension 100 password ==="
+            docker exec freepbx-pbx-1 mysql -u root asterisk -e "UPDATE sip SET data='31dd94e3bfea496dac8e14f9a3a48faa' WHERE id='100' AND keyword='secret'" 2>/dev/null
+            echo "SIP secret updated"
+
+            echo "=== Also check/update pjsip ==="
+            docker exec freepbx-pbx-1 mysql -u root asterisk -e "UPDATE pjsip SET data='31dd94e3bfea496dac8e14f9a3a48faa' WHERE id='100' AND keyword='password'" 2>/dev/null || true
+            echo "PJSIP password updated"
+
+            echo "=== Reload SIP config ==="
+            docker exec freepbx-pbx-1 asterisk -rx "sip reload" 2>/dev/null || true
+            docker exec freepbx-pbx-1 asterisk -rx "module reload res_pjsip.so" 2>/dev/null || true
+            sleep 2
+
+            echo "=== Verify extension 100 ==="
+            docker exec freepbx-pbx-1 asterisk -rx "pjsip show endpoint 100" 2>/dev/null | head -20 || echo "No pjsip endpoint 100"
+            docker exec freepbx-pbx-1 asterisk -rx "sip show peer 100" 2>/dev/null | head -20 || echo "No sip peer 100"
+
+            echo "=== Check WebSocket transport ==="
+            docker exec freepbx-pbx-1 asterisk -rx "pjsip show transports" 2>/dev/null | head -20 || echo "No pjsip transports"
+
+            echo "=== DONE ==="
