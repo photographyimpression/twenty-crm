@@ -7,32 +7,47 @@ jobs:
   start:
     runs-on: ubuntu-latest
     steps:
-      - name: Start Asterisk via fwconsole
+      - name: Start Asterisk and enable HTTP
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 158.69.208.108
           username: root
           key: ${{ secrets.OVH_SSH_KEY }}
+          command_timeout: 180s
           script: |
-            echo "=== Current Asterisk process status ==="
-            docker exec freepbx-pbx-1 ps aux 2>/dev/null | grep -E "(asterisk|fwconsole)" | grep -v grep || echo "No asterisk process found"
+            echo "=== MariaDB check ==="
+            docker exec freepbx-pbx-1 mysqladmin ping 2>/dev/null && echo "MariaDB UP" || echo "MariaDB DOWN"
 
-            echo "=== Try fwconsole start ==="
-            docker exec freepbx-pbx-1 fwconsole start 2>/dev/null || echo "fwconsole start failed"
-            sleep 5
-
-            echo "=== Try fwconsole restart if start failed ==="
-            docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || {
-              echo "Asterisk not yet running, trying fwconsole restart..."
-              docker exec freepbx-pbx-1 fwconsole restart 2>/dev/null || true
-              sleep 15
+            echo "=== Current Asterisk status ==="
+            docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null && echo "Already running" || {
+              echo "Asterisk not running, starting via fwconsole..."
+              docker exec freepbx-pbx-1 fwconsole start 2>&1 | tail -20
+              sleep 10
             }
 
-            echo "=== Check Asterisk process after start ==="
-            docker exec freepbx-pbx-1 ps aux 2>/dev/null | grep asterisk | grep -v grep | head -5 || echo "Still no asterisk process"
+            echo "=== Verify Asterisk started ==="
+            docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || {
+              echo "Still not running, trying fwconsole restart..."
+              docker exec freepbx-pbx-1 fwconsole restart 2>&1 | tail -20
+              sleep 15
+              docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || echo "ASTERISK STILL NOT RUNNING"
+            }
 
-            echo "=== Asterisk version ==="
-            docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || echo "CLI still failed"
+            echo "=== Check http_additional.conf enabled setting ==="
+            docker exec freepbx-pbx-1 grep "^enabled" /etc/asterisk/http_additional.conf 2>/dev/null
+
+            echo "=== Patch http_additional.conf: enabled=yes ==="
+            docker exec freepbx-pbx-1 sed -i 's/^enabled=no/enabled=yes/' /etc/asterisk/http_additional.conf
+            docker exec freepbx-pbx-1 grep "^enabled" /etc/asterisk/http_additional.conf 2>/dev/null
+
+            echo "=== Ensure bindaddr=0.0.0.0 ==="
+            docker exec freepbx-pbx-1 sed -i 's/^bindaddr=.*/bindaddr=0.0.0.0/' /etc/asterisk/http_additional.conf
+            docker exec freepbx-pbx-1 grep -E "^(enabled|bindaddr|bindport)" /etc/asterisk/http_additional.conf 2>/dev/null
+
+            echo "=== Reload HTTP module ==="
+            docker exec freepbx-pbx-1 asterisk -rx "module reload res_http_websocket.so" 2>/dev/null || true
+            docker exec freepbx-pbx-1 asterisk -rx "module reload res_http.so" 2>/dev/null || true
+            sleep 3
 
             echo "=== HTTP show status ==="
             docker exec freepbx-pbx-1 asterisk -rx "http show status" 2>/dev/null || echo "Could not query"
@@ -40,12 +55,11 @@ jobs:
             echo "=== Is 8088 listening? ==="
             docker exec freepbx-pbx-1 ss -tlnp 2>/dev/null | grep 8088 || echo "NOT on 8088"
 
-            echo "=== Test from host ==="
+            echo "=== Container IP and WSS test ==="
             CONTAINER_IP=$(docker inspect freepbx-pbx-1 --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
             echo "Container IP: $CONTAINER_IP"
-            curl -s --max-time 5 "http://${CONTAINER_IP}:8088/httpstatus" && echo "8088 OK" || echo "8088 not responding"
+            curl -s --max-time 5 "http://${CONTAINER_IP}:8088/httpstatus" && echo " 8088 OK" || echo "8088 not responding"
 
-            echo "=== Final WSS test ==="
             curl -sk --max-time 5 \
               -H "Upgrade: websocket" \
               -H "Connection: Upgrade" \
