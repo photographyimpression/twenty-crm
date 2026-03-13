@@ -46,8 +46,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const sipUsername = import.meta.env.VITE_TELNYX_SIP_USERNAME;
-    const sipPassword = import.meta.env.VITE_TELNYX_SIP_PASSWORD;
+    const sipUsername = import.meta.env.REACT_APP_TELNYX_SIP_USERNAME;
+    const sipPassword = import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD;
 
     if (!sipUsername || !sipPassword) {
       setError('Telnyx credentials not configured');
@@ -118,7 +118,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      const fromNumber = import.meta.env.VITE_TELNYX_FROM_NUMBER ?? '';
+      const fromNumber = import.meta.env.REACT_APP_TELNYX_FROM_NUMBER ?? '';
       const cleanNumber = number.replace(/[^\d+]/g, '');
 
       const call = clientRef.current.newCall({
