@@ -1,0 +1,64 @@
+name: Restart FreePBX Container
+
+on:
+  workflow_dispatch:
+
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restart container and verify
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 158.69.208.108
+          username: root
+          key: ${{ secrets.OVH_SSH_KEY }}
+          command_timeout: 120s
+          script: |
+            echo "=== Current container status ==="
+            docker ps --filter name=freepbx-pbx-1 --format "{{.Status}}"
+
+            echo "=== All processes in container before restart ==="
+            docker exec freepbx-pbx-1 ps aux 2>/dev/null | head -30 || echo "Cannot list"
+
+            echo "=== Restart container ==="
+            docker restart freepbx-pbx-1
+            echo "Container restarted, waiting 60s for full init..."
+            sleep 60
+
+            echo "=== Container status after restart ==="
+            docker ps --filter name=freepbx-pbx-1 --format "{{.Status}}"
+
+            echo "=== All processes after restart ==="
+            docker exec freepbx-pbx-1 ps aux 2>/dev/null | head -30 || echo "Cannot list"
+
+            echo "=== MariaDB running? ==="
+            docker exec freepbx-pbx-1 ps aux 2>/dev/null | grep -E "(mysql|maria)" | grep -v grep || echo "MariaDB NOT running"
+
+            echo "=== Asterisk running? ==="
+            docker exec freepbx-pbx-1 ps aux 2>/dev/null | grep -E "/usr/sbin/asterisk" | grep -v grep || echo "Asterisk NOT running"
+
+            echo "=== Asterisk CLI test ==="
+            docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || echo "CLI failed"
+
+            echo "=== HTTP show status ==="
+            docker exec freepbx-pbx-1 asterisk -rx "http show status" 2>/dev/null || echo "Could not query"
+
+            echo "=== Is 8088 listening? ==="
+            docker exec freepbx-pbx-1 ss -tlnp 2>/dev/null | grep 8088 || echo "NOT on 8088"
+
+            echo "=== Test from host ==="
+            CONTAINER_IP=$(docker inspect freepbx-pbx-1 --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+            echo "Container IP: $CONTAINER_IP"
+            curl -s --max-time 5 "http://${CONTAINER_IP}:8088/httpstatus" && echo "8088 OK" || echo "8088 not responding"
+
+            echo "=== Final WSS test ==="
+            curl -sk --max-time 5 \
+              -H "Upgrade: websocket" \
+              -H "Connection: Upgrade" \
+              -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+              -H "Sec-WebSocket-Version: 13" \
+              https://pbx.impressionphotography.ca:8089/ws \
+              -o /dev/null -w "WSS HTTP status: %{http_code}\n" || echo "WS test failed"
+
+            echo "=== DONE ==="
