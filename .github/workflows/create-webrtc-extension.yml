@@ -1,0 +1,87 @@
+name: Create WebRTC Extension 100
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create PJSIP WebRTC extension 100
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 158.69.208.108
+          username: root
+          key: ${{ secrets.OVH_SSH_KEY }}
+          command_timeout: 120s
+          script: |
+            echo "=== Asterisk running? ==="
+            docker exec freepbx-pbx-1 asterisk -rx "core show version" 2>/dev/null || {
+              echo "Starting asterisk..."
+              docker exec freepbx-pbx-1 bash -c "asterisk -U asterisk -G asterisk &"
+              sleep 10
+            }
+
+            echo "=== Create PJSIP WebSocket transport ==="
+            docker exec freepbx-pbx-1 bash -c 'cat > /etc/asterisk/pjsip_custom.conf << CONF
+[transport-ws]
+type=transport
+protocol=ws
+bind=0.0.0.0:8088
+
+[transport-wss]
+type=transport
+protocol=wss
+bind=0.0.0.0:8089
+
+[100]
+type=endpoint
+context=from-internal
+disallow=all
+allow=ulaw
+allow=alaw
+allow=opus
+auth=100-auth
+aors=100
+webrtc=yes
+dtls_auto_generate_cert=yes
+use_avpf=yes
+media_encryption=dtls
+ice_support=yes
+media_use_received_transport=yes
+
+[100-auth]
+type=auth
+auth_type=userpass
+username=100
+password=31dd94e3bfea496dac8e14f9a3a48faa
+
+[100-aor]
+type=aor
+max_contacts=5
+remove_existing=yes
+CONF'
+            echo "Config written"
+            docker exec freepbx-pbx-1 cat /etc/asterisk/pjsip_custom.conf
+
+            echo "=== Check pjsip.conf includes custom ==="
+            docker exec freepbx-pbx-1 grep -r "pjsip_custom" /etc/asterisk/pjsip.conf 2>/dev/null || echo "No include found, checking modules.conf"
+            docker exec freepbx-pbx-1 grep "pjsip" /etc/asterisk/modules.conf 2>/dev/null | head -10
+
+            echo "=== Reload PJSIP ==="
+            docker exec freepbx-pbx-1 asterisk -rx "module reload res_pjsip.so" 2>/dev/null
+            sleep 2
+
+            echo "=== Check endpoints ==="
+            docker exec freepbx-pbx-1 asterisk -rx "pjsip show endpoints" 2>/dev/null | head -20
+
+            echo "=== Check endpoint 100 ==="
+            docker exec freepbx-pbx-1 asterisk -rx "pjsip show endpoint 100" 2>/dev/null | head -30
+
+            echo "=== Check transports ==="
+            docker exec freepbx-pbx-1 asterisk -rx "pjsip show transports" 2>/dev/null | head -20
+
+            echo "=== Check AOR 100 ==="
+            docker exec freepbx-pbx-1 asterisk -rx "pjsip show aor 100-aor" 2>/dev/null | head -10
+
+            echo "=== DONE ==="
