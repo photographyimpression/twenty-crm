@@ -294,6 +294,10 @@ export const useAuth = () => {
       handleSetAuthTokens(authTokens);
       setIsAppEffectRedirectEnabled(false);
 
+      // Clear the Apollo cache so stale mock data (loaded when unauthenticated)
+      // does not interfere with authenticated workspace queries.
+      await client.clearStore();
+
       await loadCurrentUser();
       await reloadWorkspaceMetadata();
     },
@@ -302,6 +306,7 @@ export const useAuth = () => {
       handleSetAuthTokens,
       reloadWorkspaceMetadata,
       setIsAppEffectRedirectEnabled,
+      client,
     ],
   );
 
@@ -335,6 +340,7 @@ export const useAuth = () => {
           handleSetLoginToken(loginToken);
           navigate(AppPath.SignInUp);
           setSignInUpStep(SignInUpStep.TwoFactorAuthenticationProvision);
+          return;
         }
 
         if (
@@ -345,7 +351,14 @@ export const useAuth = () => {
           handleSetLoginToken(loginToken);
           navigate(AppPath.SignInUp);
           setSignInUpStep(SignInUpStep.TwoFactorAuthenticationVerification);
+          return;
         }
+
+        // For any other error during workspace loading, re-enable the app
+        // effect redirect so the user is not permanently stuck on a blank
+        // skeleton screen.
+        setIsAppEffectRedirectEnabled(true);
+        throw error;
       }
     },
     [
@@ -355,6 +368,7 @@ export const useAuth = () => {
       handleLoadWorkspaceAfterAuthentication,
       setSignInUpStep,
       navigate,
+      setIsAppEffectRedirectEnabled,
     ],
   );
 
@@ -378,7 +392,7 @@ export const useAuth = () => {
             const targetWorkspace = getFirstAvailableWorkspaces(
               user.availableWorkspaces,
             );
-            return await redirectToWorkspaceDomain(
+            await redirectToWorkspaceDomain(
               getWorkspaceUrl(targetWorkspace.workspaceUrls),
               targetWorkspace.loginToken ? AppPath.Verify : AppPath.SignInUp,
               {
@@ -388,6 +402,12 @@ export const useAuth = () => {
                 email: user.email,
               },
             );
+            // When multi-workspace is disabled, redirectToWorkspaceDomain is a
+            // no-op. Load workspace metadata directly so the app can render.
+            if (!isMultiWorkspaceEnabled) {
+              await reloadWorkspaceMetadata();
+            }
+            return;
           }
 
           setSignInUpStep(SignInUpStep.WorkspaceSelection);
@@ -413,6 +433,8 @@ export const useAuth = () => {
       setSearchParams,
       setSignInUpStep,
       createWorkspace,
+      isMultiWorkspaceEnabled,
+      reloadWorkspaceMetadata,
     ],
   );
 
