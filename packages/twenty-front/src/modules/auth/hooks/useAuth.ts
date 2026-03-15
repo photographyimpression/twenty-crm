@@ -300,6 +300,10 @@ export const useAuth = () => {
 
       await loadCurrentUser();
       await reloadWorkspaceMetadata();
+
+      // Re-enable the redirect so PageChangeEffect can navigate the user
+      // from the sign-in page to their workspace home page.
+      setIsAppEffectRedirectEnabled(true);
     },
     [
       loadCurrentUser,
