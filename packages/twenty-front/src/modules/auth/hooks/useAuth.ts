@@ -378,6 +378,9 @@ export const useAuth = () => {
         variables: { email, password, captchaToken },
         onCompleted: async (data) => {
           handleSetAuthTokens(data.signIn.tokens);
+          // Clear stale mock data from Apollo cache before loading the
+          // authenticated user, so Invalid UUID errors cannot freeze the app.
+          await client.clearStore();
           const { user } = await loadCurrentUser();
 
           const availableWorkspacesCount = countAvailableWorkspaces(
@@ -435,6 +438,7 @@ export const useAuth = () => {
       createWorkspace,
       isMultiWorkspaceEnabled,
       reloadWorkspaceMetadata,
+      client,
     ],
   );
 
