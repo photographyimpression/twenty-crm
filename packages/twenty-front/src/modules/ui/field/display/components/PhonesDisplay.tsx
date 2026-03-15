@@ -5,6 +5,7 @@ import { type FieldPhonesValue } from '@/object-record/record-field/ui/types/Fie
 import { ExpandableList } from '@/ui/layout/expandable-list/components/ExpandableList';
 
 import { useCallContext } from '@/calls/contexts/CallProvider';
+import { useSmsContext } from '@/sms/contexts/SmsProvider';
 import { styled } from '@linaria/react';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { isDefined } from 'twenty-shared/utils';
@@ -39,6 +40,7 @@ export const PhonesDisplay = ({
   onPhoneNumberClick,
 }: PhonesDisplayProps) => {
   const { dial } = useCallContext();
+  const { openComposer } = useSmsContext();
 
   const phones = useMemo(
     () =>
@@ -76,56 +78,51 @@ export const PhonesDisplay = ({
     }
   };
 
+  const renderPhoneEntries = (inExpandable: boolean) =>
+    phones.map(({ number, callingCode }, index) => {
+      const { parsedPhone, invalidPhone } =
+        parsePhoneNumberOrReturnInvalidValue(callingCode + number);
+      const fullNumber = callingCode + number;
+      const label = parsedPhone
+        ? parsedPhone.formatInternational()
+        : invalidPhone;
+
+      return (
+        <React.Fragment key={index}>
+          <RoundedLink
+            href="#"
+            label={label ?? ''}
+            onClick={(event) => {
+              if (onPhoneNumberClick) {
+                onPhoneNumberClick(fullNumber, event);
+              } else {
+                event.preventDefault();
+                event.stopPropagation();
+                dial(fullNumber);
+              }
+            }}
+          />
+          {isFocused && (
+            <RoundedLink
+              href="#"
+              label="SMS"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openComposer(fullNumber);
+              }}
+            />
+          )}
+        </React.Fragment>
+      );
+    });
+
   return isFocused ? (
     <ExpandableList isChipCountDisplayed>
-      {phones.map(({ number, callingCode }, index) => {
-        const { parsedPhone, invalidPhone } =
-          parsePhoneNumberOrReturnInvalidValue(callingCode + number);
-        return (
-          <RoundedLink
-            key={index}
-            href="#"
-            label={
-              parsedPhone ? parsedPhone.formatInternational() : invalidPhone
-            }
-            onClick={(event) => {
-              if (onPhoneNumberClick) {
-                onPhoneNumberClick(callingCode + number, event);
-              } else {
-                event.preventDefault();
-                event.stopPropagation();
-                dial(callingCode + number);
-              }
-            }}
-          />
-        );
-      })}
+      {renderPhoneEntries(true)}
     </ExpandableList>
   ) : (
-    <StyledContainer>
-      {phones.map(({ number, callingCode }, index) => {
-        const { parsedPhone, invalidPhone } =
-          parsePhoneNumberOrReturnInvalidValue(callingCode + number);
-        return (
-          <RoundedLink
-            key={index}
-            href="#"
-            label={
-              parsedPhone ? parsedPhone.formatInternational() : invalidPhone
-            }
-            onClick={(event) => {
-              if (onPhoneNumberClick) {
-                onPhoneNumberClick(callingCode + number, event);
-              } else {
-                event.preventDefault();
-                event.stopPropagation();
-                dial(callingCode + number);
-              }
-            }}
-          />
-        );
-      })}
-    </StyledContainer>
+    <StyledContainer>{renderPhoneEntries(false)}</StyledContainer>
   );
 };
 

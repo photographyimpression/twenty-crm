@@ -55,6 +55,7 @@ import { logicFunctionModuleFactory } from 'src/engine/core-modules/logic-functi
 import { LogicFunctionModule } from 'src/engine/core-modules/logic-function/logic-function.module';
 import { WorkspaceSSOModule } from 'src/engine/core-modules/sso/sso.module';
 import { TelemetryModule } from 'src/engine/core-modules/telemetry/telemetry.module';
+import { TelnyxWebhookModule } from 'src/engine/core-modules/telnyx-webhook/telnyx-webhook.module';
 import { TwentyConfigModule } from 'src/engine/core-modules/twenty-config/twenty-config.module';
 import { TwentyConfigService } from 'src/engine/core-modules/twenty-config/twenty-config.service';
 import { UserModule } from 'src/engine/core-modules/user/user.module';
@@ -88,6 +89,7 @@ import { FileModule } from './file/file.module';
     AuthModule,
     BillingModule,
     BillingWebhookModule,
+    TelnyxWebhookModule,
     ClientConfigModule,
     FeatureFlagModule,
     FileModule,

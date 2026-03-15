@@ -5,6 +5,8 @@ import { PageChangeEffect } from '@/app/effect-components/PageChangeEffect';
 import { AuthProvider } from '@/auth/components/AuthProvider';
 import { WebRTCDialerWidget } from '@/calls/components/WebRTCDialerWidget';
 import { CallProvider } from '@/calls/contexts/CallProvider';
+import { SmsSendWidget } from '@/sms/components/SmsSendWidget';
+import { SmsProvider } from '@/sms/contexts/SmsProvider';
 import { CaptchaProvider } from '@/captcha/components/CaptchaProvider';
 import { ChromeExtensionSidecarEffect } from '@/chrome-extension-sidecar/components/ChromeExtensionSidecarEffect';
 import { ChromeExtensionSidecarProvider } from '@/chrome-extension-sidecar/components/ChromeExtensionSidecarProvider';
@@ -58,36 +60,39 @@ export const AppRouterProviders = () => {
                   <ApolloCoreProvider>
                     <SSEProvider>
                       <CallProvider>
-                        <PreComputedChipGeneratorsProvider>
-                          <PrefetchDataProvider>
-                            <UserThemeProviderEffect />
-                            <SnackBarProvider>
-                              <ErrorMessageEffect />
-                              <AgentChatProvider>
-                                <DialogComponentInstanceContext.Provider
-                                  value={{ instanceId: 'dialog-manager' }}
-                                >
-                                  <DialogManager>
-                                    <StrictMode>
-                                      <PromiseRejectionEffect />
-                                      <GotoHotkeysEffectsProvider />
-                                      <PageTitle title={pageTitle} />
-                                      <PageFavicon />
-                                      <Outlet />
-                                      <GlobalFilePreviewModal />
-                                      <CommandMenuConfirmationModalManager />
-                                      <HeadlessFrontComponentMountRoot />
-                                      <WebRTCDialerWidget />
-                                    </StrictMode>
-                                  </DialogManager>
-                                </DialogComponentInstanceContext.Provider>
-                              </AgentChatProvider>
-                            </SnackBarProvider>
-                            <MainContextStoreProvider />
-                            <SupportChatEffect />
-                          </PrefetchDataProvider>
-                          <PageChangeEffect />
-                        </PreComputedChipGeneratorsProvider>
+                        <SmsProvider>
+                          <PreComputedChipGeneratorsProvider>
+                            <PrefetchDataProvider>
+                              <UserThemeProviderEffect />
+                              <SnackBarProvider>
+                                <ErrorMessageEffect />
+                                <AgentChatProvider>
+                                  <DialogComponentInstanceContext.Provider
+                                    value={{ instanceId: 'dialog-manager' }}
+                                  >
+                                    <DialogManager>
+                                      <StrictMode>
+                                        <PromiseRejectionEffect />
+                                        <GotoHotkeysEffectsProvider />
+                                        <PageTitle title={pageTitle} />
+                                        <PageFavicon />
+                                        <Outlet />
+                                        <GlobalFilePreviewModal />
+                                        <CommandMenuConfirmationModalManager />
+                                        <HeadlessFrontComponentMountRoot />
+                                        <WebRTCDialerWidget />
+                                        <SmsSendWidget />
+                                      </StrictMode>
+                                    </DialogManager>
+                                  </DialogComponentInstanceContext.Provider>
+                                </AgentChatProvider>
+                              </SnackBarProvider>
+                              <MainContextStoreProvider />
+                              <SupportChatEffect />
+                            </PrefetchDataProvider>
+                            <PageChangeEffect />
+                          </PreComputedChipGeneratorsProvider>
+                        </SmsProvider>
                       </CallProvider>
                     </SSEProvider>
                   </ApolloCoreProvider>

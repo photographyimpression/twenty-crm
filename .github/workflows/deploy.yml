@@ -66,6 +66,32 @@ jobs:
           script: |
             echo "${{ secrets.GH_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /opt/twenty
+
+            # Inject Telnyx and AI server-side credentials into .env (idempotent)
+            grep -q '^TELNYX_API_KEY=' .env || echo 'TELNYX_API_KEY=' >> .env
+            sed -i "s|^TELNYX_API_KEY=.*|TELNYX_API_KEY=${{ secrets.TELNYX_API_KEY }}|" .env
+
+            grep -q '^TELNYX_FROM_NUMBER=' .env || echo 'TELNYX_FROM_NUMBER=' >> .env
+            sed -i "s|^TELNYX_FROM_NUMBER=.*|TELNYX_FROM_NUMBER=${{ secrets.TELNYX_FROM_NUMBER }}|" .env
+
+            grep -q '^TELNYX_MESSAGING_PROFILE_ID=' .env || echo 'TELNYX_MESSAGING_PROFILE_ID=' >> .env
+            sed -i "s|^TELNYX_MESSAGING_PROFILE_ID=.*|TELNYX_MESSAGING_PROFILE_ID=${{ secrets.TELNYX_MESSAGING_PROFILE_ID }}|" .env
+
+            grep -q '^ANTHROPIC_API_KEY=' .env || echo 'ANTHROPIC_API_KEY=' >> .env
+            sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}|" .env
+
+            grep -q '^EMAIL_SMTP_HOST=' .env || echo 'EMAIL_SMTP_HOST=' >> .env
+            sed -i "s|^EMAIL_SMTP_HOST=.*|EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}|" .env
+
+            grep -q '^EMAIL_SMTP_USER=' .env || echo 'EMAIL_SMTP_USER=' >> .env
+            sed -i "s|^EMAIL_SMTP_USER=.*|EMAIL_SMTP_USER=${{ secrets.EMAIL_SMTP_USER }}|" .env
+
+            grep -q '^EMAIL_SMTP_PASSWORD=' .env || echo 'EMAIL_SMTP_PASSWORD=' >> .env
+            sed -i "s|^EMAIL_SMTP_PASSWORD=.*|EMAIL_SMTP_PASSWORD=${{ secrets.EMAIL_SMTP_PASSWORD }}|" .env
+
+            grep -q '^EMAIL_FROM_ADDRESS=' .env || echo 'EMAIL_FROM_ADDRESS=' >> .env
+            sed -i "s|^EMAIL_FROM_ADDRESS=.*|EMAIL_FROM_ADDRESS=${{ secrets.EMAIL_FROM_ADDRESS }}|" .env
+
             sed -i 's|image: twentycrm/twenty.*|image: ghcr.io/${{ env.IMAGE_NAME }}:latest|' docker-compose.yml
             docker compose pull
             docker compose up -d
