@@ -36,17 +36,14 @@ const ButtonRow = styled.div`
   margin-top: 8px;
 `;
 
-const ActionButton = styled.button<{ variant?: 'danger' | 'primary' | 'success' }>`
+const ActionButton = styled.button<{ variant?: 'danger' | 'primary' }>`
   padding: 10px 16px;
   border-radius: 8px;
   border: none;
   font-weight: 600;
   cursor: pointer;
-  background-color: ${(props) => {
-    if (props.variant === 'danger') return '#ef4444';
-    if (props.variant === 'success') return '#22c55e';
-    return '#3b82f6';
-  }};
+  background-color: ${(props) =>
+    props.variant === 'danger' ? '#ef4444' : '#22c55e'};
   color: white;
   flex: 1;
 
@@ -71,17 +68,25 @@ export const WebRTCDialerWidget: React.FC = () => {
     return null;
   }
 
-  const statusLabel = error
-    ? 'Error'
-    : isRinging && isIncoming
-      ? 'Incoming Call'
-      : isRinging
-        ? 'Ringing...'
-        : 'In Call';
+  const handleClose = () => {
+    if (error) {
+      clearError();
+    } else {
+      hangup();
+    }
+  };
 
   return (
     <WidgetContainer>
-      <StatusText>{statusLabel}</StatusText>
+      <StatusText>
+        {error
+          ? 'Error'
+          : isRinging && isIncoming
+            ? 'Incoming Call...'
+            : isRinging
+              ? 'Ringing...'
+              : 'In Call'}
+      </StatusText>
 
       {activeNumber && <NumberText>{activeNumber}</NumberText>}
       {error && (
@@ -92,14 +97,9 @@ export const WebRTCDialerWidget: React.FC = () => {
 
       <ButtonRow>
         {isRinging && isIncoming && (
-          <ActionButton variant="success" onClick={answer}>
-            Answer
-          </ActionButton>
+          <ActionButton onClick={answer}>Answer</ActionButton>
         )}
-        <ActionButton
-          variant="danger"
-          onClick={error ? clearError : hangup}
-        >
+        <ActionButton variant="danger" onClick={handleClose}>
           {error ? 'Close' : 'End Call'}
         </ActionButton>
       </ButtonRow>

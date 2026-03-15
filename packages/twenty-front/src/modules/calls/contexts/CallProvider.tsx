@@ -1,3 +1,4 @@
+import { TelnyxRTC } from '@telnyx/webrtc';
 import React, {
   createContext,
   useCallback,
@@ -6,16 +7,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { TelnyxRTC } from '@telnyx/webrtc';
-
-// Minimal interface for a Telnyx call instance
-type TelnyxCall = {
-  state: string;
-  direction: string;
-  hangup: () => void;
-  answer: () => void;
-  remoteCallerNumber?: string;
-};
 
 export type CallContextType = {
   isRegistered: boolean;
@@ -36,7 +27,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const clientRef = useRef<TelnyxRTC | null>(null);
-  const [activeCall, setActiveCall] = useState<TelnyxCall | null>(null);
+  const [activeCall, setActiveCall] = useState<any>(null);
 
   const [isRegistered, setIsRegistered] = useState(false);
   const [isRinging, setIsRinging] = useState(false);
@@ -46,18 +37,23 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const sipUsername = import.meta.env.REACT_APP_TELNYX_SIP_USERNAME;
-    const sipPassword = import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD;
+    const sipUsername =
+      import.meta.env.REACT_APP_TELNYX_SIP_USERNAME || 'usermoshe40552';
+    const sipPassword =
+      import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD || 'EZ9A.LnsW9ao';
 
-    if (!sipUsername || !sipPassword) {
-      setError('Telnyx credentials not configured');
+    let client: TelnyxRTC;
+
+    try {
+      client = new TelnyxRTC({
+        login: sipUsername,
+        password: sipPassword,
+      });
+    } catch (err) {
+      console.error('TelnyxRTC: failed to create client', err);
+      setError('Failed to initialize Telnyx');
       return;
     }
-
-    const client = new TelnyxRTC({
-      login: sipUsername,
-      password: sipPassword,
-    });
 
     client.on('telnyx.ready', () => {
       setIsRegistered(true);
@@ -65,39 +61,36 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       console.log('TelnyxRTC: connected and ready');
     });
 
-    client.on('telnyx.error', (err: { message?: string }) => {
+    client.on('telnyx.error', (err: any) => {
       console.error('TelnyxRTC error:', err);
       setError(err?.message ?? 'Telnyx connection error');
       setIsRegistered(false);
     });
 
-    client.on(
-      'telnyx.notification',
-      (notification: { type: string; call: TelnyxCall }) => {
-        if (notification.type !== 'callUpdate') return;
+    client.on('telnyx.notification', (notification: any) => {
+      if (notification.type !== 'callUpdate') return;
 
-        const call = notification.call;
-        switch (call.state) {
-          case 'ringing':
-            setActiveCall(call);
-            setIsRinging(true);
-            setIsIncoming(call.direction === 'inbound');
-            setActiveNumber(call.remoteCallerNumber ?? null);
-            break;
-          case 'active':
-            setIsRinging(false);
-            setInCall(true);
-            break;
-          case 'done':
-            setIsRinging(false);
-            setInCall(false);
-            setIsIncoming(false);
-            setActiveCall(null);
-            setActiveNumber(null);
-            break;
-        }
-      },
-    );
+      const call = notification.call;
+      switch (call.state) {
+        case 'ringing':
+          setActiveCall(call);
+          setIsRinging(true);
+          setIsIncoming(call.direction === 'inbound');
+          setActiveNumber(call.remoteCallerNumber ?? null);
+          break;
+        case 'active':
+          setIsRinging(false);
+          setInCall(true);
+          break;
+        case 'done':
+          setIsRinging(false);
+          setInCall(false);
+          setIsIncoming(false);
+          setActiveCall(null);
+          setActiveNumber(null);
+          break;
+      }
+    });
 
     client.connect();
     clientRef.current = client;
@@ -118,13 +111,14 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      const fromNumber = import.meta.env.REACT_APP_TELNYX_FROM_NUMBER ?? '';
+      const fromNumber =
+        import.meta.env.REACT_APP_TELNYX_FROM_NUMBER || '+19344700764';
       const cleanNumber = number.replace(/[^\d+]/g, '');
 
       const call = clientRef.current.newCall({
         destinationNumber: cleanNumber,
         callerNumber: fromNumber,
-      }) as unknown as TelnyxCall;
+      });
 
       setActiveCall(call);
       setActiveNumber(number);
