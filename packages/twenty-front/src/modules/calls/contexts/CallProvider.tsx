@@ -58,7 +58,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     client.on('telnyx.ready', () => {
       setIsRegistered(true);
       setError(null);
-      console.log('TelnyxRTC: connected and ready');
     });
 
     client.on('telnyx.error', (err: any) => {
