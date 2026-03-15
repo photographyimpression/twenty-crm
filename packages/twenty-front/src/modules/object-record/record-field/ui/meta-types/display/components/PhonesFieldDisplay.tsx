@@ -1,3 +1,4 @@
+import { useCallContext } from '@/calls/contexts/CallProvider';
 import { useFieldFocus } from '@/object-record/record-field/ui/hooks/useFieldFocus';
 import { usePhonesFieldDisplay } from '@/object-record/record-field/ui/meta-types/hooks/usePhonesFieldDisplay';
 import { PhonesDisplay } from '@/ui/field/display/components/PhonesDisplay';
@@ -10,6 +11,7 @@ export const PhonesFieldDisplay = () => {
   const { fieldValue, fieldDefinition } = usePhonesFieldDisplay();
   const { copyToClipboard } = useCopyToClipboard();
   const { isFocused } = useFieldFocus();
+  const { dial } = useCallContext();
 
   const { t } = useLingui();
 
@@ -19,9 +21,12 @@ export const PhonesFieldDisplay = () => {
     phoneNumber: string,
     event: React.MouseEvent<HTMLElement>,
   ) => {
+    event.preventDefault();
+    event.stopPropagation();
     if (onClickAction === FieldMetadataSettingsOnClickAction.COPY) {
-      event.preventDefault();
       copyToClipboard(phoneNumber, t`Phone number copied to clipboard`);
+    } else {
+      dial(phoneNumber);
     }
   };
 
