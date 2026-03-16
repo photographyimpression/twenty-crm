@@ -210,6 +210,21 @@ export class TelnyxWebhookService {
     }
   }
 
+  // Extract phone number string from Telnyx payload field
+  // Telnyx sends from/to as objects: {carrier, phone_number} or arrays of objects
+  private extractPhoneNumber(field: any): string {
+    if (!field) return '';
+    if (typeof field === 'string') return field;
+    if (Array.isArray(field)) {
+      return field[0]?.phone_number || '';
+    }
+    if (typeof field === 'object' && field.phone_number) {
+      return field.phone_number;
+    }
+
+    return String(field);
+  }
+
   async handleSmsEvent(body: TelnyxWebhookBody): Promise<void> {
     const eventType = body?.data?.event_type;
     const payload = body?.data?.payload;
@@ -218,18 +233,21 @@ export class TelnyxWebhookService {
       return;
     }
 
+    const fromNumber = this.extractPhoneNumber(payload.from);
+    const toNumber = this.extractPhoneNumber(payload.to);
+
     this.logger.log(
-      `SMS event: ${eventType} from ${payload.from} to ${payload.to}`,
+      `SMS event: ${eventType} from ${fromNumber} to ${toNumber}`,
     );
 
     if (eventType === 'message.received') {
-      this.logger.log(`Incoming SMS from ${payload.from}: ${payload.text}`);
+      this.logger.log(`Incoming SMS from ${fromNumber}: ${payload.text}`);
 
-      // Store the inbound SMS
+      // Store the inbound SMS with normalized phone numbers
       this.storeSmsRecord({
         id: body?.data?.id || `sms-${Date.now()}`,
-        from: payload.from || '',
-        to: payload.to || '',
+        from: fromNumber,
+        to: toNumber,
         text: payload.text || '',
         direction: 'inbound',
         timestamp: body?.data?.occurred_at || new Date().toISOString(),
@@ -237,19 +255,15 @@ export class TelnyxWebhookService {
       });
 
       // Forward SMS to email
-      await this.forwardSmsToEmail(
-        payload.from || '',
-        payload.to || '',
-        payload.text || '',
-      );
+      await this.forwardSmsToEmail(fromNumber, toNumber, payload.text || '');
 
       // AI auto-reply
-      await this.sendAutoReply(payload.from || '', payload.text || '');
+      await this.sendAutoReply(fromNumber, payload.text || '');
     }
 
     // Track outbound SMS delivery status
     if (eventType === 'message.sent' || eventType === 'message.finalized') {
-      this.logger.log(`Outbound SMS status: ${eventType} to ${payload.to}`);
+      this.logger.log(`Outbound SMS status: ${eventType} to ${toNumber}`);
     }
   }
 
@@ -271,8 +285,18 @@ export class TelnyxWebhookService {
       const normalized = contactNumber.replace(/\D/g, '');
 
       return this.smsRecords.filter((sms) => {
-        const fromNorm = sms.from.replace(/\D/g, '');
-        const toNorm = sms.to.replace(/\D/g, '');
+        const fromStr =
+          typeof sms.from === 'object' && sms.from !== null
+            ? (sms.from as any).phone_number || ''
+            : String(sms.from || '');
+        const toStr =
+          typeof sms.to === 'object' && sms.to !== null
+            ? Array.isArray(sms.to)
+              ? (sms.to[0] as any)?.phone_number || ''
+              : (sms.to as any).phone_number || ''
+            : String(sms.to || '');
+        const fromNorm = fromStr.replace(/\D/g, '');
+        const toNorm = toStr.replace(/\D/g, '');
 
         return fromNorm.endsWith(normalized) || toNorm.endsWith(normalized);
       });
