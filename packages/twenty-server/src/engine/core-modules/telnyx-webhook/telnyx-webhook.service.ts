@@ -4,6 +4,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { EmailSenderService } from 'src/engine/core-modules/email/email-sender.service';
+import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
+import { NoteWorkspaceEntity } from 'src/modules/note/standard-objects/note.workspace-entity';
+import { NoteTargetWorkspaceEntity } from 'src/modules/note/standard-objects/note-target.workspace-entity';
+import { PersonWorkspaceEntity } from 'src/modules/person/standard-objects/person.workspace-entity';
 
 type TelnyxPayload = {
   call_control_id?: string;
@@ -82,7 +86,10 @@ export class TelnyxWebhookService {
   private readonly processedEvents = new Set<string>();
   private readonly dataDir: string;
 
-  constructor(private readonly emailSenderService: EmailSenderService) {
+  constructor(
+    private readonly emailSenderService: EmailSenderService,
+    private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
+  ) {
     this.dataDir = path.join(
       process.env.HOME || '/tmp',
       '.twenty-call-recordings',
@@ -180,6 +187,13 @@ export class TelnyxWebhookService {
               new Date(record.startTime).getTime();
           }
           this.saveCallRecords();
+
+          // Log call to person's timeline (async, don't block webhook)
+          this.logCallToTimeline(record).catch((err) =>
+            this.logger.error(
+              `Failed to log call to timeline: ${err}`,
+            ),
+          );
         }
         this.logger.log(`Call ended: ${sessionId}`);
         break;
@@ -243,8 +257,7 @@ export class TelnyxWebhookService {
     if (eventType === 'message.received') {
       this.logger.log(`Incoming SMS from ${fromNumber}: ${payload.text}`);
 
-      // Store the inbound SMS with normalized phone numbers
-      this.storeSmsRecord({
+      const smsRecord: SmsRecord = {
         id: body?.data?.id || `sms-${Date.now()}`,
         from: fromNumber,
         to: toNumber,
@@ -252,7 +265,15 @@ export class TelnyxWebhookService {
         direction: 'inbound',
         timestamp: body?.data?.occurred_at || new Date().toISOString(),
         status: 'received',
-      });
+      };
+
+      // Store the inbound SMS with normalized phone numbers
+      this.storeSmsRecord(smsRecord);
+
+      // Log to person's timeline (async, don't block webhook)
+      this.logSmsToTimeline(smsRecord).catch((err) =>
+        this.logger.error(`Failed to log SMS to timeline: ${err}`),
+      );
 
       // Forward SMS to email
       await this.forwardSmsToEmail(fromNumber, toNumber, payload.text || '');
@@ -269,7 +290,7 @@ export class TelnyxWebhookService {
 
   // Store an outbound SMS record (called from the controller)
   storeOutboundSms(to: string, text: string): void {
-    this.storeSmsRecord({
+    const smsRecord: SmsRecord = {
       id: `sms-out-${Date.now()}`,
       from: process.env['TELNYX_FROM_NUMBER'] || '+19344700764',
       to,
@@ -277,7 +298,14 @@ export class TelnyxWebhookService {
       direction: 'outbound',
       timestamp: new Date().toISOString(),
       status: 'sent',
-    });
+    };
+
+    this.storeSmsRecord(smsRecord);
+
+    // Log to person's timeline (async)
+    this.logSmsToTimeline(smsRecord).catch((err) =>
+      this.logger.error(`Failed to log outbound SMS to timeline: ${err}`),
+    );
   }
 
   getSmsRecords(contactNumber?: string): SmsRecord[] {
@@ -860,5 +888,247 @@ export class TelnyxWebhookService {
       this.logger.log(`Cleaned up ${removed} stale call records`);
       this.saveCallRecords();
     }
+  }
+
+  // ── Timeline Integration ──────────────────────────────────────────
+
+  private async getWorkspaceId(): Promise<string | null> {
+    // Single-workspace deployment: use env or hardcoded ID
+    return (
+      process.env['WORKSPACE_ID'] || 'b5c558d8-6529-4565-969e-d23265fa4a8f'
+    );
+  }
+
+  private normalizePhone(phone: string): string {
+    return phone.replace(/[\s\-()]/g, '');
+  }
+
+  async findPersonByPhone(phoneNumber: string): Promise<string | null> {
+    const workspaceId = await this.getWorkspaceId();
+
+    if (!workspaceId) return null;
+
+    try {
+      const personRepository =
+        await this.globalWorkspaceOrmManager.getRepository(
+          workspaceId,
+          PersonWorkspaceEntity,
+          { shouldBypassPermissionChecks: true },
+        );
+
+      // Strip all non-digit characters for comparison
+      const digitsOnly = phoneNumber.replace(/\D/g, '');
+
+      // Phones composite type stores:
+      // primaryPhoneNumber (local digits, e.g., "5148947978")
+      // primaryPhoneCallingCode (e.g., "+1")
+      // additionalPhones: [{number, countryCode, callingCode}]
+      const people = await personRepository.find();
+
+      for (const person of people) {
+        const phones = person.phones as {
+          primaryPhoneNumber?: string;
+          primaryPhoneCallingCode?: string;
+          additionalPhones?: Array<{
+            number?: string;
+            callingCode?: string;
+          }> | null;
+        } | null;
+
+        if (!phones) continue;
+
+        // Build full primary phone: callingCode + number
+        const primaryDigits = (phones.primaryPhoneNumber || '').replace(
+          /\D/g,
+          '',
+        );
+        const callingCode = (phones.primaryPhoneCallingCode || '').replace(
+          /\D/g,
+          '',
+        );
+        const fullPrimary = callingCode + primaryDigits;
+
+        if (
+          primaryDigits &&
+          (digitsOnly === fullPrimary ||
+            digitsOnly.endsWith(primaryDigits) ||
+            fullPrimary.endsWith(digitsOnly))
+        ) {
+          return person.id;
+        }
+
+        // Check additional phones
+        const additional = phones.additionalPhones || [];
+
+        for (const extra of additional) {
+          const extraDigits = (extra.number || '').replace(/\D/g, '');
+          const extraCalling = (extra.callingCode || '').replace(
+            /\D/g,
+            '',
+          );
+          const fullExtra = extraCalling + extraDigits;
+
+          if (
+            extraDigits &&
+            (digitsOnly === fullExtra ||
+              digitsOnly.endsWith(extraDigits) ||
+              fullExtra.endsWith(digitsOnly))
+          ) {
+            return person.id;
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(
+        `Failed to find person by phone ${phoneNumber}: ${errorMessage}`,
+      );
+
+      return null;
+    }
+  }
+
+  async createTimelineNote(
+    personId: string,
+    title: string,
+    body: string,
+  ): Promise<string | null> {
+    const workspaceId = await this.getWorkspaceId();
+
+    if (!workspaceId) return null;
+
+    try {
+      const noteRepository =
+        await this.globalWorkspaceOrmManager.getRepository(
+          workspaceId,
+          NoteWorkspaceEntity,
+          { shouldBypassPermissionChecks: true },
+        );
+
+      const noteTargetRepository =
+        await this.globalWorkspaceOrmManager.getRepository(
+          workspaceId,
+          NoteTargetWorkspaceEntity,
+          { shouldBypassPermissionChecks: true },
+        );
+
+      // Create the note with rich text body
+      const noteInsert = await noteRepository.insert({
+        title,
+        bodyV2: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: body }],
+            },
+          ],
+        },
+        position: 0,
+      } as any);
+
+      const noteId = noteInsert.identifiers[0]?.id;
+
+      if (!noteId) {
+        this.logger.error('Failed to create note: no ID returned');
+
+        return null;
+      }
+
+      // Link the note to the person
+      await noteTargetRepository.insert({
+        noteId,
+        targetPersonId: personId,
+      } as any);
+
+      this.logger.log(
+        `Created timeline note "${title}" for person ${personId}`,
+      );
+
+      return noteId;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`Failed to create timeline note: ${errorMessage}`);
+
+      return null;
+    }
+  }
+
+  // Create a timeline entry for a completed call
+  async logCallToTimeline(record: CallRecord): Promise<void> {
+    const contactPhone =
+      record.direction === 'incoming' ? record.from : record.to;
+
+    if (!contactPhone) return;
+
+    const personId = await this.findPersonByPhone(contactPhone);
+
+    if (!personId) {
+      this.logger.log(
+        `No person found for phone ${contactPhone}, skipping timeline`,
+      );
+
+      return;
+    }
+
+    const durationSec = record.durationMs
+      ? Math.round(record.durationMs / 1000)
+      : 0;
+    const durationStr =
+      durationSec > 0
+        ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`
+        : 'N/A';
+
+    const directionIcon = record.direction === 'incoming' ? '📥' : '📤';
+    const title = `${directionIcon} Phone Call (${durationStr})`;
+
+    let body = `Direction: ${record.direction}\nDuration: ${durationStr}\n`;
+    body += `From: ${record.from}\nTo: ${record.to}\n`;
+    body += `Time: ${new Date(record.startTime).toLocaleString('en-CA', { timeZone: 'America/Toronto' })}`;
+
+    if (record.recordingUrl) {
+      body += `\n\n🎙️ Recording: ${record.recordingUrl}`;
+    }
+
+    if (record.transcription) {
+      body += `\n\n📝 Transcription:\n${record.transcription}`;
+    }
+
+    await this.createTimelineNote(personId, title, body);
+  }
+
+  // Create a timeline entry for an SMS
+  async logSmsToTimeline(smsRecord: SmsRecord): Promise<void> {
+    const contactPhone =
+      smsRecord.direction === 'inbound' ? smsRecord.from : smsRecord.to;
+
+    if (!contactPhone) return;
+
+    const personId = await this.findPersonByPhone(contactPhone);
+
+    if (!personId) {
+      this.logger.log(
+        `No person found for phone ${contactPhone}, skipping SMS timeline`,
+      );
+
+      return;
+    }
+
+    const directionIcon =
+      smsRecord.direction === 'inbound' ? '📥' : '📤';
+    const title = `${directionIcon} SMS ${smsRecord.direction === 'inbound' ? 'Received' : 'Sent'}`;
+    const time = new Date(smsRecord.timestamp).toLocaleString('en-CA', {
+      timeZone: 'America/Toronto',
+    });
+
+    const body = `${smsRecord.direction === 'inbound' ? 'From' : 'To'}: ${contactPhone}\nTime: ${time}\n\n${smsRecord.text}`;
+
+    await this.createTimelineNote(personId, title, body);
   }
 }
