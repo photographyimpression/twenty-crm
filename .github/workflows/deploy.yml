@@ -80,6 +80,9 @@ jobs:
             grep -q '^GEMINI_API_KEY=' .env || echo 'GEMINI_API_KEY=' >> .env
             sed -i "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}|" .env
 
+            grep -q '^TELNYX_CREDENTIAL_ID=' .env || echo 'TELNYX_CREDENTIAL_ID=' >> .env
+            sed -i "s|^TELNYX_CREDENTIAL_ID=.*|TELNYX_CREDENTIAL_ID=${{ secrets.TELNYX_CREDENTIAL_ID }}|" .env
+
             grep -q '^EMAIL_SMTP_HOST=' .env || echo 'EMAIL_SMTP_HOST=' >> .env
             sed -i "s|^EMAIL_SMTP_HOST=.*|EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}|" .env
 

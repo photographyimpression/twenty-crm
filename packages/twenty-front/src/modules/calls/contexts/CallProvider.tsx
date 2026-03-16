@@ -41,66 +41,105 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const sipUsername =
-      import.meta.env.REACT_APP_TELNYX_SIP_USERNAME || 'usermoshe40552';
-    const sipPassword =
-      import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD || 'CrmWebRTC2026x';
+    let cancelled = false;
 
-    let client: TelnyxRTC;
+    const initTelnyx = async () => {
+      let client: TelnyxRTC;
 
-    try {
-      client = new TelnyxRTC({
-        login: sipUsername,
-        password: sipPassword,
-      });
-    } catch (err) {
-      console.error('TelnyxRTC: failed to create client', err);
-      setError('Failed to initialize Telnyx');
-      return;
-    }
+      try {
+        // Try fetching a JWT token from the backend (recommended by Telnyx)
+        const tokenResponse = await fetch('/telnyx/webrtc-token');
+        const tokenData = (await tokenResponse.json()) as {
+          token?: string;
+        };
 
-    client.on('telnyx.ready', () => {
-      setIsRegistered(true);
-      setError(null);
-    });
-
-    client.on('telnyx.error', (err: any) => {
-      console.error('TelnyxRTC error:', err);
-      setError(err?.message ?? 'Telnyx connection error');
-      setIsRegistered(false);
-    });
-
-    client.on('telnyx.notification', (notification: any) => {
-      if (notification.type !== 'callUpdate') return;
-
-      const call = notification.call;
-      switch (call.state) {
-        case 'ringing':
-          setActiveCall(call);
-          setIsRinging(true);
-          setIsIncoming(call.direction === 'inbound');
-          setActiveNumber(call.remoteCallerNumber ?? null);
-          setCallSessionId(call.telnyxCallControlId ?? call.id ?? null);
-          break;
-        case 'active':
-          setIsRinging(false);
-          setInCall(true);
-          setCallStartTime(Date.now());
-          break;
-        case 'done':
-          setIsRinging(false);
-          setInCall(false);
-          setIsIncoming(false);
-          setActiveCall(null);
-          setActiveNumber(null);
-          setCallSessionId(null);
-          setCallStartTime(null);
-          break;
+        if (tokenData?.token) {
+          console.log('TelnyxRTC: using JWT login_token auth');
+          client = new TelnyxRTC({
+            login_token: tokenData.token,
+          });
+        } else {
+          // Fallback to credential auth
+          console.log('TelnyxRTC: falling back to credential auth');
+          const sipUsername =
+            import.meta.env.REACT_APP_TELNYX_SIP_USERNAME ||
+            'usermoshe40552';
+          const sipPassword =
+            import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD ||
+            'CrmWebRTC2026x';
+          client = new TelnyxRTC({
+            login: sipUsername,
+            password: sipPassword,
+          });
+        }
+      } catch {
+        // If token fetch fails, fallback to credential auth
+        console.log(
+          'TelnyxRTC: token fetch failed, using credential auth',
+        );
+        const sipUsername =
+          import.meta.env.REACT_APP_TELNYX_SIP_USERNAME || 'usermoshe40552';
+        const sipPassword =
+          import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD || 'CrmWebRTC2026x';
+        client = new TelnyxRTC({
+          login: sipUsername,
+          password: sipPassword,
+        });
       }
-    });
 
-    client.connect();
-    clientRef.current = client;
+      if (cancelled) return;
+
+      client.on('telnyx.ready', () => {
+        console.log('TelnyxRTC: connected and ready');
+        setIsRegistered(true);
+        setError(null);
+      });
+
+      client.on('telnyx.error', (err: any) => {
+        console.error('TelnyxRTC error:', err);
+        setError(err?.message ?? 'Telnyx connection error');
+        setIsRegistered(false);
+      });
+
+      client.on('telnyx.notification', (notification: any) => {
+        if (notification.type !== 'callUpdate') return;
+
+        const call = notification.call;
+        console.log('TelnyxRTC call state:', call.state, call);
+        switch (call.state) {
+          case 'ringing':
+            setActiveCall(call);
+            setIsRinging(true);
+            setIsIncoming(call.direction === 'inbound');
+            setActiveNumber(call.remoteCallerNumber ?? null);
+            setCallSessionId(
+              call.telnyxCallControlId ?? call.id ?? null,
+            );
+            break;
+          case 'active':
+            setIsRinging(false);
+            setInCall(true);
+            setCallStartTime(Date.now());
+            break;
+          case 'done':
+          case 'hangup':
+          case 'destroy':
+            setIsRinging(false);
+            setInCall(false);
+            setIsIncoming(false);
+            setActiveCall(null);
+            setActiveNumber(null);
+            setCallSessionId(null);
+            setCallStartTime(null);
+            break;
+        }
+      });
+
+      client.connect();
+      clientRef.current = client;
+    };
+
+    initTelnyx();
 
     return () => {
       client.off('telnyx.ready');

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Logger,
@@ -38,6 +39,56 @@ export class TelnyxWebhookController {
   protected readonly logger = new Logger(TelnyxWebhookController.name);
 
   constructor(private readonly telnyxWebhookService: TelnyxWebhookService) {}
+
+  // Generate a JWT token for WebRTC browser calling
+  @Get('webrtc-token')
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async getWebrtcToken(@Res() res: Response) {
+    const telnyxApiKey = process.env['TELNYX_API_KEY'];
+    const credentialId = process.env['TELNYX_CREDENTIAL_ID'];
+
+    if (!telnyxApiKey || !credentialId) {
+      this.logger.warn(
+        'WebRTC token: TELNYX_API_KEY or TELNYX_CREDENTIAL_ID not set',
+      );
+      res.json({ token: null });
+
+      return;
+    }
+
+    try {
+      // Generate a JWT token from the Telnyx telephony credential
+      const tokenResponse = await fetch(
+        `https://api.telnyx.com/v2/telephony_credentials/${credentialId}/token`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${telnyxApiKey}`,
+          },
+        },
+      );
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+
+        this.logger.error(`Failed to generate WebRTC token: ${errorText}`);
+        res.json({ token: null });
+
+        return;
+      }
+
+      const token = await tokenResponse.text();
+
+      this.logger.log('Generated WebRTC JWT token');
+      res.json({ token });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`WebRTC token error: ${errorMessage}`);
+      res.json({ token: null });
+    }
+  }
 
   // Voice webhook handles Call Control events from Telnyx credential connection
   @Post('voice')
