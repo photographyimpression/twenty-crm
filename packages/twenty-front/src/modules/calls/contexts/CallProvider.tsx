@@ -14,6 +14,8 @@ export type CallContextType = {
   isIncoming: boolean;
   inCall: boolean;
   activeNumber: string | null;
+  callSessionId: string | null;
+  callStartTime: number | null;
   dial: (number: string) => void;
   hangup: () => void;
   answer: () => void;
@@ -34,6 +36,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isIncoming, setIsIncoming] = useState(false);
   const [inCall, setInCall] = useState(false);
   const [activeNumber, setActiveNumber] = useState<string | null>(null);
+  const [callSessionId, setCallSessionId] = useState<string | null>(null);
+  const [callStartTime, setCallStartTime] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -76,10 +80,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
           setIsRinging(true);
           setIsIncoming(call.direction === 'inbound');
           setActiveNumber(call.remoteCallerNumber ?? null);
+          setCallSessionId(call.telnyxCallControlId ?? call.id ?? null);
           break;
         case 'active':
           setIsRinging(false);
           setInCall(true);
+          setCallStartTime(Date.now());
           break;
         case 'done':
           setIsRinging(false);
@@ -87,6 +93,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
           setIsIncoming(false);
           setActiveCall(null);
           setActiveNumber(null);
+          setCallSessionId(null);
+          setCallStartTime(null);
           break;
       }
     });
@@ -123,6 +131,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       setActiveNumber(number);
       setIsRinging(true);
       setIsIncoming(false);
+      setCallSessionId(
+        (call as unknown as { telnyxCallControlId?: string })
+          ?.telnyxCallControlId ??
+          call?.id ??
+          null,
+      );
       setError(null);
     },
     [isRegistered],
@@ -136,6 +150,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsRinging(false);
       setIsIncoming(false);
       setActiveNumber(null);
+      setCallSessionId(null);
+      setCallStartTime(null);
     }
   }, [activeCall]);
 
@@ -157,6 +173,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         isIncoming,
         inCall,
         activeNumber,
+        callSessionId,
+        callStartTime,
         dial,
         hangup,
         answer,

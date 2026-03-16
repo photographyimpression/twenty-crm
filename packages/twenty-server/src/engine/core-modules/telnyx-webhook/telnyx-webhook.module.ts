@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 
-import { TelnyxWebhookController } from 'src/engine/core-modules/telnyx-webhook/telnyx-webhook.controller';
-import { TwentyConfigModule } from 'src/engine/core-modules/twenty-config/twenty-config.module';
+import { TelnyxCallRecordsController } from './telnyx-call-records.controller';
+import { TelnyxWebhookController } from './telnyx-webhook.controller';
+import { TelnyxWebhookService } from './telnyx-webhook.service';
 
 @Module({
-  imports: [TwentyConfigModule],
-  controllers: [TelnyxWebhookController],
+  controllers: [TelnyxWebhookController, TelnyxCallRecordsController],
+  providers: [TelnyxWebhookService],
+  exports: [TelnyxWebhookService],
 })
 export class TelnyxWebhookModule {}
