@@ -109,6 +109,18 @@ export class TelnyxWebhookController {
     const direction = payload?.direction as string | undefined;
     const telnyxApiKey = process.env['TELNYX_API_KEY'];
 
+    // Always track call lifecycle events first (so records are created for all calls)
+    try {
+      await this.telnyxWebhookService.handleVoiceEvent(body);
+    } catch (error) {
+      const serviceError =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(
+        `Error tracking call event ${eventType}: ${serviceError}`,
+      );
+    }
+
     // For inbound calls, answer + play IVR greeting + transfer to owner
     if (
       eventType === 'call.initiated' &&
@@ -198,15 +210,8 @@ export class TelnyxWebhookController {
       return;
     }
 
-    // Track all other call lifecycle events (recording, hangup, etc.)
-    try {
-      await this.telnyxWebhookService.handleVoiceEvent(body);
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-
-      this.logger.error(`Telnyx voice webhook error: ${errorMessage}`);
-    }
+    // All other events already handled by handleVoiceEvent above
+    this.logger.log(`Voice event ${eventType} processed`);
   }
 
   // SMS webhook handles inbound messages (forwarding + AI auto-reply)

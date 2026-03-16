@@ -141,8 +141,8 @@ export class TelnyxWebhookService {
       case 'call.initiated': {
         const record: CallRecord = {
           callSessionId: sessionId,
-          from: payload.from || '',
-          to: payload.to || '',
+          from: this.extractPhoneNumber(payload.from),
+          to: this.extractPhoneNumber(payload.to),
           direction: payload.direction || 'unknown',
           startTime: payload.start_time || new Date().toISOString(),
           endTime: null,
@@ -1062,8 +1062,9 @@ export class TelnyxWebhookService {
 
   // Create a timeline entry for a completed call
   async logCallToTimeline(record: CallRecord): Promise<void> {
-    const contactPhone =
-      record.direction === 'incoming' ? record.from : record.to;
+    const isIncoming =
+      record.direction === 'incoming' || record.direction === 'inbound';
+    const contactPhone = isIncoming ? record.from : record.to;
 
     if (!contactPhone) return;
 
@@ -1085,7 +1086,7 @@ export class TelnyxWebhookService {
         ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`
         : 'N/A';
 
-    const directionIcon = record.direction === 'incoming' ? '📥' : '📤';
+    const directionIcon = isIncoming ? '📥' : '📤';
     const title = `${directionIcon} Phone Call (${durationStr})`;
 
     let body = `Direction: ${record.direction}\nDuration: ${durationStr}\n`;

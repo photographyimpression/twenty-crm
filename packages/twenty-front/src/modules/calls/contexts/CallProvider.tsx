@@ -141,12 +141,89 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
 
     initTelnyx();
 
+    // Refresh JWT token every 10 minutes (tokens expire after ~1 hour)
+    const tokenRefreshInterval = setInterval(
+      async () => {
+        try {
+          const tokenResponse = await fetch('/telnyx/webrtc-token');
+          const tokenData = (await tokenResponse.json()) as {
+            token?: string;
+          };
+
+          if (tokenData?.token && clientRef.current) {
+            console.log('TelnyxRTC: refreshing JWT token');
+            clientRef.current.disconnect();
+            const newClient = new TelnyxRTC({
+              login_token: tokenData.token,
+            });
+
+            newClient.on('telnyx.ready', () => {
+              console.log('TelnyxRTC: reconnected after token refresh');
+              setIsRegistered(true);
+              setError(null);
+            });
+
+            newClient.on('telnyx.error', (err: any) => {
+              console.error('TelnyxRTC error after refresh:', err);
+              setError(err?.message ?? 'Telnyx connection error');
+              setIsRegistered(false);
+            });
+
+            newClient.on('telnyx.notification', (notification: any) => {
+              if (notification.type !== 'callUpdate') return;
+
+              const call = notification.call;
+              console.log('TelnyxRTC call state:', call.state, call);
+              switch (call.state) {
+                case 'ringing':
+                  setActiveCall(call);
+                  setIsRinging(true);
+                  setIsIncoming(call.direction === 'inbound');
+                  setActiveNumber(call.remoteCallerNumber ?? null);
+                  setCallSessionId(
+                    call.telnyxCallControlId ?? call.id ?? null,
+                  );
+                  break;
+                case 'active':
+                  setIsRinging(false);
+                  setInCall(true);
+                  setCallStartTime(Date.now());
+                  break;
+                case 'done':
+                case 'hangup':
+                case 'destroy':
+                  setIsRinging(false);
+                  setInCall(false);
+                  setIsIncoming(false);
+                  setActiveCall(null);
+                  setActiveNumber(null);
+                  setCallSessionId(null);
+                  setCallStartTime(null);
+                  break;
+              }
+            });
+
+            newClient.connect();
+            clientRef.current = newClient;
+          }
+        } catch {
+          console.warn('TelnyxRTC: token refresh failed, will retry');
+        }
+      },
+      10 * 60 * 1000,
+    );
+
     return () => {
-      client.off('telnyx.ready');
-      client.off('telnyx.error');
-      client.off('telnyx.notification');
-      client.disconnect();
-      clientRef.current = null;
+      cancelled = true;
+      clearInterval(tokenRefreshInterval);
+
+      if (clientRef.current) {
+        clientRef.current.off('telnyx.ready');
+        clientRef.current.off('telnyx.error');
+        clientRef.current.off('telnyx.notification');
+        clientRef.current.disconnect();
+        clientRef.current = null;
+      }
     };
   }, []);
 
