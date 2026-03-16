@@ -3,6 +3,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { EmailSenderService } from 'src/engine/core-modules/email/email-sender.service';
+
 type TelnyxPayload = {
   call_control_id?: string;
   call_leg_id?: string;
@@ -57,7 +59,18 @@ type CallRecord = {
   status: string;
 };
 
+type SmsRecord = {
+  id: string;
+  from: string;
+  to: string;
+  text: string;
+  direction: 'inbound' | 'outbound';
+  timestamp: string;
+  status: string;
+};
+
 const MAX_CALL_RECORDS = 1000;
+const MAX_SMS_RECORDS = 5000;
 const STALE_RECORD_HOURS = 72;
 const MAX_TRANSCRIPTION_RETRIES = 2;
 
@@ -65,10 +78,11 @@ const MAX_TRANSCRIPTION_RETRIES = 2;
 export class TelnyxWebhookService {
   private readonly logger = new Logger(TelnyxWebhookService.name);
   private readonly callRecords = new Map<string, CallRecord>();
+  private readonly smsRecords: SmsRecord[] = [];
   private readonly processedEvents = new Set<string>();
   private readonly dataDir: string;
 
-  constructor() {
+  constructor(private readonly emailSenderService: EmailSenderService) {
     this.dataDir = path.join(
       process.env.HOME || '/tmp',
       '.twenty-call-recordings',
@@ -79,6 +93,7 @@ export class TelnyxWebhookService {
     }
 
     this.loadCallRecords();
+    this.loadSmsRecords();
     this.cleanupStaleRecords();
   }
 
@@ -210,6 +225,17 @@ export class TelnyxWebhookService {
     if (eventType === 'message.received') {
       this.logger.log(`Incoming SMS from ${payload.from}: ${payload.text}`);
 
+      // Store the inbound SMS
+      this.storeSmsRecord({
+        id: body?.data?.id || `sms-${Date.now()}`,
+        from: payload.from || '',
+        to: payload.to || '',
+        text: payload.text || '',
+        direction: 'inbound',
+        timestamp: body?.data?.occurred_at || new Date().toISOString(),
+        status: 'received',
+      });
+
       // Forward SMS to email
       await this.forwardSmsToEmail(
         payload.from || '',
@@ -220,6 +246,39 @@ export class TelnyxWebhookService {
       // AI auto-reply
       await this.sendAutoReply(payload.from || '', payload.text || '');
     }
+
+    // Track outbound SMS delivery status
+    if (eventType === 'message.sent' || eventType === 'message.finalized') {
+      this.logger.log(`Outbound SMS status: ${eventType} to ${payload.to}`);
+    }
+  }
+
+  // Store an outbound SMS record (called from the controller)
+  storeOutboundSms(to: string, text: string): void {
+    this.storeSmsRecord({
+      id: `sms-out-${Date.now()}`,
+      from: process.env['TELNYX_FROM_NUMBER'] || '+19344700764',
+      to,
+      text,
+      direction: 'outbound',
+      timestamp: new Date().toISOString(),
+      status: 'sent',
+    });
+  }
+
+  getSmsRecords(contactNumber?: string): SmsRecord[] {
+    if (contactNumber) {
+      const normalized = contactNumber.replace(/\D/g, '');
+
+      return this.smsRecords.filter((sms) => {
+        const fromNorm = sms.from.replace(/\D/g, '');
+        const toNorm = sms.to.replace(/\D/g, '');
+
+        return fromNorm.endsWith(normalized) || toNorm.endsWith(normalized);
+      });
+    }
+
+    return [...this.smsRecords];
   }
 
   async handleRecordingSaved(
@@ -257,7 +316,9 @@ export class TelnyxWebhookService {
       this.saveCallRecords();
     }
 
-    this.logger.log(`Recording saved for session ${sessionId}: ${recordingUrl}`);
+    this.logger.log(
+      `Recording saved for session ${sessionId}: ${recordingUrl}`,
+    );
 
     // Transcribe the recording
     if (recordingUrl) {
@@ -287,20 +348,17 @@ export class TelnyxWebhookService {
 
     try {
       // Use Telnyx Speech-to-Text API
-      const response = await fetch(
-        'https://api.telnyx.com/v2/ai/transcribe',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${telnyxApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            audio_url: recordingUrl,
-            language: 'en',
-          }),
+      const response = await fetch('https://api.telnyx.com/v2/ai/transcribe', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${telnyxApiKey}`,
+          'Content-Type': 'application/json',
         },
-      );
+        body: JSON.stringify({
+          audio_url: recordingUrl,
+          language: 'en',
+        }),
+      });
 
       if (response.ok) {
         const result = (await response.json()) as {
@@ -485,19 +543,51 @@ export class TelnyxWebhookService {
     text: string,
   ): Promise<void> {
     const forwardEmail =
-      process.env.SMS_FORWARD_EMAIL || 'moshe@impressionphotography.ca';
+      process.env['SMS_FORWARD_EMAIL'] || 'moshe@impressionphotography.ca';
 
-    this.logger.log(
-      `Would forward SMS from ${from} to ${forwardEmail}: ${text}`,
-    );
-    // Email forwarding implementation would go here
-    // using the EmailModule already available in the server
+    try {
+      await this.emailSenderService.send({
+        from:
+          process.env['EMAIL_FROM_ADDRESS'] || 'crm@impressionphotography.ca',
+        to: forwardEmail,
+        subject: `SMS from ${from}`,
+        text: `New SMS received:\n\nFrom: ${from}\nTo: ${to}\nTime: ${new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto' })}\n\nMessage:\n${text}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px;">
+            <h3 style="color: #333; border-bottom: 2px solid #1a73e8; padding-bottom: 8px;">
+              New SMS Received
+            </h3>
+            <table style="margin: 16px 0;">
+              <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">From:</td><td>${from}</td></tr>
+              <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">To:</td><td>${to}</td></tr>
+              <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">Time:</td><td>${new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto' })}</td></tr>
+            </table>
+            <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin-top: 12px;">
+              <p style="margin: 0; font-size: 16px; line-height: 1.5;">${text}</p>
+            </div>
+            <p style="color: #999; font-size: 12px; margin-top: 16px;">
+              Forwarded by Twenty CRM Telephony System
+            </p>
+          </div>
+        `,
+      });
+
+      this.logger.log(`SMS forwarded to ${forwardEmail}`);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`Failed to forward SMS to email: ${errorMessage}`);
+    }
   }
 
-  private async sendAutoReply(from: string, incomingText: string): Promise<void> {
-    const telnyxApiKey = process.env.TELNYX_API_KEY;
-    const fromNumber = process.env.TELNYX_FROM_NUMBER || '+19344700764';
-    const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID;
+  private async sendAutoReply(
+    from: string,
+    incomingText: string,
+  ): Promise<void> {
+    const telnyxApiKey = process.env['TELNYX_API_KEY'];
+    const fromNumber = process.env['TELNYX_FROM_NUMBER'] || '+19344700764';
+    const messagingProfileId = process.env['TELNYX_MESSAGING_PROFILE_ID'];
 
     if (!telnyxApiKey || !messagingProfileId) {
       this.logger.warn(
@@ -507,10 +597,18 @@ export class TelnyxWebhookService {
       return;
     }
 
-    const autoReplyText =
-      'Thank you for contacting Impression Photography! ' +
-      'We have received your message and will get back to you shortly. ' +
-      'For immediate assistance, please call us at +1 (934) 470-0764.';
+    // Generate AI reply if Anthropic key is available
+    const anthropicKey = process.env['ANTHROPIC_API_KEY'];
+    let autoReplyText: string;
+
+    if (anthropicKey) {
+      autoReplyText = await this.generateAiReply(anthropicKey, incomingText);
+    } else {
+      autoReplyText =
+        'Thank you for contacting Impression Photography! ' +
+        'We have received your message and will get back to you shortly. ' +
+        'For immediate assistance, please call us at +1 (514) 894-7978.';
+    }
 
     try {
       const response = await fetch('https://api.telnyx.com/v2/messages', {
@@ -529,6 +627,17 @@ export class TelnyxWebhookService {
 
       if (response.ok) {
         this.logger.log(`Auto-reply sent to ${from}`);
+
+        // Store the outbound auto-reply
+        this.storeSmsRecord({
+          id: `sms-auto-${Date.now()}`,
+          from: fromNumber,
+          to: from,
+          text: autoReplyText,
+          direction: 'outbound',
+          timestamp: new Date().toISOString(),
+          status: 'sent',
+        });
       } else {
         const errorText = await response.text();
 
@@ -542,6 +651,82 @@ export class TelnyxWebhookService {
 
       this.logger.error(`Auto-reply error: ${errorMessage}`);
     }
+  }
+
+  private async generateAiReply(
+    apiKey: string,
+    incomingText: string,
+  ): Promise<string> {
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 300,
+          system:
+            'You are the SMS auto-responder for Impression Photography, ' +
+            'a professional photography studio in Montreal specializing in ' +
+            'product photography, portrait photography, and event photography. ' +
+            'Keep replies brief (under 160 characters if possible, max 300 chars). ' +
+            'Be friendly and professional. If the message is about booking, ' +
+            'mention they can call +1 (514) 894-7978. Never make up prices or availability. ' +
+            'If unsure, say a team member will follow up shortly.',
+          messages: [
+            {
+              role: 'user',
+              content: `Customer sent this SMS: "${incomingText}"\n\nWrite a brief, helpful auto-reply.`,
+            },
+          ],
+        }),
+      });
+
+      if (response.ok) {
+        const result = (await response.json()) as {
+          content?: Array<{ text?: string }>;
+        };
+        const aiText = result?.content?.[0]?.text;
+
+        if (aiText) {
+          this.logger.log(
+            `AI generated auto-reply: ${aiText.substring(0, 50)}...`,
+          );
+
+          return aiText;
+        }
+      } else {
+        const errorText = await response.text();
+
+        this.logger.warn(`AI auto-reply generation failed: ${errorText}`);
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`AI auto-reply error: ${errorMessage}`);
+    }
+
+    // Fallback to static reply
+    return (
+      'Thank you for contacting Impression Photography! ' +
+      'We have received your message and will get back to you shortly. ' +
+      'For immediate assistance, please call us at +1 (514) 894-7978.'
+    );
+  }
+
+  private storeSmsRecord(record: SmsRecord): void {
+    this.smsRecords.push(record);
+
+    // Enforce max records limit
+    if (this.smsRecords.length > MAX_SMS_RECORDS) {
+      this.smsRecords.splice(0, this.smsRecords.length - MAX_SMS_RECORDS);
+    }
+
+    this.saveSmsRecords();
   }
 
   private saveCallRecords(): void {
@@ -576,6 +761,38 @@ export class TelnyxWebhookService {
         error instanceof Error ? error.message : String(error);
 
       this.logger.error(`Failed to load call records: ${errorMessage}`);
+    }
+  }
+
+  private saveSmsRecords(): void {
+    try {
+      const filePath = path.join(this.dataDir, 'sms-records.json');
+
+      fs.writeFileSync(filePath, JSON.stringify(this.smsRecords, null, 2));
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`Failed to save SMS records: ${errorMessage}`);
+    }
+  }
+
+  private loadSmsRecords(): void {
+    try {
+      const filePath = path.join(this.dataDir, 'sms-records.json');
+
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        const records: SmsRecord[] = JSON.parse(data);
+
+        this.smsRecords.push(...records);
+        this.logger.log(`Loaded ${this.smsRecords.length} SMS records`);
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`Failed to load SMS records: ${errorMessage}`);
     }
   }
 

@@ -37,9 +37,7 @@ type TelnyxWebhookBody = {
 export class TelnyxWebhookController {
   protected readonly logger = new Logger(TelnyxWebhookController.name);
 
-  constructor(
-    private readonly telnyxWebhookService: TelnyxWebhookService,
-  ) {}
+  constructor(private readonly telnyxWebhookService: TelnyxWebhookService) {}
 
   // Voice webhook handles Call Control events from Telnyx credential connection
   @Post('voice')
@@ -61,7 +59,12 @@ export class TelnyxWebhookController {
     const telnyxApiKey = process.env['TELNYX_API_KEY'];
 
     // For inbound calls, answer + play IVR greeting + transfer to owner
-    if (eventType === 'call.initiated' && direction === 'incoming' && callControlId && telnyxApiKey) {
+    if (
+      eventType === 'call.initiated' &&
+      direction === 'incoming' &&
+      callControlId &&
+      telnyxApiKey
+    ) {
       try {
         // Answer the call
         await fetch(
@@ -86,7 +89,12 @@ export class TelnyxWebhookController {
 
     // After inbound call is answered, play IVR greeting then transfer
     // Only play IVR for incoming calls — outbound calls should not get a greeting
-    if (eventType === 'call.answered' && direction === 'incoming' && callControlId && telnyxApiKey) {
+    if (
+      eventType === 'call.answered' &&
+      direction === 'incoming' &&
+      callControlId &&
+      telnyxApiKey
+    ) {
       try {
         // Play IVR greeting
         await fetch(
@@ -98,7 +106,8 @@ export class TelnyxWebhookController {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              payload: 'Thank you for calling Impression Photography. Please hold while we connect you.',
+              payload:
+                'Thank you for calling Impression Photography. Please hold while we connect you.',
               voice: 'female',
               language: 'en-US',
             }),
@@ -232,6 +241,7 @@ export class TelnyxWebhookController {
       }
 
       this.logger.log(`Outbound SMS sent to ${to}`);
+      this.telnyxWebhookService.storeOutboundSms(to, text);
       res.json({ sent: true });
     } catch (error) {
       const errorMessage =
