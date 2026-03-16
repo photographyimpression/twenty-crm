@@ -41,9 +41,7 @@ export class TelnyxWebhookController {
     private readonly telnyxWebhookService: TelnyxWebhookService,
   ) {}
 
-  // Voice webhook handles both:
-  // 1. Initial inbound call routing (returns TeXML for IVR + forwarding)
-  // 2. Call lifecycle events (recording saved, hangup, etc.)
+  // Voice webhook handles Call Control events from Telnyx credential connection
   @Post('voice')
   @UseGuards(PublicEndpointGuard, NoPermissionGuard)
   async handleVoiceWebhook(
@@ -51,39 +49,102 @@ export class TelnyxWebhookController {
     @Res() res: Response,
   ) {
     const eventType = body?.data?.event_type;
+    const payload = body?.data?.payload as Record<string, unknown>;
 
     this.logger.log(`Telnyx voice webhook: ${eventType}`);
 
-    // For call.initiated on inbound calls, respond with TeXML for IVR
-    if (
-      eventType === 'call.initiated' &&
-      (body?.data?.payload as Record<string, unknown>)?.direction === 'incoming'
-    ) {
-      const texml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="alice">Thank you for calling Impression Photography. Please hold while we connect you.</Say>
-  <Dial callerId="${OWNER_PHONE_NUMBER}">
-    <Number>${OWNER_PHONE_NUMBER}</Number>
-  </Dial>
-  <Say voice="alice">We are sorry, no one is available to take your call. Please try again later.</Say>
-</Response>`;
+    // Always respond 200 quickly to avoid webhook retries
+    res.status(200).json({ status: 'ok' });
 
-      res.set('Content-Type', 'text/xml');
-      res.send(texml);
+    const callControlId = payload?.call_control_id as string | undefined;
+    const direction = payload?.direction as string | undefined;
+    const telnyxApiKey = process.env['TELNYX_API_KEY'];
+
+    // For inbound calls, answer + play IVR greeting + transfer to owner
+    if (eventType === 'call.initiated' && direction === 'incoming' && callControlId && telnyxApiKey) {
+      try {
+        // Answer the call
+        await fetch(
+          `https://api.telnyx.com/v2/calls/${callControlId}/actions/answer`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${telnyxApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({}),
+          },
+        );
+
+        this.logger.log(`Answered inbound call ${callControlId}`);
+      } catch (error) {
+        this.logger.error(`Failed to answer call: ${error}`);
+      }
 
       return;
     }
 
-    // For all other voice events, process asynchronously and return 200
+    // After call is answered, play IVR greeting then transfer
+    if (eventType === 'call.answered' && callControlId && telnyxApiKey) {
+      try {
+        // Play IVR greeting
+        await fetch(
+          `https://api.telnyx.com/v2/calls/${callControlId}/actions/speak`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${telnyxApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              payload: 'Thank you for calling Impression Photography. Please hold while we connect you.',
+              voice: 'female',
+              language: 'en-US',
+            }),
+          },
+        );
+
+        this.logger.log(`Playing IVR greeting on call ${callControlId}`);
+      } catch (error) {
+        this.logger.error(`Failed to play greeting: ${error}`);
+      }
+
+      return;
+    }
+
+    // After greeting finishes, transfer to owner's phone
+    if (eventType === 'call.speak.ended' && callControlId && telnyxApiKey) {
+      try {
+        await fetch(
+          `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${telnyxApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: OWNER_PHONE_NUMBER,
+            }),
+          },
+        );
+
+        this.logger.log(`Transferring call to ${OWNER_PHONE_NUMBER}`);
+      } catch (error) {
+        this.logger.error(`Failed to transfer call: ${error}`);
+      }
+
+      return;
+    }
+
+    // Track all other call lifecycle events (recording, hangup, etc.)
     try {
       await this.telnyxWebhookService.handleVoiceEvent(body);
-      res.status(200).json({ status: 'ok' }).end();
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
       this.logger.error(`Telnyx voice webhook error: ${errorMessage}`);
-      res.status(200).json({ status: 'error', message: errorMessage }).end();
     }
   }
 
