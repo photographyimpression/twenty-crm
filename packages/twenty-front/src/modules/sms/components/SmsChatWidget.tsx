@@ -219,7 +219,7 @@ export const SmsChatWidget: React.FC<SmsChatWidgetProps> = ({
   const fetchMessages = useCallback(async () => {
     try {
       const response = await fetch(
-        `${serverUrl}/api/telnyx/sms-records?contact=${encodeURIComponent(contactNumber)}`,
+        `${serverUrl}/telnyx/sms-records?contact=${encodeURIComponent(contactNumber)}`,
       );
 
       if (response.ok) {
@@ -262,7 +262,7 @@ export const SmsChatWidget: React.FC<SmsChatWidgetProps> = ({
     setStatusText('Sending...');
 
     try {
-      const response = await fetch(`${serverUrl}/api/telnyx/sms/send`, {
+      const response = await fetch(`${serverUrl}/telnyx/sms/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: contactNumber, text }),
