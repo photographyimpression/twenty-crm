@@ -77,8 +77,8 @@ jobs:
             grep -q '^TELNYX_MESSAGING_PROFILE_ID=' .env || echo 'TELNYX_MESSAGING_PROFILE_ID=' >> .env
             sed -i "s|^TELNYX_MESSAGING_PROFILE_ID=.*|TELNYX_MESSAGING_PROFILE_ID=${{ secrets.TELNYX_MESSAGING_PROFILE_ID }}|" .env
 
-            grep -q '^ANTHROPIC_API_KEY=' .env || echo 'ANTHROPIC_API_KEY=' >> .env
-            sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}|" .env
+            grep -q '^GEMINI_API_KEY=' .env || echo 'GEMINI_API_KEY=' >> .env
+            sed -i "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}|" .env
 
             grep -q '^EMAIL_SMTP_HOST=' .env || echo 'EMAIL_SMTP_HOST=' >> .env
             sed -i "s|^EMAIL_SMTP_HOST=.*|EMAIL_SMTP_HOST=${{ secrets.EMAIL_SMTP_HOST }}|" .env

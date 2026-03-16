@@ -621,12 +621,12 @@ export class TelnyxWebhookService {
       return;
     }
 
-    // Generate AI reply if Anthropic key is available
-    const anthropicKey = process.env['ANTHROPIC_API_KEY'];
+    // Generate AI reply if Gemini key is available (free tier)
+    const geminiKey = process.env['GEMINI_API_KEY'];
     let autoReplyText: string;
 
-    if (anthropicKey) {
-      autoReplyText = await this.generateAiReply(anthropicKey, incomingText);
+    if (geminiKey) {
+      autoReplyText = await this.generateAiReply(geminiKey, incomingText);
     } else {
       autoReplyText =
         'Thank you for contacting Impression Photography! ' +
@@ -681,43 +681,48 @@ export class TelnyxWebhookService {
     apiKey: string,
     incomingText: string,
   ): Promise<string> {
+    const systemPrompt =
+      'You are the SMS auto-responder for Impression Photography, ' +
+      'a professional photography studio in Montreal specializing in ' +
+      'product photography, portrait photography, and event photography. ' +
+      'Keep replies brief (under 160 characters if possible, max 300 chars). ' +
+      'Be friendly and professional. If the message is about booking, ' +
+      'mention they can call +1 (514) 894-7978. Never make up prices or availability. ' +
+      'If unsure, say a team member will follow up shortly.';
+
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `Customer sent this SMS: "${incomingText}"\n\nWrite a brief, helpful auto-reply.`,
+                  },
+                ],
+              },
+            ],
+            generationConfig: { maxOutputTokens: 300, temperature: 0.7 },
+          }),
         },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 300,
-          system:
-            'You are the SMS auto-responder for Impression Photography, ' +
-            'a professional photography studio in Montreal specializing in ' +
-            'product photography, portrait photography, and event photography. ' +
-            'Keep replies brief (under 160 characters if possible, max 300 chars). ' +
-            'Be friendly and professional. If the message is about booking, ' +
-            'mention they can call +1 (514) 894-7978. Never make up prices or availability. ' +
-            'If unsure, say a team member will follow up shortly.',
-          messages: [
-            {
-              role: 'user',
-              content: `Customer sent this SMS: "${incomingText}"\n\nWrite a brief, helpful auto-reply.`,
-            },
-          ],
-        }),
-      });
+      );
 
       if (response.ok) {
         const result = (await response.json()) as {
-          content?: Array<{ text?: string }>;
+          candidates?: Array<{
+            content?: { parts?: Array<{ text?: string }> };
+          }>;
         };
-        const aiText = result?.content?.[0]?.text;
+        const aiText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (aiText) {
           this.logger.log(
-            `AI generated auto-reply: ${aiText.substring(0, 50)}...`,
+            `AI generated auto-reply (Gemini): ${aiText.substring(0, 50)}...`,
           );
 
           return aiText;
