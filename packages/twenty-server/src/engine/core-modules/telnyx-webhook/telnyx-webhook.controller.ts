@@ -84,8 +84,9 @@ export class TelnyxWebhookController {
       return;
     }
 
-    // After call is answered, play IVR greeting then transfer
-    if (eventType === 'call.answered' && callControlId && telnyxApiKey) {
+    // After inbound call is answered, play IVR greeting then transfer
+    // Only play IVR for incoming calls — outbound calls should not get a greeting
+    if (eventType === 'call.answered' && direction === 'incoming' && callControlId && telnyxApiKey) {
       try {
         // Play IVR greeting
         await fetch(
