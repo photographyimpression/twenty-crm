@@ -152,8 +152,13 @@ export const WebRTCDialerWidget: React.FC = () => {
     error,
   } = useCallContext();
 
-  const { transcript, interimText, isTranscribing } =
-    useCallTranscription(inCall);
+  const {
+    transcript,
+    interimText,
+    isTranscribing,
+    isSupported,
+    clearTranscript,
+  } = useCallTranscription(inCall);
 
   const [elapsed, setElapsed] = useState(0);
 
@@ -182,6 +187,7 @@ export const WebRTCDialerWidget: React.FC = () => {
     } else {
       hangup();
     }
+    clearTranscript();
   };
 
   return (
@@ -223,7 +229,11 @@ export const WebRTCDialerWidget: React.FC = () => {
             <span>Live Transcript</span>
             <TranscriptIndicator active={isTranscribing}>
               {isTranscribing && <PulseDot />}
-              {isTranscribing ? 'Listening' : 'Unavailable'}
+              {isTranscribing
+                ? 'Listening'
+                : !isSupported
+                  ? 'Not supported'
+                  : 'Starting...'}
             </TranscriptIndicator>
           </TranscriptHeader>
           <TranscriptContainer>
