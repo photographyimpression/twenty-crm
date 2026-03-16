@@ -44,7 +44,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     const sipUsername =
       import.meta.env.REACT_APP_TELNYX_SIP_USERNAME || 'usermoshe40552';
     const sipPassword =
-      import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD || 'EZ9A.LnsW9ao';
+      import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD || 'CrmWebRTC2026x';
 
     let client: TelnyxRTC;
 
