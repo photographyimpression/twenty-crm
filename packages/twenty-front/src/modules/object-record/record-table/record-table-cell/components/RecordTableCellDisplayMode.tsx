@@ -25,6 +25,18 @@ export const RecordTableCellDisplayMode = ({
 
   const handleClick = (event: React.MouseEvent) => {
     event.stopPropagation();
+
+    // Skip opening the cell if the click originated from an interactive
+    // element like a phone number link or button.
+    const target = event.target as HTMLElement;
+    let current: HTMLElement | null = target;
+    while (current && current !== event.currentTarget) {
+      if (current.tagName === 'A' || current.tagName === 'BUTTON') {
+        return;
+      }
+      current = current.parentElement;
+    }
+
     if (!isFieldInputOnly && !isReadOnly) {
       openTableCell();
     }

@@ -63,7 +63,20 @@ export const RecordTableCellBaseContainer = ({
     isLabelIdentifier,
   );
 
-  const handleContainerClick = () => {
+  const handleContainerClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+
+    // Skip opening the cell if the click originated from an interactive
+    // element (e.g. a phone number link rendered by RoundedLink).
+    // Walking up the tree stops at the container itself.
+    let current: HTMLElement | null = target;
+    while (current && current !== event.currentTarget) {
+      if (current.tagName === 'A' || current.tagName === 'BUTTON') {
+        return;
+      }
+      current = current.parentElement;
+    }
+
     openTableCell();
   };
 
