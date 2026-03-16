@@ -57,10 +57,15 @@ type CallRecord = {
   status: string;
 };
 
+const MAX_CALL_RECORDS = 1000;
+const STALE_RECORD_HOURS = 72;
+const MAX_TRANSCRIPTION_RETRIES = 2;
+
 @Injectable()
 export class TelnyxWebhookService {
   private readonly logger = new Logger(TelnyxWebhookService.name);
   private readonly callRecords = new Map<string, CallRecord>();
+  private readonly processedEvents = new Set<string>();
   private readonly dataDir: string;
 
   constructor() {
@@ -74,16 +79,38 @@ export class TelnyxWebhookService {
     }
 
     this.loadCallRecords();
+    this.cleanupStaleRecords();
   }
 
   async handleVoiceEvent(body: TelnyxWebhookBody): Promise<void> {
     const eventType = body?.data?.event_type;
+    const eventId = body?.data?.id;
     const payload = body?.data?.payload;
 
     if (!eventType || !payload) {
       this.logger.warn('Missing event_type or payload in voice webhook');
 
       return;
+    }
+
+    // Idempotency: skip duplicate webhook deliveries
+    if (eventId && this.processedEvents.has(eventId)) {
+      this.logger.log(`Skipping duplicate event: ${eventId}`);
+
+      return;
+    }
+
+    if (eventId) {
+      this.processedEvents.add(eventId);
+
+      // Prevent unbounded growth of processed events set
+      if (this.processedEvents.size > 5000) {
+        const toDelete = Array.from(this.processedEvents).slice(0, 2500);
+
+        for (const id of toDelete) {
+          this.processedEvents.delete(id);
+        }
+      }
     }
 
     const sessionId = payload.call_session_id || payload.call_control_id || '';
@@ -241,11 +268,19 @@ export class TelnyxWebhookService {
   async transcribeRecording(
     sessionId: string,
     recordingUrl: string,
+    attempt = 0,
   ): Promise<void> {
     const telnyxApiKey = process.env.TELNYX_API_KEY;
 
     if (!telnyxApiKey) {
       this.logger.warn('TELNYX_API_KEY not set, skipping transcription');
+
+      return;
+    }
+
+    // Validate recording URL
+    if (!recordingUrl.startsWith('http')) {
+      this.logger.warn(`Invalid recording URL: ${recordingUrl}`);
 
       return;
     }
@@ -273,6 +308,22 @@ export class TelnyxWebhookService {
         };
         const transcript = result?.data?.text || '';
 
+        if (!transcript || transcript.trim().length === 0) {
+          this.logger.log(
+            `Empty transcript for session ${sessionId} (call may have been too short)`,
+          );
+
+          const record = this.callRecords.get(sessionId);
+
+          if (record) {
+            record.transcription = '(No speech detected)';
+            record.status = 'transcribed';
+            this.saveCallRecords();
+          }
+
+          return;
+        }
+
         const record = this.callRecords.get(sessionId);
 
         if (record) {
@@ -291,6 +342,19 @@ export class TelnyxWebhookService {
           `Telnyx transcription failed (${response.status}): ${errorText}`,
         );
 
+        // Retry with backoff
+        if (attempt < MAX_TRANSCRIPTION_RETRIES) {
+          const delay = (attempt + 1) * 2000;
+
+          this.logger.log(
+            `Retrying transcription in ${delay}ms (attempt ${attempt + 1})`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          await this.transcribeRecording(sessionId, recordingUrl, attempt + 1);
+
+          return;
+        }
+
         // Fallback: try Deepgram if available
         await this.transcribeWithDeepgram(sessionId, recordingUrl);
       }
@@ -299,6 +363,16 @@ export class TelnyxWebhookService {
         error instanceof Error ? error.message : String(error);
 
       this.logger.error(`Transcription error: ${errorMessage}`);
+
+      // Retry on transient errors
+      if (attempt < MAX_TRANSCRIPTION_RETRIES) {
+        const delay = (attempt + 1) * 2000;
+
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        await this.transcribeRecording(sessionId, recordingUrl, attempt + 1);
+
+        return;
+      }
 
       // Fallback: try Deepgram if available
       await this.transcribeWithDeepgram(sessionId, recordingUrl);
@@ -502,6 +576,43 @@ export class TelnyxWebhookService {
         error instanceof Error ? error.message : String(error);
 
       this.logger.error(`Failed to load call records: ${errorMessage}`);
+    }
+  }
+
+  private cleanupStaleRecords(): void {
+    const cutoff = Date.now() - STALE_RECORD_HOURS * 60 * 60 * 1000;
+    let removed = 0;
+
+    for (const [key, record] of this.callRecords.entries()) {
+      const recordTime = new Date(record.startTime).getTime();
+
+      if (recordTime < cutoff && !record.transcription) {
+        this.callRecords.delete(key);
+        removed++;
+      }
+    }
+
+    // Also enforce max records limit
+    if (this.callRecords.size > MAX_CALL_RECORDS) {
+      const sorted = Array.from(this.callRecords.entries()).sort(
+        ([, a], [, b]) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+      );
+
+      const toRemove = sorted.slice(
+        0,
+        this.callRecords.size - MAX_CALL_RECORDS,
+      );
+
+      for (const [key] of toRemove) {
+        this.callRecords.delete(key);
+        removed++;
+      }
+    }
+
+    if (removed > 0) {
+      this.logger.log(`Cleaned up ${removed} stale call records`);
+      this.saveCallRecords();
     }
   }
 }

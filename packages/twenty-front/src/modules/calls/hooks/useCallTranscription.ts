@@ -39,18 +39,32 @@ declare global {
   }
 }
 
+const MAX_TRANSCRIPT_ENTRIES = 500;
+const RESTART_DELAY_MS = 300;
+const MAX_RESTART_ATTEMPTS = 10;
+
 export const useCallTranscription = (isActive: boolean) => {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isSupported, setIsSupported] = useState(true);
   const [interimText, setInterimText] = useState('');
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restartAttemptsRef = useRef(0);
+  const isActiveRef = useRef(isActive);
+
+  // Keep ref in sync to avoid stale closures
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   const startTranscription = useCallback(() => {
     const SpeechRecognitionApi =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognitionApi) {
+      setIsSupported(false);
+
       return;
     }
 
@@ -77,15 +91,24 @@ export const useCallTranscription = (isActive: boolean) => {
         const text = result[0].transcript.trim();
 
         if (result.isFinal) {
-          setTranscript((prev) => [
-            ...prev,
-            {
-              speaker: 'You',
-              text,
-              timestamp: Date.now(),
-              isFinal: true,
-            },
-          ]);
+          setTranscript((prev) => {
+            const updated = [
+              ...prev,
+              {
+                speaker: 'You',
+                text,
+                timestamp: Date.now(),
+                isFinal: true,
+              },
+            ];
+
+            // Prevent unbounded growth for long calls
+            if (updated.length > MAX_TRANSCRIPT_ENTRIES) {
+              return updated.slice(-MAX_TRANSCRIPT_ENTRIES);
+            }
+
+            return updated;
+          });
           setInterimText('');
         } else {
           interim += text;
@@ -101,22 +124,46 @@ export const useCallTranscription = (isActive: boolean) => {
       if (event.error === 'no-speech' || event.error === 'aborted') {
         return;
       }
+
+      if (event.error === 'not-allowed') {
+        // Microphone permission denied
+        setIsTranscribing(false);
+        setIsSupported(false);
+
+        return;
+      }
+
+      if (event.error === 'network') {
+        // Network error — will auto-restart via onend
+        return;
+      }
+
       // eslint-disable-next-line no-console
       console.error('Speech recognition error:', event.error);
     };
 
     recognition.onend = () => {
-      // Auto-restart if still active
-      if (isActive) {
+      // Auto-restart if still active, with attempt limiting
+      if (isActiveRef.current) {
+        restartAttemptsRef.current += 1;
+
+        if (restartAttemptsRef.current > MAX_RESTART_ATTEMPTS) {
+          setIsTranscribing(false);
+
+          return;
+        }
+
         restartTimeoutRef.current = setTimeout(() => {
-          if (isActive && recognitionRef.current) {
+          if (isActiveRef.current && recognitionRef.current) {
             try {
               recognitionRef.current.start();
+              // Reset counter on successful restart
+              restartAttemptsRef.current = 0;
             } catch {
               // ignore - may already be started
             }
           }
-        }, 100);
+        }, RESTART_DELAY_MS);
       }
     };
 
@@ -147,6 +194,7 @@ export const useCallTranscription = (isActive: boolean) => {
 
     setIsTranscribing(false);
     setInterimText('');
+    restartAttemptsRef.current = 0;
   }, []);
 
   const clearTranscript = useCallback(() => {
@@ -178,6 +226,7 @@ export const useCallTranscription = (isActive: boolean) => {
     transcript,
     interimText,
     isTranscribing,
+    isSupported,
     startTranscription,
     stopTranscription,
     clearTranscript,
