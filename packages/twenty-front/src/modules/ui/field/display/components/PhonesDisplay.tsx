@@ -1,11 +1,11 @@
 import { t } from '@lingui/core/macro';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 
 import { type FieldPhonesValue } from '@/object-record/record-field/ui/types/FieldMetadata';
+import { SmsChatWidget } from '@/sms/components/SmsChatWidget';
 import { ExpandableList } from '@/ui/layout/expandable-list/components/ExpandableList';
 
 import { useCallContext } from '@/calls/contexts/CallProvider';
-import { useSmsContext } from '@/sms/contexts/SmsProvider';
 import { styled } from '@linaria/react';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { isDefined } from 'twenty-shared/utils';
@@ -34,13 +34,37 @@ const StyledContainer = styled.div`
   width: 100%;
 `;
 
+const StyledPhoneActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2px;
+`;
+
+const StyledSmsButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 14px;
+  color: #666;
+  border-radius: 4px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    background: #f0f0f0;
+    color: #1a73e8;
+  }
+`;
+
 export const PhonesDisplay = ({
   value,
   isFocused,
   onPhoneNumberClick,
 }: PhonesDisplayProps) => {
   const { dial } = useCallContext();
-  const { openComposer } = useSmsContext();
+  const [smsTarget, setSmsTarget] = useState<string | null>(null);
 
   const phones = useMemo(
     () =>
@@ -78,51 +102,72 @@ export const PhonesDisplay = ({
     }
   };
 
-  const renderPhoneEntries = (inExpandable: boolean) =>
-    phones.map(({ number, callingCode }, index) => {
-      const { parsedPhone, invalidPhone } =
-        parsePhoneNumberOrReturnInvalidValue(callingCode + number);
-      const fullNumber = callingCode + number;
-      const label = parsedPhone
-        ? parsedPhone.formatInternational()
-        : invalidPhone;
+  const renderPhoneItem = (
+    number: string,
+    callingCode: string,
+    index: number,
+  ) => {
+    const { parsedPhone, invalidPhone } =
+      parsePhoneNumberOrReturnInvalidValue(callingCode + number);
+    const fullNumber = callingCode + number;
 
-      return (
-        <React.Fragment key={index}>
-          <RoundedLink
-            href="#"
-            label={label ?? ''}
-            onClick={(event) => {
-              if (onPhoneNumberClick) {
-                onPhoneNumberClick(fullNumber, event);
-              } else {
-                event.preventDefault();
-                event.stopPropagation();
-                dial(fullNumber);
-              }
-            }}
-          />
-          {isFocused && (
-            <RoundedLink
-              href="#"
-              label="SMS"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                openComposer(fullNumber);
-              }}
-            />
+    return (
+      <StyledPhoneActions key={index}>
+        <RoundedLink
+          href="#"
+          label={
+            parsedPhone ? parsedPhone.formatInternational() : invalidPhone
+          }
+          onClick={(event) => {
+            if (onPhoneNumberClick) {
+              onPhoneNumberClick(fullNumber, event);
+            } else {
+              event.preventDefault();
+              event.stopPropagation();
+              dial(fullNumber);
+            }
+          }}
+        />
+        <StyledSmsButton
+          title="Send SMS"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const e164 = parsedPhone
+              ? parsedPhone.format('E.164')
+              : fullNumber;
+
+            setSmsTarget(e164);
+          }}
+        >
+          💬
+        </StyledSmsButton>
+      </StyledPhoneActions>
+    );
+  };
+
+  return (
+    <>
+      {isFocused ? (
+        <ExpandableList isChipCountDisplayed>
+          {phones.map(({ number, callingCode }, index) =>
+            renderPhoneItem(number, callingCode, index),
           )}
-        </React.Fragment>
-      );
-    });
-
-  return isFocused ? (
-    <ExpandableList isChipCountDisplayed>
-      {renderPhoneEntries(true)}
-    </ExpandableList>
-  ) : (
-    <StyledContainer>{renderPhoneEntries(false)}</StyledContainer>
+        </ExpandableList>
+      ) : (
+        <StyledContainer>
+          {phones.map(({ number, callingCode }, index) =>
+            renderPhoneItem(number, callingCode, index),
+          )}
+        </StyledContainer>
+      )}
+      {smsTarget && (
+        <SmsChatWidget
+          contactNumber={smsTarget}
+          onClose={() => setSmsTarget(null)}
+        />
+      )}
+    </>
   );
 };
 

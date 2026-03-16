@@ -3,6 +3,7 @@ import {
   Get,
   Logger,
   Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
@@ -15,9 +16,7 @@ import { TelnyxWebhookService } from './telnyx-webhook.service';
 export class TelnyxCallRecordsController {
   protected readonly logger = new Logger(TelnyxCallRecordsController.name);
 
-  constructor(
-    private readonly telnyxWebhookService: TelnyxWebhookService,
-  ) {}
+  constructor(private readonly telnyxWebhookService: TelnyxWebhookService) {}
 
   @Get()
   @UseGuards(PublicEndpointGuard, NoPermissionGuard)
@@ -37,5 +36,20 @@ export class TelnyxCallRecordsController {
     }
 
     return { data: record };
+  }
+}
+
+@Controller('telnyx/sms-records')
+export class TelnyxSmsRecordsController {
+  protected readonly logger = new Logger(TelnyxSmsRecordsController.name);
+
+  constructor(private readonly telnyxWebhookService: TelnyxWebhookService) {}
+
+  @Get()
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async getSmsRecords(@Query('contact') contact?: string) {
+    return {
+      data: this.telnyxWebhookService.getSmsRecords(contact),
+    };
   }
 }
