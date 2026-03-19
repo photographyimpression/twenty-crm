@@ -79,8 +79,9 @@ const StyledItemContainer = styled.div<{ isMarginBottom?: boolean }>`
   gap: ${themeCssVariables.spacing[2]};
   margin-bottom: ${({ isMarginBottom }) =>
     isMarginBottom ? themeCssVariables.spacing[6] : '0'};
-  min-height: 32px;
+  min-height: 40px;
   overflow: hidden;
+  padding: 4px 0;
 `;
 
 type EventRowProps = {

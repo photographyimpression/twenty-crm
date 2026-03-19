@@ -1,12 +1,26 @@
 import { type TimelineActivity } from '@/activities/timeline-activities/types/TimelineActivity';
+import { classifyNoteActivity } from '@/activities/timeline-activities/utils/classifyNoteActivity';
 import { type ObjectMetadataItem } from '@/object-metadata/types/ObjectMetadataItem';
 import {
   IconCirclePlus,
   IconEditCircle,
+  IconMail,
+  IconMessage,
+  IconNotes,
+  IconPhone,
   IconRestore,
+  IconSparkles,
   IconTrash,
   useIcons,
 } from 'twenty-ui/display';
+
+const NOTE_TYPE_ICONS = {
+  email: IconMail,
+  sms: IconMessage,
+  call: IconPhone,
+  aiSummary: IconSparkles,
+  note: IconNotes,
+} as const;
 
 export const EventIconDynamicComponent = ({
   event,
@@ -16,7 +30,19 @@ export const EventIconDynamicComponent = ({
   linkedObjectMetadataItem: ObjectMetadataItem | null;
 }) => {
   const { getIcon } = useIcons();
-  const [, eventAction] = event.name.split('.');
+  const [eventLinkedObject, eventAction] = event.name.split('.');
+
+  // For linked notes, show type-specific icons based on title
+  if (
+    linkedObjectMetadataItem?.nameSingular === 'note' &&
+    (eventLinkedObject === 'linked-note' || eventAction === 'linked')
+  ) {
+    const classification = classifyNoteActivity(
+      event.linkedRecordCachedName,
+    );
+    const NoteIcon = NOTE_TYPE_ICONS[classification.activityType];
+    return <NoteIcon />;
+  }
 
   if (eventAction === 'created') {
     return <IconCirclePlus />;
