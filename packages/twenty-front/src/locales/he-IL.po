@@ -235,11 +235,6 @@ msgstr "{deletedCount, plural, one {העבודה {deletedCount} הוסרה בה�
 msgid "{duration} days trial"
 msgstr "ניסיון של {duration} ימים"
 
-#. js-lingui-id: JBSWmp
-#: src/modules/activities/timeline-activities/rows/activity/components/EventRowActivity.tsx
-msgid "{eventAction} a related {eventObject}"
-msgstr "{eventAction} {eventObject} קשור"
-
 #. js-lingui-id: POhzPf
 #: src/modules/ai/hooks/useAIChatFileUpload.ts
 msgid "{failedCount} file(s) failed to upload"
@@ -975,6 +970,8 @@ msgid "Add node"
 msgstr "הוסף צומת"
 
 #. js-lingui-id: NeOuRn
+#: src/modules/activities/timeline-activities/components/TimelineCard.tsx
+#: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/notes/components/NotesCard.tsx
 msgid "Add note"
 msgstr "הוסף הערה"
@@ -14036,7 +14033,6 @@ msgstr ""
 #: src/modules/ai/components/RecordLink.tsx
 #: src/modules/ai/components/AIChatThreadGroup.tsx
 #: src/modules/ai/components/internal/AgentChatFilePreview.tsx
-#: src/modules/activities/timeline-activities/rows/activity/components/EventRowActivity.tsx
 msgid "Untitled"
 msgstr "ללא כותרת"
 
