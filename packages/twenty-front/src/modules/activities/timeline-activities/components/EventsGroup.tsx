@@ -16,7 +16,7 @@ const StyledActivityGroup = styled.div`
   display: flex;
   flex-flow: column;
   gap: ${themeCssVariables.spacing[4]};
-  margin-bottom: ${themeCssVariables.spacing[4]};
+  margin-bottom: ${themeCssVariables.spacing[6]};
   width: 100%;
 `;
 
@@ -45,7 +45,7 @@ const StyledMonthSeperator = styled.div`
   align-self: stretch;
   color: ${themeCssVariables.font.color.light};
   display: flex;
-  font-size: ${themeCssVariables.font.size.xs};
+  font-size: ${themeCssVariables.font.size.sm};
   font-weight: ${themeCssVariables.font.weight.semiBold};
   gap: ${themeCssVariables.spacing[4]};
 `;

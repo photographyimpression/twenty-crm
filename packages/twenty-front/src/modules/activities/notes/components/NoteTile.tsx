@@ -18,7 +18,7 @@ const StyledCard = styled.div<{ isSingleNote: boolean }>`
   border-radius: ${themeCssVariables.border.radius.md};
   display: flex;
   flex-direction: column;
-  height: 300px;
+  height: 350px;
   justify-content: space-between;
   width: 100%;
 `;
@@ -39,13 +39,16 @@ const StyledCardDetailsContainer = styled.div`
 
 const StyledNoteTitle = styled.div`
   color: ${themeCssVariables.font.color.primary};
-  font-weight: ${themeCssVariables.font.weight.medium};
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: ${themeCssVariables.font.weight.semiBold};
 `;
 
 const StyledCardContent = styled.div`
   align-self: stretch;
   color: ${themeCssVariables.font.color.secondary};
+  font-size: ${themeCssVariables.font.size.md};
   line-break: anywhere;
+  line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre-line;

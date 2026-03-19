@@ -39,12 +39,12 @@ const StyledIconContainer = styled.div`
   align-items: center;
   color: ${themeCssVariables.font.color.tertiary};
   display: flex;
-  height: 16px;
+  height: 20px;
   justify-content: center;
-  margin: 5px;
+  margin: 6px;
   text-decoration-line: underline;
   user-select: none;
-  width: 16px;
+  width: 20px;
   z-index: 2;
 `;
 
@@ -67,7 +67,7 @@ const StyledSummary = styled.summary`
   display: flex;
   flex: 1;
   flex-direction: row;
-  gap: ${themeCssVariables.spacing[1]};
+  gap: ${themeCssVariables.spacing[2]};
   width: 100%;
 `;
 
@@ -76,10 +76,10 @@ const StyledItemContainer = styled.div<{ isMarginBottom?: boolean }>`
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: ${themeCssVariables.spacing[1]};
+  gap: ${themeCssVariables.spacing[2]};
   margin-bottom: ${({ isMarginBottom }) =>
-    isMarginBottom ? themeCssVariables.spacing[3] : '0'};
-  min-height: 26px;
+    isMarginBottom ? themeCssVariables.spacing[6] : '0'};
+  min-height: 32px;
   overflow: hidden;
 `;
 

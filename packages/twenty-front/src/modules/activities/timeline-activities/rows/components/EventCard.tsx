@@ -11,13 +11,13 @@ const StyledCardContainer = styled.div`
   display: flex;
   flex-direction: column;
   flex-grow: 1;
-  gap: ${themeCssVariables.spacing[2]};
-  padding: ${themeCssVariables.spacing[2]} 0px ${themeCssVariables.spacing[1]}
+  gap: ${themeCssVariables.spacing[3]};
+  padding: ${themeCssVariables.spacing[3]} 0px ${themeCssVariables.spacing[2]}
     0px;
-  width: 400px;
+  width: 520px;
 
   @media (max-width: ${MOBILE_VIEWPORT}px) {
-    width: 300px;
+    width: 100%;
   }
 `;
 
@@ -30,9 +30,9 @@ const StyledCardInnerContainer = styled.div`
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: ${themeCssVariables.spacing[2]};
+  gap: ${themeCssVariables.spacing[3]};
   justify-content: center;
-  padding: ${themeCssVariables.spacing[2]};
+  padding: ${themeCssVariables.spacing[4]};
 `;
 
 export const EventCard = ({ children, isOpen }: EventCardProps) => {

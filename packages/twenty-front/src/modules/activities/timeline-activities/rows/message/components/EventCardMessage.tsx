@@ -17,7 +17,7 @@ const StyledEventCardMessageContainer = styled.div<{ canOpen?: boolean }>`
   cursor: ${({ canOpen }) => (canOpen ? 'pointer' : 'not-allowed')};
   display: flex;
   flex-direction: column;
-  width: 380px;
+  width: 500px;
 `;
 
 const StyledEmailContent = styled.div`
@@ -35,7 +35,8 @@ const StyledEmailTop = styled.div`
 
 const StyledEmailTitle = styled.div`
   color: ${themeCssVariables.font.color.primary};
-  font-weight: ${themeCssVariables.font.weight.medium};
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: ${themeCssVariables.font.weight.semiBold};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -43,7 +44,7 @@ const StyledEmailTitle = styled.div`
 
 const StyledEmailParticipants = styled.div`
   color: ${themeCssVariables.font.color.tertiary};
-  font-size: ${themeCssVariables.font.size.sm};
+  font-size: ${themeCssVariables.font.size.md};
 `;
 
 const StyledEmailBody = styled.div`
