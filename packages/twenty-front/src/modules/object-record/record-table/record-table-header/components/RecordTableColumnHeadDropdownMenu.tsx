@@ -1,6 +1,7 @@
 import { DropdownMenuItemsContainer } from '@/ui/layout/dropdown/components/DropdownMenuItemsContainer';
 import { DropdownMenuSeparator } from '@/ui/layout/dropdown/components/DropdownMenuSeparator';
 
+import { useActiveFieldMetadataItems } from '@/object-metadata/hooks/useActiveFieldMetadataItems';
 import { isFieldMetadataItemFilterableAndSortableSelector } from '@/object-metadata/states/isFieldMetadataItemFilterableAndSortableSelector';
 import { isFieldMetadataItemLabelIdentifierSelector } from '@/object-metadata/states/isFieldMetadataItemLabelIdentifierSelector';
 import { useChangeRecordFieldVisibility } from '@/object-record/record-field/hooks/useChangeRecordFieldVisibility';
@@ -21,7 +22,9 @@ import {
   IconArrowRight,
   IconEyeOff,
   IconFilter,
+  IconPlus,
   IconSortDescending,
+  useIcons,
 } from 'twenty-ui/display';
 import { MenuItem } from 'twenty-ui/navigation';
 
@@ -39,11 +42,13 @@ export const RecordTableColumnHeadDropdownMenu = ({
   objectMetadataId,
 }: RecordTableColumnHeadDropdownMenuProps) => {
   const { t } = useLingui();
+  const { getIcon } = useIcons();
 
   const { toggleScrollXWrapper, toggleScrollYWrapper } =
     useToggleScrollWrapper();
 
-  const { visibleRecordFields } = useRecordTableContextOrThrow();
+  const { visibleRecordFields, objectMetadataItem } =
+    useRecordTableContextOrThrow();
 
   const isLabelIdentifier = useAtomFamilySelectorValue(
     isFieldMetadataItemLabelIdentifierSelector,
@@ -134,6 +139,25 @@ export const RecordTableColumnHeadDropdownMenu = ({
     (isFilterable || isSortable) && isLabelIdentifier !== true;
   const canHide = isLabelIdentifier !== true;
 
+  const { activeFieldMetadataItems } = useActiveFieldMetadataItems({
+    objectMetadataItem,
+  });
+
+  const availableFieldsToInsert = activeFieldMetadataItems.filter(
+    (fieldMetadataItem) =>
+      !visibleRecordFields
+        .map((field) => field.fieldMetadataItemId)
+        .includes(fieldMetadataItem.id),
+  );
+
+  const handleInsertField = async (fieldMetadataId: string) => {
+    closeDropdownAndToggleScroll();
+    await changeRecordFieldVisibility({
+      fieldMetadataId,
+      isVisible: true,
+    });
+  };
+
   return (
     <DropdownContent>
       <StyledDropdownMenuItemsContainerWrapper>
@@ -175,6 +199,27 @@ export const RecordTableColumnHeadDropdownMenu = ({
             />
           )}
         </DropdownMenuItemsContainer>
+        {availableFieldsToInsert.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItemsContainer>
+              <MenuItem
+                LeftIcon={IconPlus}
+                text={t`Insert field`}
+                accent="default"
+                disabled
+              />
+              {availableFieldsToInsert.map((fieldMetadataItem) => (
+                <MenuItem
+                  key={fieldMetadataItem.id}
+                  onClick={() => handleInsertField(fieldMetadataItem.id)}
+                  LeftIcon={getIcon(fieldMetadataItem.icon)}
+                  text={fieldMetadataItem.label}
+                />
+              ))}
+            </DropdownMenuItemsContainer>
+          </>
+        )}
       </StyledDropdownMenuItemsContainerWrapper>
     </DropdownContent>
   );
