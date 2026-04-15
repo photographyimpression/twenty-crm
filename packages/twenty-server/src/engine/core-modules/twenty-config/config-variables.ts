@@ -216,6 +216,15 @@ export class ConfigVariables {
   AUTH_MICROSOFT_APIS_CALLBACK_URL: string;
 
   @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.MICROSOFT_AUTH,
+    isSensitive: false,
+    description: 'Microsoft Entra tenant ID for single-tenant apps',
+    type: ConfigVariableType.STRING,
+  })
+  @IsOptional()
+  AUTH_MICROSOFT_TENANT_ID: string;
+
+  @ConfigVariablesMetadata({
     group: ConfigVariablesGroup.OTHER,
     description:
       'Enable or disable the seeding of standard record page layouts',
