@@ -16,6 +16,29 @@ type UseFieldListFieldMetadataItemsProps = {
   showRelationSections?: boolean;
 };
 
+const PRIORITY_FIELD_NAMES = [
+  'emails',
+  'phones',
+  'jobTitle',
+  'company',
+  'city',
+  'linkedinLink',
+  'xLink',
+];
+
+const compareByPriorityThenName = (
+  fieldA: { name: string },
+  fieldB: { name: string },
+) => {
+  const priorityA = PRIORITY_FIELD_NAMES.indexOf(fieldA.name);
+  const priorityB = PRIORITY_FIELD_NAMES.indexOf(fieldB.name);
+
+  if (priorityA !== -1 && priorityB !== -1) return priorityA - priorityB;
+  if (priorityA !== -1) return -1;
+  if (priorityB !== -1) return 1;
+  return fieldA.name.localeCompare(fieldB.name);
+};
+
 export const useFieldListFieldMetadataItems = ({
   objectNameSingular,
   excludeFieldMetadataIds = [],
@@ -52,9 +75,7 @@ export const useFieldListFieldMetadataItems = ({
           (fieldMetadataItem.type !== FieldMetadataType.RELATION &&
             fieldMetadataItem.type !== FieldMetadataType.MORPH_RELATION)),
     )
-    .sort((fieldMetadataItemA, fieldMetadataItemB) =>
-      fieldMetadataItemA.name.localeCompare(fieldMetadataItemB.name),
-    );
+    .sort(compareByPriorityThenName);
 
   const { inlineFieldMetadataItems, relationFieldMetadataItems } = groupBy(
     availableFieldMetadataItems
@@ -85,7 +106,7 @@ export const useFieldListFieldMetadataItems = ({
   const allInlineFieldMetadataItems = [
     ...(inlineFieldMetadataItems ?? []),
     ...inlineRelationFields,
-  ].sort((a, b) => a.name.localeCompare(b.name));
+  ].sort(compareByPriorityThenName);
 
   return {
     inlineFieldMetadataItems: allInlineFieldMetadataItems,
