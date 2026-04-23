@@ -1,11 +1,14 @@
 import { UseGuards } from '@nestjs/common';
-import { Args, ArgsType, Field, Int, Query } from '@nestjs/graphql';
+import { Args, ArgsType, Field, Int, Mutation, Query } from '@nestjs/graphql';
 
 import { Max } from 'class-validator';
 
 import { UUIDScalarType } from 'src/engine/api/graphql/workspace-schema-builder/graphql-types/scalars';
 import { TIMELINE_CALENDAR_EVENTS_MAX_PAGE_SIZE } from 'src/engine/core-modules/calendar/constants/calendar.constants';
+import { CreateOutlookCalendarEventResultDTO } from 'src/engine/core-modules/calendar/dtos/create-outlook-calendar-event.dto';
+import { CreateOutlookCalendarEventInput } from 'src/engine/core-modules/calendar/dtos/create-outlook-calendar-event.input';
 import { TimelineCalendarEventsWithTotalDTO } from 'src/engine/core-modules/calendar/dtos/timeline-calendar-events-with-total.dto';
+import { OutlookCalendarEventService } from 'src/engine/core-modules/calendar/outlook-calendar-event.service';
 import { TimelineCalendarEventService } from 'src/engine/core-modules/calendar/timeline-calendar-event.service';
 import { AuthWorkspace } from 'src/engine/decorators/auth/auth-workspace.decorator';
 import { AuthWorkspaceMemberId } from 'src/engine/decorators/auth/auth-workspace-member-id.decorator';
@@ -58,7 +61,21 @@ class GetTimelineCalendarEventsFromOpportunityIdArgs {
 export class TimelineCalendarEventResolver {
   constructor(
     private readonly timelineCalendarEventService: TimelineCalendarEventService,
+    private readonly outlookCalendarEventService: OutlookCalendarEventService,
   ) {}
+
+  @Mutation(() => CreateOutlookCalendarEventResultDTO)
+  async createOutlookCalendarEvent(
+    @Args('input') input: CreateOutlookCalendarEventInput,
+    @AuthWorkspaceMemberId() workspaceMemberId: string,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+  ): Promise<CreateOutlookCalendarEventResultDTO> {
+    return this.outlookCalendarEventService.createEventForPerson({
+      workspaceId: workspace.id,
+      workspaceMemberId,
+      input,
+    });
+  }
 
   @Query(() => TimelineCalendarEventsWithTotalDTO)
   async getTimelineCalendarEventsFromPersonId(

@@ -4,6 +4,10 @@ import { useLingui } from '@lingui/react/macro';
 import { format, getYear } from 'date-fns';
 
 import { CalendarMonthCard } from '@/activities/calendar/components/CalendarMonthCard';
+import {
+  CREATE_CALENDAR_EVENT_MODAL_ID,
+  CreateCalendarEventModal,
+} from '@/activities/calendar/components/CreateCalendarEventModal';
 import { TIMELINE_CALENDAR_EVENTS_DEFAULT_PAGE_SIZE } from '@/activities/calendar/constants/Calendar';
 import { CalendarContext } from '@/activities/calendar/contexts/CalendarContext';
 import { getTimelineCalendarEventsFromCompanyId } from '@/activities/calendar/graphql/queries/getTimelineCalendarEventsFromCompanyId';
@@ -13,9 +17,11 @@ import { useCalendarEvents } from '@/activities/calendar/hooks/useCalendarEvents
 import { CustomResolverFetchMoreLoader } from '@/activities/components/CustomResolverFetchMoreLoader';
 import { SkeletonLoader } from '@/activities/components/SkeletonLoader';
 import { useCustomResolver } from '@/activities/hooks/useCustomResolver';
-import { CoreObjectNameSingular } from 'twenty-shared/types';
+import { useModal } from '@/ui/layout/modal/hooks/useModal';
 import { useTargetRecord } from '@/ui/layout/contexts/useTargetRecord';
-import { H3Title } from 'twenty-ui/display';
+import { CoreObjectNameSingular } from 'twenty-shared/types';
+import { H3Title, IconPlus } from 'twenty-ui/display';
+import { Button } from 'twenty-ui/input';
 import {
   AnimatedPlaceholder,
   AnimatedPlaceholderEmptyContainer,
@@ -47,10 +53,31 @@ const StyledTitleContainer = styled.div`
   margin-bottom: ${themeCssVariables.spacing[4]};
 `;
 
+const StyledHeaderActions = styled.div`
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: ${themeCssVariables.spacing[2]};
+`;
+
+const StyledEmptyActionContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-top: ${themeCssVariables.spacing[4]};
+`;
+
 export const CalendarEventsCard = () => {
   const { t } = useLingui();
   const targetRecord = useTargetRecord();
   const { localeCatalog } = useAtomStateValue(dateLocaleState);
+  const { openModal } = useModal();
+
+  const canCreateEvent =
+    targetRecord.targetObjectNameSingular === CoreObjectNameSingular.Person;
+
+  const handleOpenCreateEvent = () => {
+    openModal(CREATE_CALENDAR_EVENT_MODAL_ID);
+  };
 
   const [query, queryName] =
     targetRecord.targetObjectNameSingular === CoreObjectNameSingular.Person
@@ -107,20 +134,36 @@ export const CalendarEventsCard = () => {
   if (!firstQueryLoading && !timelineCalendarEvents?.length) {
     // TODO: change animated placeholder
     return (
-      <AnimatedPlaceholderEmptyContainer
-        // oxlint-disable-next-line react/jsx-props-no-spreading
-        {...EMPTY_PLACEHOLDER_TRANSITION_PROPS}
-      >
-        <AnimatedPlaceholder type="noMatchRecord" />
-        <AnimatedPlaceholderEmptyTextContainer>
-          <AnimatedPlaceholderEmptyTitle>
-            {t`No Events`}
-          </AnimatedPlaceholderEmptyTitle>
-          <AnimatedPlaceholderEmptySubTitle>
-            {t`No events have been scheduled with this ${objectName} yet.`}
-          </AnimatedPlaceholderEmptySubTitle>
-        </AnimatedPlaceholderEmptyTextContainer>
-      </AnimatedPlaceholderEmptyContainer>
+      <>
+        <AnimatedPlaceholderEmptyContainer
+          // oxlint-disable-next-line react/jsx-props-no-spreading
+          {...EMPTY_PLACEHOLDER_TRANSITION_PROPS}
+        >
+          <AnimatedPlaceholder type="noMatchRecord" />
+          <AnimatedPlaceholderEmptyTextContainer>
+            <AnimatedPlaceholderEmptyTitle>
+              {t`No Events`}
+            </AnimatedPlaceholderEmptyTitle>
+            <AnimatedPlaceholderEmptySubTitle>
+              {t`No events have been scheduled with this ${objectName} yet.`}
+            </AnimatedPlaceholderEmptySubTitle>
+          </AnimatedPlaceholderEmptyTextContainer>
+          {canCreateEvent && (
+            <StyledEmptyActionContainer>
+              <Button
+                Icon={IconPlus}
+                title={t`New event`}
+                variant="primary"
+                accent="blue"
+                onClick={handleOpenCreateEvent}
+              />
+            </StyledEmptyActionContainer>
+          )}
+        </AnimatedPlaceholderEmptyContainer>
+        {canCreateEvent && (
+          <CreateCalendarEventModal personId={targetRecord.id} />
+        )}
+      </>
     );
   }
 
@@ -131,6 +174,16 @@ export const CalendarEventsCard = () => {
       }}
     >
       <StyledContainer>
+        {canCreateEvent && (
+          <StyledHeaderActions>
+            <Button
+              Icon={IconPlus}
+              title={t`New event`}
+              variant="secondary"
+              onClick={handleOpenCreateEvent}
+            />
+          </StyledHeaderActions>
+        )}
         {monthTimes.map((monthTime) => {
           const monthDayTimes = daysByMonthTime[monthTime] || [];
           const year = getYear(monthTime);
@@ -160,6 +213,9 @@ export const CalendarEventsCard = () => {
           loading={isFetchingMore || firstQueryLoading}
           onLastRowVisible={handleLastRowVisible}
         />
+        {canCreateEvent && (
+          <CreateCalendarEventModal personId={targetRecord.id} />
+        )}
       </StyledContainer>
     </CalendarContext.Provider>
   );
