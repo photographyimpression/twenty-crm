@@ -269,27 +269,29 @@ const server = createServer(async (req, res) => {
 
   if (req.method === 'POST' && req.url === '/run') {
     if (state.currentlyRunning) {
-      res.statusCode = 409;
+      // Return 202 (not 409) so Twenty workflow shows "Completed" not "Failed"
+      res.statusCode = 202;
       res.end(JSON.stringify({
-        ok: false,
-        reason: 'already_running',
-        startedAt: state.currentRunStartAt,
+        ok: true,
+        status: 'already_running',
         phase: state.currentPhase,
-        message: `Discovery is in progress (phase: ${state.currentPhase}). Check /status.`,
+        startedAt: state.currentRunStartAt,
+        message: `Discovery already in progress (phase: ${state.currentPhase}). Check /status for live progress.`,
       }));
       return;
     }
     if (await anyWorkerAlive()) {
-      res.statusCode = 409;
+      // Workers running outside webhook control — still return 202 so workflow shows green
+      res.statusCode = 202;
       res.end(JSON.stringify({
-        ok: false,
-        reason: 'workers_already_running',
-        message: 'Discovery is already in progress (started outside the webhook). Check /status periodically.',
+        ok: true,
+        status: 'already_running',
+        message: 'Discovery is already in progress. It will finish on its own — check /status.',
       }));
       return;
     }
     res.statusCode = 202;
-    res.end(JSON.stringify({ ok: true, message: 'discovery cycle started — check /status for progress' }));
+    res.end(JSON.stringify({ ok: true, status: 'started', message: 'discovery cycle started — check /status for progress' }));
     runDiscovery().catch((e) => console.error('[webhook] runDiscovery threw', e));
     return;
   }
