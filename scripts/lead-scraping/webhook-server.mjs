@@ -66,6 +66,61 @@ const personsCount = async () => {
   return parseInt(result, 10) || 0;
 };
 
+// Workspace member ID for Moshe — task assignee for run notifications
+const ASSIGNEE_ID = 'f7415475-dba3-4e44-8bd6-8804ce513750';
+
+// Creates a Task in the CRM so the notification bell fires and it appears in Tasks sidebar.
+const createRunTask = async ({ created, websiteCreated, totalNow, durationMin, runNumber }) => {
+  const token = readFileSync(TOKEN_FILE, 'utf-8').trim();
+  const url = 'http://localhost:3000/graphql';
+  const title = created > 0
+    ? `🆕 Lead Discovery — ${created} new contacts found (run #${runNumber})`
+    : `🔄 Lead Discovery — no new contacts this cycle (run #${runNumber})`;
+  const body = [
+    `## What happened`,
+    ``,
+    `The automatic lead finder completed run **#${runNumber}**.`,
+    ``,
+    `| | |`,
+    `|---|---|`,
+    `| New contacts this run | **${created}** |`,
+    `| From domain discovery | ${created - websiteCreated} |`,
+    `| From website email sweep | ${websiteCreated} |`,
+    `| **Total contacts (all time)** | **${totalNow}** |`,
+    `| Duration | ${durationMin} min |`,
+    ``,
+    `## What to do`,
+    ``,
+    `1. Open **People → 🆕 New Leads — Latest** to see who was found`,
+    `2. Review contacts and flip any worth outreaching to **Ready to Enroll**`,
+    `3. Trigger the 12-touch workflow when you're ready`,
+    ``,
+    `_Next automatic run in ~6 hours. Mark this task Done when reviewed._`,
+  ].join('\n');
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: `mutation CreateTask($data: TaskCreateInput!) { createTask(data: $data) { id } }`,
+      variables: {
+        data: {
+          title,
+          status: 'TODO',
+          bodyV2: { markdown: body },
+          assigneeId: ASSIGNEE_ID,
+        },
+      },
+    }),
+  });
+  const json = await res.json();
+  if (!json?.data?.createTask?.id) {
+    console.warn('[webhook] createTask failed:', JSON.stringify(json));
+  } else {
+    console.log('[webhook] Created notification task:', json.data.createTask.id);
+  }
+};
+
 const updateCrmNote = async (note) => {
   const token = readFileSync(TOKEN_FILE, 'utf-8').trim();
   const url = 'http://localhost:3000/graphql';
@@ -224,6 +279,17 @@ const runDiscovery = async () => {
 
     console.log(`[webhook] Cycle done. +${created} persons in ${Math.round(durationSec / 60)} min. Total: ${endCount}`);
 
+    const durationMin = Math.round(durationSec / 60);
+    const runSummary = { created, websiteCreated: websiteEmailsCreated, totalNow: endCount, durationMin, runNumber: state.totalRuns };
+
+    // Create a Task — appears in sidebar Tasks list and triggers notification bell
+    try {
+      await createRunTask(runSummary);
+    } catch (e) {
+      console.warn('[webhook] createRunTask failed:', e.message);
+    }
+
+    // Also post a Note to the Lead Discovery System company (permanent record)
     try {
       await updateCrmNote({
         title: `Lead Discovery — +${created} new contacts (${new Date().toLocaleString('en-CA', { timeZone: 'America/Montreal' })})`,
@@ -233,12 +299,13 @@ const runDiscovery = async () => {
           `| Metric | Value |`,
           `|--------|-------|`,
           `| New contacts this run | **${created}** |`,
-          `| From discover phase | ${created - websiteEmailsCreated} |`,
-          `| From website-email phase | ${websiteEmailsCreated} |`,
+          `| From domain discovery | ${created - websiteEmailsCreated} |`,
+          `| From website email sweep | ${websiteEmailsCreated} |`,
           `| Total contacts (all time) | **${endCount}** |`,
-          `| Duration | ${Math.round(durationSec / 60)} min |`,
+          `| Duration | ${durationMin} min |`,
           `| Parallel workers | ${WORKERS} |`,
           ``,
+          `See new contacts: **People → 🆕 New Leads — Latest**`,
           `Next run: 6h auto-schedule, or trigger from **🤖 Find New Leads** workflow.`,
         ].join('\n'),
       });
