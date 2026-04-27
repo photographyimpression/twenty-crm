@@ -69,7 +69,18 @@ const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const NOISE_DOMAINS = new Set([
   'example.com', 'email.com', 'domain.com', 'sentry.io',
   'wixpress.com', 'wix.com', 'godaddy.com', 'squarespace.com',
-  'sentry-next.wixpress.com',
+  'sentry-next.wixpress.com', 'e-mail.com', 'mail.com',
+  'yourdomain.com', 'company.com', 'company.site', 'test.com',
+  'yoursite.com', 'placeholder.com', 'gmail.com', 'yahoo.com',
+  'hotmail.com', 'outlook.com', 'icloud.com', 'live.com', 'msn.com',
+  'aol.com', 'me.com', 'ymail.com', 'proton.me', 'protonmail.com',
+]);
+const NOISE_LOCALS = new Set([
+  'example', 'exemple', 'test', 'demo', 'abuse', 'no-reply', 'noreply',
+  'do-not-reply', 'donotreply', 'notification', 'notifications',
+  'postmaster', 'webmaster', 'root', 'mailer-daemon', 'bounce', 'bounces',
+  'newsletter', 'news', 'news-letter', 'spam', 'unsubscribe',
+  'nobody', 'none', 'null', 'anonymous',
 ]);
 const NOISE_FILENAMES = /\.(png|jpg|jpeg|gif|svg|webp|css|js|woff2?)$/i;
 
@@ -79,8 +90,9 @@ export const extractEmails = (text) => {
   for (const raw of matches) {
     const email = raw.toLowerCase();
     if (NOISE_FILENAMES.test(email)) continue;
-    const domain = email.split('@')[1];
+    const [local, domain] = email.split('@');
     if (NOISE_DOMAINS.has(domain)) continue;
+    if (NOISE_LOCALS.has(local)) continue;
     if (email.length > 100) continue;
     found.add(email);
   }
@@ -128,19 +140,23 @@ export const normalizeDomain = (raw) => {
 };
 
 // Infer role from text hints (job title, section heading, etc.).
+// Values must match the PersonPersonRoleEnum: OWNER, MANAGER, CEO, CMO, MARKETING, CREATIVE, OTHER.
+// Targets for Impression Photography outreach include anyone who decides on
+// product photography: owners, marketing, e-commerce, web, creative, visual.
 const ROLE_HINTS = [
-  { pattern: /\b(président(e)?|owner|propri[ée]taire|founder|fondateur|ceo|chief executive)\b/i, role: 'Owner' },
-  { pattern: /\b(director of marketing|chief marketing|cmo|vp marketing)\b/i, role: 'CMO' },
-  { pattern: /\b(marketing|brand manager|growth|digital)\b/i, role: 'Marketing' },
-  { pattern: /\b(creative director|art director|designer)\b/i, role: 'Creative' },
-  { pattern: /\b(general manager|manager|gérant|directeur|directrice)\b/i, role: 'Manager' },
-  { pattern: /\b(administrateur|president|secretary|treasurer|secr[ée]taire)\b/i, role: 'Owner' },
+  { pattern: /\b(président(e)?|owner|propri[ée]taire|founder|fondateur|fondatrice|ceo|chief executive)\b/i, role: 'OWNER' },
+  { pattern: /\b(director of marketing|chief marketing|cmo|vp marketing|head of marketing|marketing director|directeur marketing|directrice marketing)\b/i, role: 'CMO' },
+  { pattern: /\b(marketing|brand|growth|digital|e-?commerce|ecommerce|online|social media|communications?|pr)\b/i, role: 'MARKETING' },
+  { pattern: /\b(creative director|art director|visual|photographer|designer|styliste|graphiste)\b/i, role: 'CREATIVE' },
+  { pattern: /\b(webmaster|web\s?(manager|director|lead)|site\s?manager|developer|d[ée]veloppeur|gestionnaire de site)\b/i, role: 'CREATIVE' },
+  { pattern: /\b(general manager|manager|g[ée]rant(e)?|directeur|directrice|buyer|acheteur|merchandiser)\b/i, role: 'MANAGER' },
+  { pattern: /\b(administrateur|president|secretary|treasurer|secr[ée]taire|tr[ée]sori[eè]re?)\b/i, role: 'OWNER' },
 ];
 
 export const inferRole = (text) => {
-  if (!text) return 'Other';
+  if (!text) return 'OTHER';
   for (const { pattern, role } of ROLE_HINTS) {
     if (pattern.test(text)) return role;
   }
-  return 'Other';
+  return 'OTHER';
 };

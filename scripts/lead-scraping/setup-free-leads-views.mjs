@@ -12,17 +12,30 @@
 
 import { init, findObjectByName } from '../lib/twenty-api.mjs';
 
-const listExistingViews = async (client, objectMetadataId) => {
-  const data = await client.apiQuery(`
-    query CoreViews {
-      getCoreViews { id name objectMetadataId }
+const listCustomFieldsForObject = async (client, objectMetadataId) => {
+  const data = await client.metadataQuery(`
+    query CustomFields {
+      fields(paging: { first: 200 }, filter: { isCustom: { is: true } }) {
+        edges { node { id name type object { id nameSingular } } }
+      }
     }
   `);
-  return (data.getCoreViews || []).filter((v) => v.objectMetadataId === objectMetadataId);
+  return (data.fields.edges || [])
+    .map((e) => e.node)
+    .filter((f) => f.object?.id === objectMetadataId);
+};
+
+const listExistingViews = async (client, objectMetadataId) => {
+  const data = await client.metadataQuery(`
+    query CoreViews($objectMetadataId: String) {
+      getCoreViews(objectMetadataId: $objectMetadataId) { id name objectMetadataId }
+    }
+  `, { objectMetadataId });
+  return data.getCoreViews || [];
 };
 
 const createView = async (client, input) => {
-  const data = await client.apiQuery(`
+  const data = await client.metadataQuery(`
     mutation CreateCoreView($input: CreateViewInput!) {
       createCoreView(input: $input) { id name }
     }
@@ -31,7 +44,7 @@ const createView = async (client, input) => {
 };
 
 const createViewFilter = async (client, input) => {
-  const data = await client.apiQuery(`
+  const data = await client.metadataQuery(`
     mutation CreateCoreViewFilter($input: CreateViewFilterInput!) {
       createCoreViewFilter(input: $input) { id }
     }
@@ -39,8 +52,8 @@ const createViewFilter = async (client, input) => {
   return data.createCoreViewFilter;
 };
 
-const buildViewsSpec = (company) => {
-  const fieldByName = Object.fromEntries(company.fields.edges.map((e) => [e.node.name, e.node]));
+const buildViewsSpec = (customFields) => {
+  const fieldByName = Object.fromEntries(customFields.map((f) => [f.name, f]));
   const leadSource = fieldByName.leadSource;
   const leadStatus = fieldByName.leadStatus;
   if (!leadSource || !leadStatus) {
@@ -82,10 +95,13 @@ const main = async () => {
   const company = await findObjectByName(client, 'company');
   console.log(`Company object: ${company.id}`);
 
+  const customFields = await listCustomFieldsForObject(client, company.id);
+  console.log(`Custom fields on Company: ${customFields.map((f) => f.name).join(', ') || '(none)'}`);
+
   const existing = await listExistingViews(client, company.id);
   const existingNames = new Set(existing.map((v) => v.name));
 
-  const specs = buildViewsSpec(company);
+  const specs = buildViewsSpec(customFields);
   for (const spec of specs) {
     if (existingNames.has(spec.name)) {
       console.log(`  SKIP: "${spec.name}" already exists`);

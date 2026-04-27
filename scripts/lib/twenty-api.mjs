@@ -28,7 +28,7 @@ const parseArgs = () => {
 
 const buildClient = ({ url, token }) => {
   const metadataUrl = `${url}/metadata`;
-  const apiUrl = `${url}/api/graphql`;
+  const apiUrl = `${url}/graphql`;
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
@@ -40,7 +40,17 @@ const buildClient = ({ url, token }) => {
       headers,
       body: JSON.stringify({ query, variables }),
     });
-    const data = await res.json();
+    const text = await res.text();
+    // Gateway/proxy errors return HTML, not JSON
+    if (!res.ok && text.startsWith('<')) {
+      throw new Error(`HTTP ${res.status}: server unavailable (gateway error)`);
+    }
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`HTTP ${res.status}: non-JSON response (${text.slice(0, 120)})`);
+    }
     if (data.errors) {
       throw new Error(`GraphQL error: ${JSON.stringify(data.errors)}`);
     }
@@ -62,13 +72,12 @@ export const findObjectByName = async (client, nameSingular) => {
             id
             nameSingular
             namePlural
-            fields(paging: { first: 200 }) {
+            fields(paging: { first: 50 }) {
               edges {
                 node {
                   id
                   name
                   type
-                  options
                 }
               }
             }
@@ -106,31 +115,84 @@ export const createField = async (client, { objectMetadataId, name, label, type,
   return data.createOneField;
 };
 
-export const createCompany = async (client, payload) => {
-  const data = await client.apiQuery(`
-    mutation CreateOneCompany($data: CompanyCreateInput!) {
-      createCompany(data: $data) { id name }
+// Simple throttle: Twenty rate-limits API keys at 100 req/60s (token bucket).
+// Once we burst past 100 the bucket stays depleted and retries loop, so we
+// pace at 1100ms between mutations (=54/min) to stay comfortably under.
+const MIN_MUTATION_DELAY_MS = 1100;
+let lastMutationAt = 0;
+const throttle = async () => {
+  const elapsed = Date.now() - lastMutationAt;
+  if (elapsed < MIN_MUTATION_DELAY_MS) {
+    await new Promise((r) => setTimeout(r, MIN_MUTATION_DELAY_MS - elapsed));
+  }
+  lastMutationAt = Date.now();
+};
+
+// Public: throttle + retry wrapper for arbitrary mutations (e.g. deletes).
+export const throttledMutation = async (fn, label = 'op') => {
+  await throttle();
+  return withRetry(fn, label);
+};
+
+// Retry on rate-limit errors. Start at 70s (full bucket refill) since the
+// token bucket stays depleted when we've burst past its limit.
+const withRetry = async (fn, label = 'op') => {
+  for (let attempt = 0; attempt < 7; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err.message || '';
+      if (/Limit reached|LIMIT_REACHED|rate/i.test(msg) && attempt < 6) {
+        const wait = attempt === 0 ? 70000 : 90000 + attempt * 15000;
+        console.error(`  rate-limit on ${label}, waiting ${wait}ms...`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      if (/gateway|HTTP 50\d|server unavailable|fetch failed|ECONN|ETIMED/i.test(msg) && attempt < 6) {
+        const wait = 10000 * Math.pow(2, attempt);
+        console.error(`  net error on ${label}, waiting ${wait}ms...`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      throw err;
     }
-  `, { data: payload });
-  return data.createCompany;
+  }
+};
+
+export const createCompany = async (client, payload) => {
+  await throttle();
+  return withRetry(async () => {
+    const data = await client.apiQuery(`
+      mutation CreateOneCompany($data: CompanyCreateInput!) {
+        createCompany(data: $data) { id name }
+      }
+    `, { data: payload });
+    return data.createCompany;
+  }, `createCompany(${payload.name})`);
 };
 
 export const updateCompany = async (client, id, payload) => {
-  const data = await client.apiQuery(`
-    mutation UpdateCompany($id: UUID!, $data: CompanyUpdateInput!) {
-      updateCompany(id: $id, data: $data) { id }
-    }
-  `, { id, data: payload });
-  return data.updateCompany;
+  await throttle();
+  return withRetry(async () => {
+    const data = await client.apiQuery(`
+      mutation UpdateCompany($id: UUID!, $data: CompanyUpdateInput!) {
+        updateCompany(id: $id, data: $data) { id }
+      }
+    `, { id, data: payload });
+    return data.updateCompany;
+  }, `updateCompany(${id})`);
 };
 
 export const createPerson = async (client, payload) => {
-  const data = await client.apiQuery(`
-    mutation CreateOnePerson($data: PersonCreateInput!) {
-      createPerson(data: $data) { id }
-    }
-  `, { data: payload });
-  return data.createPerson;
+  await throttle();
+  return withRetry(async () => {
+    const data = await client.apiQuery(`
+      mutation CreateOnePerson($data: PersonCreateInput!) {
+        createPerson(data: $data) { id }
+      }
+    `, { data: payload });
+    return data.createPerson;
+  }, `createPerson`);
 };
 
 // Paginate through all Companies matching a filter. Pulls up to pageSize per request.
@@ -138,7 +200,8 @@ export const findAllCompanies = async (client, { filter = {}, pageSize = 60 } = 
   const results = [];
   let cursor = null;
   while (true) {
-    const data = await client.apiQuery(`
+    await throttle();
+    const data = await withRetry(async () => client.apiQuery(`
       query FindCompanies($filter: CompanyFilterInput, $first: Int, $after: String) {
         companies(filter: $filter, first: $first, after: $after) {
           edges {
@@ -157,7 +220,7 @@ export const findAllCompanies = async (client, { filter = {}, pageSize = 60 } = 
           pageInfo { hasNextPage endCursor }
         }
       }
-    `, { filter, first: pageSize, after: cursor });
+    `, { filter, first: pageSize, after: cursor }), `findCompanies(cursor=${cursor ?? '∅'})`);
     results.push(...data.companies.edges.map((e) => e.node));
     if (!data.companies.pageInfo.hasNextPage) break;
     cursor = data.companies.pageInfo.endCursor;

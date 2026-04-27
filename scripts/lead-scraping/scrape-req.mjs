@@ -128,7 +128,7 @@ const buildCompanyPayload = (entry, detail, industry) => {
     scrapeNotes: `NEQ: ${entry.neq}; Status: ${entry.status}`,
   };
   const domain = normalizeDomain(detail.website);
-  if (domain) payload.domainName = { primaryLinkUrl: domain, primaryLinkLabel: domain };
+  if (domain) payload.domainName = { primaryLinkUrl: `https://${domain}`, primaryLinkLabel: domain };
   const addrParts = splitAddress(detail.address);
   if (addrParts.addressStreet1) {
     payload.address = {
@@ -143,7 +143,7 @@ const buildCompanyPayload = (entry, detail, industry) => {
 const buildPersonPayload = (officer, companyId) => ({
   name: { firstName: officer.firstName, lastName: officer.lastName || '' },
   jobTitle: officer.title,
-  role: officer.role?.toUpperCase?.() || 'OTHER',
+  personRole: officer.role?.toUpperCase?.() || 'OTHER',
   leadSource: 'REQ',
   confidenceScore: 90,
   companyId,

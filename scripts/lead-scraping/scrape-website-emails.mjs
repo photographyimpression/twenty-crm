@@ -60,7 +60,7 @@ const buildPersonPayload = ({ email, role }, companyId) => {
   return {
     name: { firstName: firstName || '—', lastName: lastName || '' },
     emails: { primaryEmail: email, additionalEmails: [] },
-    role: role || 'OTHER',
+    personRole: (role || 'OTHER').toUpperCase(),
     leadSource: 'WEBSITE_SCRAPE',
     confidenceScore: confidence,
     companyId,

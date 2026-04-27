@@ -101,7 +101,7 @@ const buildCompanyPayload = (lead) => {
     sourceUrl: lead.osmUrl,
   };
   if (lead.domain) {
-    payload.domainName = { primaryLinkUrl: lead.domain, primaryLinkLabel: lead.domain };
+    payload.domainName = { primaryLinkUrl: `https://${lead.domain}`, primaryLinkLabel: lead.domain };
   }
   if (lead.street || lead.city) {
     payload.address = {
@@ -141,24 +141,37 @@ const main = async () => {
     return;
   }
 
+  // In-script dedupe: skip repeat domains or (name+street) pairs
+  const seen = new Set();
+  const unique = [];
+  for (const lead of leads) {
+    const key = lead.domain || `${lead.name.toLowerCase()}|${(lead.street || '').toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(lead);
+  }
+  console.log(`After in-script dedupe: ${unique.length} unique leads`);
+
   let created = 0;
   let failed = 0;
-  for (const lead of leads) {
+  let dupeSkipped = 0;
+  for (const lead of unique) {
     try {
-      const result = await createCompany(client, buildCompanyPayload(lead));
+      await createCompany(client, buildCompanyPayload(lead));
       created++;
-      if (created % 25 === 0) console.log(`  Progress: ${created} created, ${failed} failed`);
-      if (result?.id && (lead.phone || lead.email)) {
-        // Phones / emails are multi-value field types on Company; simpler to capture
-        // them as part of Person creation later via website scraping.
-      }
+      if (created % 25 === 0) console.log(`  Progress: ${created} created, ${failed} failed, ${dupeSkipped} dup`);
     } catch (err) {
-      failed++;
-      if (failed < 5) console.error(`  FAIL ${lead.name}: ${err.message}`);
+      const msg = err.message || '';
+      if (/duplicate|already in use/i.test(msg)) {
+        dupeSkipped++;
+      } else {
+        failed++;
+        if (failed < 10) console.error(`  FAIL ${lead.name}: ${msg.slice(0, 150)}`);
+      }
     }
   }
 
-  console.log(`\n--- Done: ${created} created, ${failed} failed ---`);
+  console.log(`\n--- Done: ${created} created, ${dupeSkipped} dup-skipped, ${failed} failed ---`);
 };
 
 main().catch((err) => {

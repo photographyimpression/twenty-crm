@@ -69,18 +69,42 @@ const parseListing = (JSDOM, html) => {
   const doc = dom.window.document;
   const results = [];
 
-  const cards = doc.querySelectorAll('.listing, .ypgListing, [itemtype*="LocalBusiness"]');
+  const cleanName = (s) =>
+    (s || '')
+      .trim()
+      .replace(/^\d+\s+/, '')
+      .replace(/\s+/g, ' ')
+      .replace(/\s*Get directions\s*$/i, '')
+      .trim();
+
+  const cleanPhone = (s) => {
+    if (!s) return null;
+    const digits = s.replace(/[^\d+]/g, '');
+    return digits.length >= 10 ? s.replace(/\s*Phone Number\s*/i, '').trim() : null;
+  };
+
+  const cleanAddr = (s) =>
+    (s || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/\s*Get directions\s*$/i, '')
+      .trim();
+
+  const cards = doc.querySelectorAll('.listing');
   for (const card of cards) {
-    const name = (card.querySelector('.listing__name--link, h3.listing__name a, [itemprop="name"]')?.textContent || '').trim();
+    const name = cleanName(card.querySelector('.listing__name--link, h3.listing__name a, [itemprop="name"]')?.textContent || '');
     if (!name) continue;
 
-    const phoneEl = card.querySelector('.mlr__item--phone, [itemprop="telephone"]');
-    const phone = (phoneEl?.textContent || '').trim().replace(/\s+/g, ' ') || null;
+    const phone = cleanPhone(card.querySelector('.mlr__item--phone, [itemprop="telephone"]')?.textContent || '');
 
-    const addressEl = card.querySelector('.listing__address, [itemprop="address"]');
-    const addressText = (addressEl?.textContent || '').trim().replace(/\s+/g, ' ');
+    const addressText = cleanAddr(card.querySelector('.listing__address, [itemprop="address"]')?.textContent || '');
 
-    const website = card.querySelector('.mlr__item--website a[href], [itemprop="url"]')?.getAttribute('href') || null;
+    // Look for the external website link specifically, not relative profile links
+    let website = null;
+    const websiteCandidate = card.querySelector('.mlr__item--website a[href]')?.getAttribute('href');
+    if (websiteCandidate && /^https?:\/\//i.test(websiteCandidate)) {
+      website = websiteCandidate;
+    }
 
     const detailHref = card.querySelector('.listing__name--link, h3.listing__name a')?.getAttribute('href') || null;
 
@@ -109,7 +133,7 @@ const buildCompanyPayload = (lead, category) => {
     sourceUrl: lead.detailHref ? `https://www.yellowpages.ca${lead.detailHref}` : null,
   };
   const domain = normalizeDomain(lead.website);
-  if (domain) payload.domainName = { primaryLinkUrl: domain, primaryLinkLabel: domain };
+  if (domain) payload.domainName = { primaryLinkUrl: `https://${domain}`, primaryLinkLabel: domain };
   const addrParts = splitAddress(lead.address);
   if (addrParts.addressStreet1) {
     payload.address = {

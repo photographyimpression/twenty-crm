@@ -9,7 +9,7 @@
 // Usage:
 //   node scripts/lead-scraping/dedupe-leads.mjs --url https://crm.impressionphotography.ca --token YOUR_API_KEY [--dry-run]
 
-import { init, findAllCompanies } from '../lib/twenty-api.mjs';
+import { init, findAllCompanies, throttledMutation } from '../lib/twenty-api.mjs';
 
 const normalizeName = (name) =>
   (name || '')
@@ -23,19 +23,23 @@ const normalizeName = (name) =>
 const normalizeDomain = (input) => (input || '').toLowerCase().replace(/^www\./, '').trim() || null;
 
 const deleteCompany = async (client, id) => {
-  await client.apiQuery(`
-    mutation DeleteCompany($id: UUID!) {
-      deleteCompany(id: $id) { id }
-    }
-  `, { id });
+  await throttledMutation(async () =>
+    client.apiQuery(`
+      mutation DeleteCompany($id: UUID!) {
+        deleteCompany(id: $id) { id }
+      }
+    `, { id }),
+  `deleteCompany(${id})`);
 };
 
 const deletePerson = async (client, id) => {
-  await client.apiQuery(`
-    mutation DeletePerson($id: UUID!) {
-      deletePerson(id: $id) { id }
-    }
-  `, { id });
+  await throttledMutation(async () =>
+    client.apiQuery(`
+      mutation DeletePerson($id: UUID!) {
+        deletePerson(id: $id) { id }
+      }
+    `, { id }),
+  `deletePerson(${id})`);
 };
 
 const fetchAllPersons = async (client) => {

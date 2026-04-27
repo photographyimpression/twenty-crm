@@ -75,8 +75,8 @@ const COMPANY_FIELDS = [
 
 const PERSON_FIELDS = [
   {
-    name: 'role',
-    label: 'Role',
+    name: 'personRole',
+    label: 'Person Role',
     type: 'SELECT',
     description: 'Decision-maker type at the company',
     options: [
