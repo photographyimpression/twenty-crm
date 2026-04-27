@@ -81,8 +81,44 @@ const NOISE_LOCALS = new Set([
   'postmaster', 'webmaster', 'root', 'mailer-daemon', 'bounce', 'bounces',
   'newsletter', 'news', 'news-letter', 'spam', 'unsubscribe',
   'nobody', 'none', 'null', 'anonymous',
+  // Functional roles — not a decision-maker you can reach
+  'careers', 'career', 'jobs', 'emploi', 'recrutement', 'recruitment',
+  'hr', 'humanresources', 'rh',
+  'customerservice', 'customer-service', 'customer.service',
+  'legal', 'compliance', 'privacy', 'dataprivacy', 'dataprivacyofficer',
+  'press', 'media', 'pr', 'publicrelations',
+  'fans', 'fan', 'feedback', 'report',
+  'commandites', 'commandite', 'partenariats', 'partnership', 'partnerships',
+  'billing', 'facturation', 'invoice', 'invoices', 'invoicing',
+  'orders', 'commandes', 'shipping', 'livraison',
+  'returns', 'retours', 'refunds',
+  'wholesale', 'grossiste',
+  'franchise', 'franchises',
 ]);
+
+// Regex patterns that are always noise regardless of exact match
+const NOISE_LOCAL_PATTERNS = [
+  /^(do.?not.?reply|no.?reply)/,
+  /privacy.*officer/,
+  /data.*protection/,
+  /(customer|client).?(service|support|care)/,
+  /^(help|support)\d*$/,
+  /^careers?\d*$/,
+  /^jobs?\d*$/,
+];
+
 const NOISE_FILENAMES = /\.(png|jpg|jpeg|gif|svg|webp|css|js|woff2?)$/i;
+
+// Large corporate chain domains — never a local decision-maker
+const CORPORATE_DOMAINS = new Set([
+  'dolcegabbana.com', 'urbn.com', 'anthropologie.com', 'zara.com',
+  'hm.com', 'uniqlo.com', 'gap.com', 'oldnavy.com', 'forever21.com',
+  'swarovski.com', 'pandora.net', 'tiffany.com', 'cartier.com',
+  'louisvuitton.com', 'gucci.com', 'prada.com', 'chanel.com',
+  'nike.com', 'adidas.com', 'lululemon.com',
+  'reitmans.com', 'rw-co.com', 'simons.ca', 'addition-elle.com',
+  'trademarks.com', 'winners.ca', 'marshalls.ca', 'homesense.ca',
+]);
 
 export const extractEmails = (text) => {
   const found = new Set();
@@ -92,7 +128,9 @@ export const extractEmails = (text) => {
     if (NOISE_FILENAMES.test(email)) continue;
     const [local, domain] = email.split('@');
     if (NOISE_DOMAINS.has(domain)) continue;
+    if (CORPORATE_DOMAINS.has(domain)) continue;
     if (NOISE_LOCALS.has(local)) continue;
+    if (NOISE_LOCAL_PATTERNS.some((rx) => rx.test(local))) continue;
     if (email.length > 100) continue;
     found.add(email);
   }
@@ -114,17 +152,28 @@ export const classifyEmail = (email) => {
 };
 
 // Naive name inference from the local part of an email like "sarah.cohen@domain.com".
+// Returns null/null if the local part doesn't look like a real person's name.
 export const guessNameFromEmail = (email) => {
   const local = email.split('@')[0];
   if (classifyEmail(email) === 'generic') return { firstName: null, lastName: null };
-  const clean = local
+
+  // Split on separators (dots, hyphens, underscores, digits)
+  const parts = local
     .replace(/[0-9_+]/g, '.')
-    .split('.')
-    .filter(Boolean)
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1));
-  if (clean.length === 0) return { firstName: null, lastName: null };
-  if (clean.length === 1) return { firstName: clean[0], lastName: null };
-  return { firstName: clean[0], lastName: clean.slice(1).join(' ') };
+    .split(/[.\-]/)
+    .filter(Boolean);
+
+  // If there's only one part and it's long with no separator, it's likely a
+  // compound word (e.g. "customerservice", "lucgrondin") — only accept if short enough
+  // to plausibly be a first name (≤12 chars).
+  if (parts.length === 1) {
+    const word = parts[0];
+    if (word.length > 12) return { firstName: null, lastName: null };
+    return { firstName: word.charAt(0).toUpperCase() + word.slice(1), lastName: null };
+  }
+
+  const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  return { firstName: capitalize(parts[0]), lastName: parts.slice(1).map(capitalize).join(' ') };
 };
 
 // Extract the bare domain (no protocol/www/path) from a URL-ish string.
