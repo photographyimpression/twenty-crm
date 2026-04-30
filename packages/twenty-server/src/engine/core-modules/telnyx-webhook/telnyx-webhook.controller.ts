@@ -17,8 +17,17 @@ import { PublicEndpointGuard } from 'src/engine/guards/public-endpoint.guard';
 
 import { TelnyxWebhookService } from './telnyx-webhook.service';
 
-// Owner phone number to forward inbound calls to
-const OWNER_PHONE_NUMBER = '+15148947978';
+// Inbound call routing
+// Sequential ring: try SIP (WebRTC dialer in CRM) first, fall back to owner cell.
+// Both are env-overridable so they can be changed without a redeploy.
+const OWNER_PHONE_NUMBER = process.env['OWNER_PHONE_NUMBER'] || '+15148947978';
+const SIP_RING_USERNAME =
+  process.env['TELNYX_SIP_RING_USERNAME'] || 'usermoshe40552';
+const SIP_RING_URI = `sip:${SIP_RING_USERNAME}@sip.telnyx.com`;
+const SIP_RING_TIMEOUT_SECS = parseInt(
+  process.env['TELNYX_SIP_RING_TIMEOUT_SECS'] || '15',
+  10,
+);
 
 type TelnyxWebhookBody = {
   data?: {
@@ -185,10 +194,12 @@ export class TelnyxWebhookController {
       return;
     }
 
-    // After greeting finishes, transfer to owner's phone
+    // After greeting finishes, ring the CRM WebRTC dialer first (SIP credential).
+    // If nobody picks up there in SIP_RING_TIMEOUT_SECS, transfer.failed fires
+    // and we fall back to the owner cell below.
     if (eventType === 'call.speak.ended' && callControlId && telnyxApiKey) {
       try {
-        await fetch(
+        const transferResp = await fetch(
           `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`,
           {
             method: 'POST',
@@ -197,14 +208,65 @@ export class TelnyxWebhookController {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              to: OWNER_PHONE_NUMBER,
+              to: SIP_RING_URI,
+              timeout_secs: SIP_RING_TIMEOUT_SECS,
+              // Mark this leg so when the SIP transfer fails we know to fall
+              // back to cell — Telnyx echoes client_state in subsequent events.
+              client_state: Buffer.from(
+                JSON.stringify({ stage: 'sip_ring' }),
+              ).toString('base64'),
             }),
           },
         );
 
-        this.logger.log(`Transferring call to ${OWNER_PHONE_NUMBER}`);
+        if (!transferResp.ok) {
+          const errBody = await transferResp.text();
+
+          this.logger.warn(
+            `SIP transfer failed (${transferResp.status}): ${errBody} — falling back to cell`,
+          );
+          await this.transferToCell(callControlId, telnyxApiKey);
+        } else {
+          this.logger.log(
+            `Ringing CRM dialer (${SIP_RING_URI}) for ${SIP_RING_TIMEOUT_SECS}s`,
+          );
+        }
       } catch (error) {
-        this.logger.error(`Failed to transfer call: ${error}`);
+        this.logger.error(`Failed to ring SIP: ${error}`);
+        await this.transferToCell(callControlId, telnyxApiKey);
+      }
+
+      return;
+    }
+
+    // SIP ring timed out / SIP client offline → transfer to owner cell.
+    // Telnyx fires `call.transfer.failed` with the original transfer's metadata.
+    if (eventType === 'call.transfer.failed' && callControlId && telnyxApiKey) {
+      let stage: string | undefined;
+
+      try {
+        const clientStateB64 = payload?.client_state as string | undefined;
+
+        if (clientStateB64) {
+          const decoded = JSON.parse(
+            Buffer.from(clientStateB64, 'base64').toString('utf-8'),
+          );
+
+          stage = decoded.stage;
+        }
+      } catch {
+        // ignore — fall through with stage undefined
+      }
+
+      if (stage === 'sip_ring') {
+        this.logger.log(
+          `CRM dialer did not answer — transferring to cell ${OWNER_PHONE_NUMBER}`,
+        );
+        await this.transferToCell(callControlId, telnyxApiKey);
+      } else {
+        this.logger.warn(
+          `Transfer failed at unknown stage (${stage}) — letting call drop`,
+        );
       }
 
       return;
@@ -212,6 +274,35 @@ export class TelnyxWebhookController {
 
     // All other events already handled by handleVoiceEvent above
     this.logger.log(`Voice event ${eventType} processed`);
+  }
+
+  // Fallback: transfer the call to the owner cell. Used when SIP ringing
+  // fails (CRM not open) or times out (nobody picked up in 15s).
+  private async transferToCell(
+    callControlId: string,
+    telnyxApiKey: string,
+  ): Promise<void> {
+    try {
+      await fetch(
+        `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${telnyxApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to: OWNER_PHONE_NUMBER,
+            client_state: Buffer.from(
+              JSON.stringify({ stage: 'cell_ring' }),
+            ).toString('base64'),
+          }),
+        },
+      );
+      this.logger.log(`Transferred call to cell ${OWNER_PHONE_NUMBER}`);
+    } catch (error) {
+      this.logger.error(`Failed to transfer to cell: ${error}`);
+    }
   }
 
   // SMS webhook handles inbound messages (forwarding + AI auto-reply)
