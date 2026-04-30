@@ -118,7 +118,54 @@ export class TelnyxWebhookController {
     const direction = payload?.direction as string | undefined;
     const telnyxApiKey = process.env['TELNYX_API_KEY'];
 
-    // Always track call lifecycle events first (so records are created for all calls)
+    // For inbound calls, answer IMMEDIATELY (before DB work) so the caller's
+    // carrier doesn't hang up waiting for media. Telnyx now generates a
+    // ringback tone server-side, but we still want answer-time minimal.
+    if (
+      eventType === 'call.initiated' &&
+      direction === 'incoming' &&
+      callControlId &&
+      telnyxApiKey
+    ) {
+      // Fire-and-forget answer — don't await the round-trip
+      void fetch(
+        `https://api.telnyx.com/v2/calls/${callControlId}/actions/answer`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${telnyxApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        },
+      )
+        .then((r) => {
+          if (!r.ok) {
+            r.text().then((t) =>
+              this.logger.warn(
+                `Answer API returned ${r.status}: ${t} for ${callControlId}`,
+              ),
+            );
+          } else {
+            this.logger.log(`Answered inbound call ${callControlId}`);
+          }
+        })
+        .catch((err) => this.logger.error(`Failed to answer call: ${err}`));
+
+      // Track the event in the DB asynchronously — don't block the answer.
+      this.telnyxWebhookService
+        .handleVoiceEvent(body)
+        .catch((err) =>
+          this.logger.error(
+            `Error tracking call.initiated: ${err instanceof Error ? err.message : err}`,
+          ),
+        );
+
+      return;
+    }
+
+    // For all other events, track in DB synchronously (preserves ordering for
+    // call records / timeline writes that depend on call.initiated arriving first)
     try {
       await this.telnyxWebhookService.handleVoiceEvent(body);
     } catch (error) {
@@ -130,74 +177,27 @@ export class TelnyxWebhookController {
       );
     }
 
-    // For inbound calls, answer + play IVR greeting + transfer to owner
-    if (
-      eventType === 'call.initiated' &&
-      direction === 'incoming' &&
-      callControlId &&
-      telnyxApiKey
-    ) {
-      try {
-        // Answer the call
-        await fetch(
-          `https://api.telnyx.com/v2/calls/${callControlId}/actions/answer`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${telnyxApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({}),
-          },
-        );
+    // Diagnostic: surface hangup details so we can debug carrier-side drops
+    if (eventType === 'call.hangup') {
+      const hangupCause = payload?.hangup_cause as string | undefined;
+      const hangupSource = payload?.hangup_source as string | undefined;
 
-        this.logger.log(`Answered inbound call ${callControlId}`);
-      } catch (error) {
-        this.logger.error(`Failed to answer call: ${error}`);
-      }
-
-      return;
+      this.logger.log(
+        `Hangup detail — cause: ${hangupCause ?? 'unknown'}, source: ${hangupSource ?? 'unknown'}`,
+      );
     }
 
-    // After inbound call is answered, play IVR greeting then transfer
-    // Only play IVR for incoming calls — outbound calls should not get a greeting
+    // After inbound call is answered, ring the CRM WebRTC dialer first (SIP
+    // credential). If nobody picks up there in SIP_RING_TIMEOUT_SECS,
+    // transfer.failed fires and we fall back to the owner cell below.
+    // IVR greeting was removed to minimise time-to-connect — Fongo and other
+    // VoIP carriers hang up if they don't hear ringback or media within ~3s.
     if (
       eventType === 'call.answered' &&
       direction === 'incoming' &&
       callControlId &&
       telnyxApiKey
     ) {
-      try {
-        // Play IVR greeting
-        await fetch(
-          `https://api.telnyx.com/v2/calls/${callControlId}/actions/speak`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${telnyxApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              payload:
-                'Thank you for calling Impression Photography. Please hold while we connect you.',
-              voice: 'female',
-              language: 'en-US',
-            }),
-          },
-        );
-
-        this.logger.log(`Playing IVR greeting on call ${callControlId}`);
-      } catch (error) {
-        this.logger.error(`Failed to play greeting: ${error}`);
-      }
-
-      return;
-    }
-
-    // After greeting finishes, ring the CRM WebRTC dialer first (SIP credential).
-    // If nobody picks up there in SIP_RING_TIMEOUT_SECS, transfer.failed fires
-    // and we fall back to the owner cell below.
-    if (eventType === 'call.speak.ended' && callControlId && telnyxApiKey) {
       try {
         const transferResp = await fetch(
           `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`,
