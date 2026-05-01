@@ -62,11 +62,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
           // Fallback to credential auth
           console.log('TelnyxRTC: falling back to credential auth');
           const sipUsername =
-            import.meta.env.REACT_APP_TELNYX_SIP_USERNAME ||
-            'usermoshe40552';
+            import.meta.env.REACT_APP_TELNYX_SIP_USERNAME || 'usermoshe40552';
           const sipPassword =
-            import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD ||
-            'CrmWebRTC2026x';
+            import.meta.env.REACT_APP_TELNYX_SIP_PASSWORD || 'CrmWebRTC2026x';
           client = new TelnyxRTC({
             login: sipUsername,
             password: sipPassword,
@@ -74,9 +72,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       } catch {
         // If token fetch fails, fallback to credential auth
-        console.log(
-          'TelnyxRTC: token fetch failed, using credential auth',
-        );
+        console.log('TelnyxRTC: token fetch failed, using credential auth');
         const sipUsername =
           import.meta.env.REACT_APP_TELNYX_SIP_USERNAME || 'usermoshe40552';
         const sipPassword =
@@ -112,9 +108,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
             setIsRinging(true);
             setIsIncoming(call.direction === 'inbound');
             setActiveNumber(call.remoteCallerNumber ?? null);
-            setCallSessionId(
-              call.telnyxCallControlId ?? call.id ?? null,
-            );
+            setCallSessionId(call.telnyxCallControlId ?? call.id ?? null);
             break;
           case 'active':
             setIsRinging(false);
@@ -180,9 +174,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
                   setIsRinging(true);
                   setIsIncoming(call.direction === 'inbound');
                   setActiveNumber(call.remoteCallerNumber ?? null);
-                  setCallSessionId(
-                    call.telnyxCallControlId ?? call.id ?? null,
-                  );
+                  setCallSessionId(call.telnyxCallControlId ?? call.id ?? null);
                   break;
                 case 'active':
                   setIsRinging(false);
@@ -235,7 +227,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       const fromNumber =
-        import.meta.env.REACT_APP_TELNYX_FROM_NUMBER || '+19344700764';
+        import.meta.env.REACT_APP_TELNYX_FROM_NUMBER || '+15142702784';
       const cleanNumber = number.replace(/[^\d+]/g, '');
 
       const call = clientRef.current.newCall({

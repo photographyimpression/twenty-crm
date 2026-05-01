@@ -190,9 +190,7 @@ export class TelnyxWebhookService {
 
           // Log call to person's timeline (async, don't block webhook)
           this.logCallToTimeline(record).catch((err) =>
-            this.logger.error(
-              `Failed to log call to timeline: ${err}`,
-            ),
+            this.logger.error(`Failed to log call to timeline: ${err}`),
           );
         }
         this.logger.log(`Call ended: ${sessionId}`);
@@ -292,7 +290,7 @@ export class TelnyxWebhookService {
   storeOutboundSms(to: string, text: string): void {
     const smsRecord: SmsRecord = {
       id: `sms-out-${Date.now()}`,
-      from: process.env['TELNYX_FROM_NUMBER'] || '+19344700764',
+      from: process.env['TELNYX_FROM_NUMBER'] || '+15142702784',
       to,
       text,
       direction: 'outbound',
@@ -638,7 +636,7 @@ export class TelnyxWebhookService {
     incomingText: string,
   ): Promise<void> {
     const telnyxApiKey = process.env['TELNYX_API_KEY'];
-    const fromNumber = process.env['TELNYX_FROM_NUMBER'] || '+19344700764';
+    const fromNumber = process.env['TELNYX_FROM_NUMBER'] || '+15142702784';
     const messagingProfileId = process.env['TELNYX_MESSAGING_PROFILE_ID'];
 
     if (!telnyxApiKey || !messagingProfileId) {
@@ -962,10 +960,7 @@ export class TelnyxWebhookService {
 
         for (const extra of additional) {
           const extraDigits = (extra.number || '').replace(/\D/g, '');
-          const extraCalling = (extra.callingCode || '').replace(
-            /\D/g,
-            '',
-          );
+          const extraCalling = (extra.callingCode || '').replace(/\D/g, '');
           const fullExtra = extraCalling + extraDigits;
 
           if (
@@ -1002,12 +997,11 @@ export class TelnyxWebhookService {
     if (!workspaceId) return null;
 
     try {
-      const noteRepository =
-        await this.globalWorkspaceOrmManager.getRepository(
-          workspaceId,
-          NoteWorkspaceEntity,
-          { shouldBypassPermissionChecks: true },
-        );
+      const noteRepository = await this.globalWorkspaceOrmManager.getRepository(
+        workspaceId,
+        NoteWorkspaceEntity,
+        { shouldBypassPermissionChecks: true },
+      );
 
       const noteTargetRepository =
         await this.globalWorkspaceOrmManager.getRepository(
@@ -1121,8 +1115,7 @@ export class TelnyxWebhookService {
       return;
     }
 
-    const directionIcon =
-      smsRecord.direction === 'inbound' ? '📥' : '📤';
+    const directionIcon = smsRecord.direction === 'inbound' ? '📥' : '📤';
     const title = `${directionIcon} SMS ${smsRecord.direction === 'inbound' ? 'Received' : 'Sent'}`;
     const time = new Date(smsRecord.timestamp).toLocaleString('en-CA', {
       timeZone: 'America/Toronto',
