@@ -28,6 +28,12 @@ const SIP_RING_TIMEOUT_SECS = parseInt(
   process.env['TELNYX_SIP_RING_TIMEOUT_SECS'] || '15',
   10,
 );
+// Credential connection used by the WebRTC dialer in the CRM. We poll its
+// registration_status to decide whether to attempt SIP transfer for inbound
+// calls (transferring to an unregistered SIP URI causes a user_busy hangup
+// on the inbound leg, not a transfer.failed event).
+const TELNYX_CREDENTIAL_CONNECTION_ID =
+  process.env['TELNYX_CREDENTIAL_CONNECTION_ID'] || '2914752512185599944';
 
 type TelnyxWebhookBody = {
   data?: {
@@ -214,12 +220,19 @@ export class TelnyxWebhookController {
       );
     }
 
-    // After inbound call is answered, ring the CRM WebRTC dialer first (SIP
-    // credential). If nobody picks up there in SIP_RING_TIMEOUT_SECS,
-    // transfer.failed fires and we fall back to the owner cell below.
+    // After inbound call is answered, route to the owner.
+    //
     // We identify "our" inbound legs by the client_state tag we set on
     // answer — the `direction` field on call.answered events is not always
     // populated reliably across Telnyx connection types.
+    //
+    // Routing strategy: if a SIP client is currently registered to the
+    // credential connection, ring it first with a 15s timeout (CRM dialer
+    // open in browser); on transfer.failed fall through to cell. Otherwise
+    // transfer straight to cell — we tested SIP transfer to an unregistered
+    // destination and Telnyx emits a `user_busy` hangup on the *inbound*
+    // leg without firing transfer.failed, so we MUST pre-check registration
+    // before attempting SIP transfer.
     const answeredStage = decodeClientStateStage(
       payload?.client_state as string | undefined,
     );
@@ -230,43 +243,51 @@ export class TelnyxWebhookController {
       callControlId &&
       telnyxApiKey
     ) {
-      try {
-        const transferResp = await fetch(
-          `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${telnyxApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              to: SIP_RING_URI,
-              timeout_secs: SIP_RING_TIMEOUT_SECS,
-              // Mark this leg so when the SIP transfer fails we know to fall
-              // back to cell — Telnyx echoes client_state in subsequent events.
-              client_state: Buffer.from(
-                JSON.stringify({ stage: 'sip_ring' }),
-              ).toString('base64'),
-            }),
-          },
-        );
+      const sipRegistered = await this.isSipRegistered(telnyxApiKey);
 
-        if (!transferResp.ok) {
+      if (sipRegistered) {
+        try {
+          const transferResp = await fetch(
+            `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${telnyxApiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                to: SIP_RING_URI,
+                timeout_secs: SIP_RING_TIMEOUT_SECS,
+                client_state: Buffer.from(
+                  JSON.stringify({ stage: 'sip_ring' }),
+                ).toString('base64'),
+              }),
+            },
+          );
+
+          if (transferResp.ok) {
+            this.logger.log(
+              `SIP client registered — ringing CRM dialer (${SIP_RING_URI}) for ${SIP_RING_TIMEOUT_SECS}s`,
+            );
+
+            return;
+          }
+
           const errBody = await transferResp.text();
 
           this.logger.warn(
-            `SIP transfer failed (${transferResp.status}): ${errBody} — falling back to cell`,
+            `SIP transfer rejected (${transferResp.status}): ${errBody} — falling back to cell`,
           );
-          await this.transferToCell(callControlId, telnyxApiKey);
-        } else {
-          this.logger.log(
-            `Ringing CRM dialer (${SIP_RING_URI}) for ${SIP_RING_TIMEOUT_SECS}s`,
-          );
+        } catch (error) {
+          this.logger.error(`SIP transfer threw: ${error}`);
         }
-      } catch (error) {
-        this.logger.error(`Failed to ring SIP: ${error}`);
-        await this.transferToCell(callControlId, telnyxApiKey);
+      } else {
+        this.logger.log(
+          `No SIP client registered — going straight to cell ${OWNER_PHONE_NUMBER}`,
+        );
       }
+
+      await this.transferToCell(callControlId, telnyxApiKey);
 
       return;
     }
@@ -294,6 +315,46 @@ export class TelnyxWebhookController {
 
     // All other events already handled by handleVoiceEvent above
     this.logger.log(`Voice event ${eventType} processed`);
+  }
+
+  // Returns true if the credential connection currently has at least one
+  // registered SIP client (i.e. CRM dialer is open in someone's browser).
+  // We use this to gate the SIP-first transfer attempt — transferring to an
+  // unregistered SIP URI causes Telnyx to drop the inbound leg with
+  // user_busy without firing transfer.failed, so we MUST pre-check.
+  private async isSipRegistered(telnyxApiKey: string): Promise<boolean> {
+    try {
+      const resp = await fetch(
+        `https://api.telnyx.com/v2/credential_connections/${TELNYX_CREDENTIAL_CONNECTION_ID}`,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${telnyxApiKey}` },
+        },
+      );
+
+      if (!resp.ok) {
+        this.logger.warn(
+          `Could not fetch SIP registration status (${resp.status}); assuming offline`,
+        );
+
+        return false;
+      }
+
+      const body = (await resp.json()) as {
+        data?: { registration_status?: string };
+      };
+      const status = body?.data?.registration_status;
+
+      this.logger.log(`SIP credential registration_status: ${status}`);
+
+      return status === 'Registered';
+    } catch (error) {
+      this.logger.warn(
+        `SIP registration check threw: ${error}; assuming offline`,
+      );
+
+      return false;
+    }
   }
 
   // Fallback: transfer the call to the owner cell. Used when SIP ringing
