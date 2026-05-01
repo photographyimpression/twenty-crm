@@ -43,6 +43,26 @@ type TelnyxWebhookBody = {
   };
 };
 
+// Telnyx echoes whatever base64 client_state we set on a previous action
+// back to us in subsequent events for that call. We use it to tag legs by
+// stage (inbound_answered, sip_ring, cell_ring) so handlers don't trip on
+// outbound calls (WebRTC dialing) that share the same webhook URL.
+const decodeClientStateStage = (
+  clientStateB64: string | undefined,
+): string | undefined => {
+  if (!clientStateB64) return undefined;
+
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(clientStateB64, 'base64').toString('utf-8'),
+    );
+
+    return decoded?.stage;
+  } catch {
+    return undefined;
+  }
+};
+
 @Controller('telnyx')
 export class TelnyxWebhookController {
   protected readonly logger = new Logger(TelnyxWebhookController.name);
@@ -121,6 +141,9 @@ export class TelnyxWebhookController {
     // For inbound calls, answer IMMEDIATELY (before DB work) so the caller's
     // carrier doesn't hang up waiting for media. Telnyx now generates a
     // ringback tone server-side, but we still want answer-time minimal.
+    // We pass a client_state tag so when call.answered fires later we can
+    // tell *we* answered this leg (vs a Telnyx-internal answer for outbound
+    // WebRTC calls that share this webhook).
     if (
       eventType === 'call.initiated' &&
       direction === 'incoming' &&
@@ -136,7 +159,11 @@ export class TelnyxWebhookController {
             Authorization: `Bearer ${telnyxApiKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            client_state: Buffer.from(
+              JSON.stringify({ stage: 'inbound_answered' }),
+            ).toString('base64'),
+          }),
         },
       )
         .then((r) => {
@@ -190,11 +217,16 @@ export class TelnyxWebhookController {
     // After inbound call is answered, ring the CRM WebRTC dialer first (SIP
     // credential). If nobody picks up there in SIP_RING_TIMEOUT_SECS,
     // transfer.failed fires and we fall back to the owner cell below.
-    // IVR greeting was removed to minimise time-to-connect — Fongo and other
-    // VoIP carriers hang up if they don't hear ringback or media within ~3s.
+    // We identify "our" inbound legs by the client_state tag we set on
+    // answer — the `direction` field on call.answered events is not always
+    // populated reliably across Telnyx connection types.
+    const answeredStage = decodeClientStateStage(
+      payload?.client_state as string | undefined,
+    );
+
     if (
       eventType === 'call.answered' &&
-      direction === 'incoming' &&
+      answeredStage === 'inbound_answered' &&
       callControlId &&
       telnyxApiKey
     ) {
@@ -242,21 +274,9 @@ export class TelnyxWebhookController {
     // SIP ring timed out / SIP client offline → transfer to owner cell.
     // Telnyx fires `call.transfer.failed` with the original transfer's metadata.
     if (eventType === 'call.transfer.failed' && callControlId && telnyxApiKey) {
-      let stage: string | undefined;
-
-      try {
-        const clientStateB64 = payload?.client_state as string | undefined;
-
-        if (clientStateB64) {
-          const decoded = JSON.parse(
-            Buffer.from(clientStateB64, 'base64').toString('utf-8'),
-          );
-
-          stage = decoded.stage;
-        }
-      } catch {
-        // ignore — fall through with stage undefined
-      }
+      const stage = decodeClientStateStage(
+        payload?.client_state as string | undefined,
+      );
 
       if (stage === 'sip_ring') {
         this.logger.log(
