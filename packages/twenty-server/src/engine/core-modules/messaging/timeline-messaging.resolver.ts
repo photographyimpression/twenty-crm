@@ -60,6 +60,16 @@ class GetTimelineThreadsFromOpportunityIdArgs {
   pageSize: number;
 }
 
+@ArgsType()
+class GetTimelineThreadsForCurrentWorkspaceMemberArgs {
+  @Field(() => Int)
+  page: number;
+
+  @Field(() => Int)
+  @Max(TIMELINE_THREADS_MAX_PAGE_SIZE)
+  pageSize: number;
+}
+
 @UseGuards(WorkspaceAuthGuard, UserAuthGuard, CustomPermissionGuard)
 @CoreResolver(() => TimelineThreadsWithTotalDTO)
 export class TimelineMessagingResolver {
@@ -143,6 +153,32 @@ export class TimelineMessagingResolver {
       await this.getMessagesFromPersonIdsService.getMessagesFromOpportunityId(
         workspaceMember.id,
         opportunityId,
+        workspace.id,
+        page,
+        pageSize,
+      );
+
+    return timelineThreads;
+  }
+
+  @Query(() => TimelineThreadsWithTotalDTO)
+  async getTimelineThreadsFromCurrentWorkspaceMember(
+    @AuthUser() user: AuthContextUser,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+    @Args() { page, pageSize }: GetTimelineThreadsForCurrentWorkspaceMemberArgs,
+  ) {
+    const workspaceMember = await this.userService.loadWorkspaceMember(
+      user,
+      workspace,
+    );
+
+    if (!workspaceMember) {
+      return;
+    }
+
+    const timelineThreads =
+      await this.getMessagesFromPersonIdsService.getMessagesForCurrentWorkspaceMember(
+        workspaceMember.id,
         workspace.id,
         page,
         pageSize,

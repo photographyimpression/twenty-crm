@@ -116,6 +116,54 @@ export class GetMessagesService {
     );
   }
 
+  async getMessagesForCurrentWorkspaceMember(
+    workspaceMemberId: string,
+    workspaceId: string,
+    page = 1,
+    pageSize: number = TIMELINE_THREADS_DEFAULT_PAGE_SIZE,
+  ): Promise<TimelineThreadsWithTotalDTO> {
+    const { messageThreads, totalNumberOfThreads } =
+      await this.timelineMessagingService.getAndCountAllMessageThreadsForWorkspaceMember(
+        workspaceMemberId,
+        workspaceId,
+        (page - 1) * pageSize,
+        pageSize,
+      );
+
+    if (!messageThreads || messageThreads.length === 0) {
+      return {
+        totalNumberOfThreads: totalNumberOfThreads ?? 0,
+        timelineThreads: [],
+      };
+    }
+
+    const messageThreadIds = messageThreads.map(
+      (messageThread) => messageThread.id,
+    );
+
+    const threadParticipantsByThreadId =
+      await this.timelineMessagingService.getThreadParticipantsByThreadId(
+        messageThreadIds,
+        workspaceId,
+      );
+
+    const threadVisibilityByThreadId =
+      await this.timelineMessagingService.getThreadVisibilityByThreadId(
+        messageThreadIds,
+        workspaceMemberId,
+        workspaceId,
+      );
+
+    return {
+      totalNumberOfThreads,
+      timelineThreads: formatThreads(
+        messageThreads,
+        threadParticipantsByThreadId,
+        threadVisibilityByThreadId,
+      ),
+    };
+  }
+
   async getMessagesFromOpportunityId(
     workspaceMemberId: string,
     opportunityId: string,
