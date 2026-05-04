@@ -235,11 +235,6 @@ msgstr ""
 msgid "{duration} days trial"
 msgstr "{duration} 天试用"
 
-#. js-lingui-id: JBSWmp
-#: src/modules/activities/timeline-activities/rows/activity/components/EventRowActivity.tsx
-msgid "{eventAction} a related {eventObject}"
-msgstr "{eventAction} 一个相关的 {eventObject}"
-
 #. js-lingui-id: POhzPf
 #: src/modules/ai/hooks/useAIChatFileUpload.ts
 msgid "{failedCount} file(s) failed to upload"
@@ -853,6 +848,11 @@ msgstr "添加账户"
 msgid "Add Approved Access Domain"
 msgstr "添加批准的访问域"
 
+#. js-lingui-id: V6MILC
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Add as contact"
+msgstr ""
+
 #. js-lingui-id: Qi4JMf
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "Add BCC"
@@ -867,6 +867,11 @@ msgstr "添加模块"
 #. js-lingui-id: 02qdT/
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "Add CC"
+msgstr ""
+
+#. js-lingui-id: M0FgOk
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Add Contact"
 msgstr ""
 
 #. js-lingui-id: GuJvBr
@@ -975,6 +980,8 @@ msgid "Add node"
 msgstr "添加节点"
 
 #. js-lingui-id: NeOuRn
+#: src/modules/activities/timeline-activities/components/TimelineCard.tsx
+#: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/notes/components/NotesCard.tsx
 msgid "Add note"
 msgstr "添加笔记"
@@ -1063,6 +1070,11 @@ msgstr "添加 SSO 身份提供商"
 msgid "Add task"
 msgstr "添加任务"
 
+#. js-lingui-id: eqp6FX
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Add Teams meeting"
+msgstr ""
+
 #. js-lingui-id: 6Tl23V
 #: src/pages/settings/ai/components/SettingsAgentEvalsTab.tsx
 msgid "Add test input for evaluation (e.g., \"Find all customers in NY\")"
@@ -1114,6 +1126,11 @@ msgstr "添加小部件"
 #: src/modules/object-record/record-table/empty-state/utils/getEmptyStateTitle.ts
 msgid "Add your first {objectLabel}"
 msgstr "添加您的第一个 {objectLabel}"
+
+#. js-lingui-id: hp8OtS
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Added"
+msgstr ""
 
 #. js-lingui-id: vLO+NG
 #: src/modules/ui/layout/show-page/components/ShowPageSummaryCard.tsx
@@ -1218,6 +1235,11 @@ msgstr "在特定时间后"
 #: src/modules/object-record/record-calendar/month/hooks/useRecordCalendarQueryDateRangeFilter.tsx
 msgid "After or equal"
 msgstr "晚于或等于"
+
+#. js-lingui-id: TI04tX
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Agenda, Zoom link, or notes for the attendee…"
+msgstr ""
 
 #. js-lingui-id: fcYF58
 #: src/modules/metadata-error-handler/hooks/useMetadataErrorHandler.ts
@@ -2535,6 +2557,7 @@ msgstr "无法扫描？复制"
 #: src/modules/object-record/record-update-multiple/components/UpdateMultipleRecordsFooter.tsx
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
 #: src/modules/command-menu-item/record/constants/DashboardCommandMenuItemsConfig.tsx
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
 msgid "Cancel"
 msgstr "取消"
 
@@ -3171,6 +3194,11 @@ msgstr "将新账户连接到工作区"
 msgid "Connect Account"
 msgstr "连接账户"
 
+#. js-lingui-id: kQ1/5f
+#: src/pages/inbox/InboxPage.tsx
+msgid "Connect an email account in Settings to start syncing your inbox."
+msgstr ""
+
 #. js-lingui-id: Zgi9Fd
 #: src/modules/settings/accounts/components/SettingsAccountsListEmptyStateCard.tsx
 msgid "Connect with Google"
@@ -3209,6 +3237,12 @@ msgstr ""
 #. js-lingui-id: G++HwN
 #: src/modules/side-panel/pages/page-layout/components/ChartLimitInfoBanner.tsx
 msgid "Consider adding a filter to display more data."
+msgstr ""
+
+#. js-lingui-id: PS4F+Q
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Contact added"
 msgstr ""
 
 #. js-lingui-id: Y2y0mC
@@ -3573,6 +3607,11 @@ msgstr "创建自定义视图"
 msgid "Create date field"
 msgstr "创建日期字段"
 
+#. js-lingui-id: PybJS2
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Create event"
+msgstr ""
+
 #. js-lingui-id: kCNBJG
 #: src/modules/command-menu-item/record/constants/DashboardCommandMenuItemsConfig.tsx
 msgid "Create new dashboard"
@@ -3687,6 +3726,11 @@ msgstr "创建您的数据模型..."
 #: src/pages/onboarding/CreateWorkspace.tsx
 msgid "Creating your workspace"
 msgstr "创建您的工作区"
+
+#. js-lingui-id: /DwR+n
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Creating…"
+msgstr ""
 
 #. js-lingui-id: L3dKdL
 #: src/pages/settings/applications/tabs/SettingsApplicationRegistrationOAuthTab.tsx
@@ -4510,6 +4554,7 @@ msgstr "描述你希望 AI 执行的操作..."
 #: src/modules/settings/logic-functions/components/SettingsLogicFunctionNewForm.tsx
 #: src/modules/settings/developers/components/SettingsDevelopersWebhookForm.tsx
 #: src/modules/settings/data-model/new-object/components/SettingsAvailableStandardObjectsSection.tsx
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
 msgid "Description"
 msgstr "描述"
 
@@ -5194,6 +5239,11 @@ msgstr "结束试用期以继续使用工作流或 AI 功能。"
 msgid "Endpoint URL"
 msgstr "端点 URL"
 
+#. js-lingui-id: fPOajI
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Ends at"
+msgstr ""
+
 #. js-lingui-id: Vv4JVS
 #: src/modules/settings/security/components/Toggle2FA.tsx
 msgid "Enforce two-step verification for every user login."
@@ -5651,6 +5701,16 @@ msgstr ""
 msgid "Event"
 msgstr "事件"
 
+#. js-lingui-id: XKETZE
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Event created — invite sent to attendee."
+msgstr ""
+
+#. js-lingui-id: cQ6HUG
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Event created — Teams link sent to attendee."
+msgstr ""
+
 #. js-lingui-id: ailPEn
 #: src/pages/settings/security/event-logs/components/EventLogFilters.tsx
 msgid "Event Type"
@@ -6003,6 +6063,16 @@ msgstr ""
 #. js-lingui-id: vJiM7T
 #: src/pages/settings/ai/components/SettingsSkillsTable.tsx
 msgid "Failed to activate skill"
+msgstr ""
+
+#. js-lingui-id: NuebbK
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Failed to add contact"
+msgstr ""
+
+#. js-lingui-id: w8p+2b
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Failed to create calendar event."
 msgstr ""
 
 #. js-lingui-id: WM7GKt
@@ -7244,6 +7314,9 @@ msgid "Inactive Skill Options"
 msgstr ""
 
 #. js-lingui-id: Gp4Yi6
+#: src/pages/inbox/InboxPage.tsx
+#: src/pages/inbox/InboxPage.tsx
+#: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "Inbox"
 msgstr "收件箱"
@@ -7316,6 +7389,11 @@ msgstr ""
 #: src/modules/settings/logic-functions/components/tabs/SettingsLogicFunctionTestTab.tsx
 msgid "Insert a JSON input, then press \"Run\" to test your function."
 msgstr "插入一个 JSON 输入，然后按“运行”测试您的功能。"
+
+#. js-lingui-id: lXCD6j
+#: src/modules/object-record/record-table/record-table-header/components/RecordTableColumnHeadDropdownMenu.tsx
+msgid "Insert field"
+msgstr ""
 
 #. js-lingui-id: TKQ7K+
 #: src/pages/settings/applications/SettingsAvailableApplicationDetails.tsx
@@ -8938,6 +9016,13 @@ msgstr ""
 msgid "New Emailing Domain"
 msgstr "新电子邮件发送域名"
 
+#. js-lingui-id: jVyc7D
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+#: src/modules/activities/calendar/components/CalendarEventsCard.tsx
+#: src/modules/activities/calendar/components/CalendarEventsCard.tsx
+msgid "New event"
+msgstr ""
+
 #. js-lingui-id: 8YPqRx
 #: src/pages/settings/data-model/SettingsObjectDetailPage.tsx
 #: src/modules/settings/data-model/fields/forms/number/components/SettingsDataModelFieldNumberSettingsFormCard.tsx
@@ -9240,6 +9325,11 @@ msgstr "找不到符合筛选条件的已删除记录。"
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "No email exchange has occurred with this record yet."
 msgstr "还没有与此记录进行电子邮件交换。"
+
+#. js-lingui-id: VfYmcd
+#: src/pages/inbox/InboxPage.tsx
+msgid "No emails yet"
+msgstr ""
 
 #. js-lingui-id: p3Hivn
 #: src/pages/settings/ai/components/SettingsAgentEvalsTab.tsx
@@ -12628,6 +12718,11 @@ msgstr "启动您的订阅"
 msgid "Started verification process"
 msgstr "开始验证过程"
 
+#. js-lingui-id: ETsH83
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Starts at"
+msgstr ""
+
 #. js-lingui-id: RS0o7b
 #: src/modules/ui/field/input/components/AddressInput.tsx
 #: src/modules/settings/data-model/fields/forms/address/constants/DefaultSelectionAddressWithMessages.ts
@@ -12670,6 +12765,11 @@ msgstr "停止假装"
 #: src/modules/settings/admin-panel/config-variables/utils/useSourceContent.ts
 msgid "Stored in database"
 msgstr "存储在数据库中"
+
+#. js-lingui-id: sqGJO/
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Strategy call"
+msgstr ""
 
 #. js-lingui-id: C9VfWO
 #: src/modules/object-record/record-field/ui/form-types/components/FormAddressFieldInput.tsx
@@ -13540,6 +13640,16 @@ msgstr "耗时"
 msgid "title"
 msgstr "标题"
 
+#. js-lingui-id: MHrjPM
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Title"
+msgstr ""
+
+#. js-lingui-id: 9udQT9
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Title is required"
+msgstr ""
+
 #. js-lingui-id: /jQctM
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "To"
@@ -14036,7 +14146,6 @@ msgstr ""
 #: src/modules/ai/components/RecordLink.tsx
 #: src/modules/ai/components/AIChatThreadGroup.tsx
 #: src/modules/ai/components/internal/AgentChatFilePreview.tsx
-#: src/modules/activities/timeline-activities/rows/activity/components/EventRowActivity.tsx
 msgid "Untitled"
 msgstr "未命名"
 

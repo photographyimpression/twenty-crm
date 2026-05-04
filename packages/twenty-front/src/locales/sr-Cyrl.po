@@ -235,11 +235,6 @@ msgstr "{deletedCount, plural, one {Успешно обрисан {deletedCount}
 msgid "{duration} days trial"
 msgstr "Пробни период од {duration} дана"
 
-#. js-lingui-id: JBSWmp
-#: src/modules/activities/timeline-activities/rows/activity/components/EventRowActivity.tsx
-msgid "{eventAction} a related {eventObject}"
-msgstr "{eventAction} повезани {eventObject}"
-
 #. js-lingui-id: POhzPf
 #: src/modules/ai/hooks/useAIChatFileUpload.ts
 msgid "{failedCount} file(s) failed to upload"
@@ -853,6 +848,11 @@ msgstr "Додајте налог"
 msgid "Add Approved Access Domain"
 msgstr "Додај одобрен домен приступа"
 
+#. js-lingui-id: V6MILC
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Add as contact"
+msgstr ""
+
 #. js-lingui-id: Qi4JMf
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "Add BCC"
@@ -867,6 +867,11 @@ msgstr "Додај блок"
 #. js-lingui-id: 02qdT/
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "Add CC"
+msgstr ""
+
+#. js-lingui-id: M0FgOk
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Add Contact"
 msgstr ""
 
 #. js-lingui-id: GuJvBr
@@ -975,6 +980,8 @@ msgid "Add node"
 msgstr "Додај чвор"
 
 #. js-lingui-id: NeOuRn
+#: src/modules/activities/timeline-activities/components/TimelineCard.tsx
+#: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/notes/components/NotesCard.tsx
 msgid "Add note"
 msgstr "Додај белешку"
@@ -1063,6 +1070,11 @@ msgstr "Додајте провајдер за SSO идентификацију"
 msgid "Add task"
 msgstr "Додај задатак"
 
+#. js-lingui-id: eqp6FX
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Add Teams meeting"
+msgstr ""
+
 #. js-lingui-id: 6Tl23V
 #: src/pages/settings/ai/components/SettingsAgentEvalsTab.tsx
 msgid "Add test input for evaluation (e.g., \"Find all customers in NY\")"
@@ -1114,6 +1126,11 @@ msgstr "Додај виџет"
 #: src/modules/object-record/record-table/empty-state/utils/getEmptyStateTitle.ts
 msgid "Add your first {objectLabel}"
 msgstr "Додајте свој први {objectLabel}"
+
+#. js-lingui-id: hp8OtS
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Added"
+msgstr ""
 
 #. js-lingui-id: vLO+NG
 #: src/modules/ui/layout/show-page/components/ShowPageSummaryCard.tsx
@@ -1218,6 +1235,11 @@ msgstr "После одређеног временског периода"
 #: src/modules/object-record/record-calendar/month/hooks/useRecordCalendarQueryDateRangeFilter.tsx
 msgid "After or equal"
 msgstr "После или једнако"
+
+#. js-lingui-id: TI04tX
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Agenda, Zoom link, or notes for the attendee…"
+msgstr ""
 
 #. js-lingui-id: fcYF58
 #: src/modules/metadata-error-handler/hooks/useMetadataErrorHandler.ts
@@ -2535,6 +2557,7 @@ msgstr "Не можете да скенирате? Копирајте"
 #: src/modules/object-record/record-update-multiple/components/UpdateMultipleRecordsFooter.tsx
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
 #: src/modules/command-menu-item/record/constants/DashboardCommandMenuItemsConfig.tsx
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
 msgid "Cancel"
 msgstr "Откажи"
 
@@ -3171,6 +3194,11 @@ msgstr "Повежите нови налог са својим просторо�
 msgid "Connect Account"
 msgstr "Повежи налог"
 
+#. js-lingui-id: kQ1/5f
+#: src/pages/inbox/InboxPage.tsx
+msgid "Connect an email account in Settings to start syncing your inbox."
+msgstr ""
+
 #. js-lingui-id: Zgi9Fd
 #: src/modules/settings/accounts/components/SettingsAccountsListEmptyStateCard.tsx
 msgid "Connect with Google"
@@ -3209,6 +3237,12 @@ msgstr ""
 #. js-lingui-id: G++HwN
 #: src/modules/side-panel/pages/page-layout/components/ChartLimitInfoBanner.tsx
 msgid "Consider adding a filter to display more data."
+msgstr ""
+
+#. js-lingui-id: PS4F+Q
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Contact added"
 msgstr ""
 
 #. js-lingui-id: Y2y0mC
@@ -3573,6 +3607,11 @@ msgstr "Креирајте прилагођени приказ"
 msgid "Create date field"
 msgstr "Креирај поље за датум"
 
+#. js-lingui-id: PybJS2
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Create event"
+msgstr ""
+
 #. js-lingui-id: kCNBJG
 #: src/modules/command-menu-item/record/constants/DashboardCommandMenuItemsConfig.tsx
 msgid "Create new dashboard"
@@ -3687,6 +3726,11 @@ msgstr "Креирање вашег модела података..."
 #: src/pages/onboarding/CreateWorkspace.tsx
 msgid "Creating your workspace"
 msgstr "Креирање вашег радног простора"
+
+#. js-lingui-id: /DwR+n
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Creating…"
+msgstr ""
 
 #. js-lingui-id: L3dKdL
 #: src/pages/settings/applications/tabs/SettingsApplicationRegistrationOAuthTab.tsx
@@ -4510,6 +4554,7 @@ msgstr "Опишите шта желите да AI уради..."
 #: src/modules/settings/logic-functions/components/SettingsLogicFunctionNewForm.tsx
 #: src/modules/settings/developers/components/SettingsDevelopersWebhookForm.tsx
 #: src/modules/settings/data-model/new-object/components/SettingsAvailableStandardObjectsSection.tsx
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
 msgid "Description"
 msgstr "Опис"
 
@@ -5194,6 +5239,11 @@ msgstr "Завршите пробни период да бисте настав�
 msgid "Endpoint URL"
 msgstr "Ендпоинт УРЛ"
 
+#. js-lingui-id: fPOajI
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Ends at"
+msgstr ""
+
 #. js-lingui-id: Vv4JVS
 #: src/modules/settings/security/components/Toggle2FA.tsx
 msgid "Enforce two-step verification for every user login."
@@ -5651,6 +5701,16 @@ msgstr ""
 msgid "Event"
 msgstr "Догађај"
 
+#. js-lingui-id: XKETZE
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Event created — invite sent to attendee."
+msgstr ""
+
+#. js-lingui-id: cQ6HUG
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Event created — Teams link sent to attendee."
+msgstr ""
+
 #. js-lingui-id: ailPEn
 #: src/pages/settings/security/event-logs/components/EventLogFilters.tsx
 msgid "Event Type"
@@ -6003,6 +6063,16 @@ msgstr ""
 #. js-lingui-id: vJiM7T
 #: src/pages/settings/ai/components/SettingsSkillsTable.tsx
 msgid "Failed to activate skill"
+msgstr ""
+
+#. js-lingui-id: NuebbK
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Failed to add contact"
+msgstr ""
+
+#. js-lingui-id: w8p+2b
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Failed to create calendar event."
 msgstr ""
 
 #. js-lingui-id: WM7GKt
@@ -7244,6 +7314,9 @@ msgid "Inactive Skill Options"
 msgstr ""
 
 #. js-lingui-id: Gp4Yi6
+#: src/pages/inbox/InboxPage.tsx
+#: src/pages/inbox/InboxPage.tsx
+#: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "Inbox"
 msgstr "Пријемно сандуче"
@@ -7316,6 +7389,11 @@ msgstr ""
 #: src/modules/settings/logic-functions/components/tabs/SettingsLogicFunctionTestTab.tsx
 msgid "Insert a JSON input, then press \"Run\" to test your function."
 msgstr "Унесите JSON унос, затим притисните \"Изврши\" да бисте тестирали вашу функцију."
+
+#. js-lingui-id: lXCD6j
+#: src/modules/object-record/record-table/record-table-header/components/RecordTableColumnHeadDropdownMenu.tsx
+msgid "Insert field"
+msgstr ""
 
 #. js-lingui-id: TKQ7K+
 #: src/pages/settings/applications/SettingsAvailableApplicationDetails.tsx
@@ -8938,6 +9016,13 @@ msgstr ""
 msgid "New Emailing Domain"
 msgstr "Нови имејл домен"
 
+#. js-lingui-id: jVyc7D
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+#: src/modules/activities/calendar/components/CalendarEventsCard.tsx
+#: src/modules/activities/calendar/components/CalendarEventsCard.tsx
+msgid "New event"
+msgstr ""
+
 #. js-lingui-id: 8YPqRx
 #: src/pages/settings/data-model/SettingsObjectDetailPage.tsx
 #: src/modules/settings/data-model/fields/forms/number/components/SettingsDataModelFieldNumberSettingsFormCard.tsx
@@ -9240,6 +9325,11 @@ msgstr "Нису пронађени избрисани записи који о�
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "No email exchange has occurred with this record yet."
 msgstr "Још увек није дошло до размене имејла са овим записом."
+
+#. js-lingui-id: VfYmcd
+#: src/pages/inbox/InboxPage.tsx
+msgid "No emails yet"
+msgstr ""
 
 #. js-lingui-id: p3Hivn
 #: src/pages/settings/ai/components/SettingsAgentEvalsTab.tsx
@@ -12628,6 +12718,11 @@ msgstr "Започни претплату"
 msgid "Started verification process"
 msgstr "Процес верификације је започео"
 
+#. js-lingui-id: ETsH83
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Starts at"
+msgstr ""
+
 #. js-lingui-id: RS0o7b
 #: src/modules/ui/field/input/components/AddressInput.tsx
 #: src/modules/settings/data-model/fields/forms/address/constants/DefaultSelectionAddressWithMessages.ts
@@ -12670,6 +12765,11 @@ msgstr "Заустави имперсонацију"
 #: src/modules/settings/admin-panel/config-variables/utils/useSourceContent.ts
 msgid "Stored in database"
 msgstr "Сачувано у бази података"
+
+#. js-lingui-id: sqGJO/
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Strategy call"
+msgstr ""
 
 #. js-lingui-id: C9VfWO
 #: src/modules/object-record/record-field/ui/form-types/components/FormAddressFieldInput.tsx
@@ -13540,6 +13640,16 @@ msgstr "Време"
 msgid "title"
 msgstr "наслов"
 
+#. js-lingui-id: MHrjPM
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Title"
+msgstr ""
+
+#. js-lingui-id: 9udQT9
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Title is required"
+msgstr ""
+
 #. js-lingui-id: /jQctM
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "To"
@@ -14036,7 +14146,6 @@ msgstr ""
 #: src/modules/ai/components/RecordLink.tsx
 #: src/modules/ai/components/AIChatThreadGroup.tsx
 #: src/modules/ai/components/internal/AgentChatFilePreview.tsx
-#: src/modules/activities/timeline-activities/rows/activity/components/EventRowActivity.tsx
 msgid "Untitled"
 msgstr "Неназван"
 

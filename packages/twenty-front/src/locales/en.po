@@ -230,11 +230,6 @@ msgstr "{deletedCount, plural, one {Successfully deleted {deletedCount} job} oth
 msgid "{duration} days trial"
 msgstr "{duration} days trial"
 
-#. js-lingui-id: JBSWmp
-#: src/modules/activities/timeline-activities/rows/activity/components/EventRowActivity.tsx
-msgid "{eventAction} a related {eventObject}"
-msgstr "{eventAction} a related {eventObject}"
-
 #. js-lingui-id: POhzPf
 #: src/modules/ai/hooks/useAIChatFileUpload.ts
 msgid "{failedCount} file(s) failed to upload"
@@ -848,6 +843,11 @@ msgstr "Add account"
 msgid "Add Approved Access Domain"
 msgstr "Add Approved Access Domain"
 
+#. js-lingui-id: V6MILC
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Add as contact"
+msgstr "Add as contact"
+
 #. js-lingui-id: Qi4JMf
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "Add BCC"
@@ -863,6 +863,11 @@ msgstr "Add Block"
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "Add CC"
 msgstr "Add CC"
+
+#. js-lingui-id: M0FgOk
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Add Contact"
+msgstr "Add Contact"
 
 #. js-lingui-id: GuJvBr
 #: src/pages/settings/ai/SettingsAIPrompts.tsx
@@ -970,6 +975,8 @@ msgid "Add node"
 msgstr "Add node"
 
 #. js-lingui-id: NeOuRn
+#: src/modules/activities/timeline-activities/components/TimelineCard.tsx
+#: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/notes/components/NotesCard.tsx
 msgid "Add note"
 msgstr "Add note"
@@ -1058,6 +1065,11 @@ msgstr "Add SSO Identity Provider"
 msgid "Add task"
 msgstr "Add task"
 
+#. js-lingui-id: eqp6FX
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Add Teams meeting"
+msgstr "Add Teams meeting"
+
 #. js-lingui-id: 6Tl23V
 #: src/pages/settings/ai/components/SettingsAgentEvalsTab.tsx
 msgid "Add test input for evaluation (e.g., \"Find all customers in NY\")"
@@ -1109,6 +1121,11 @@ msgstr "Add Widget"
 #: src/modules/object-record/record-table/empty-state/utils/getEmptyStateTitle.ts
 msgid "Add your first {objectLabel}"
 msgstr "Add your first {objectLabel}"
+
+#. js-lingui-id: hp8OtS
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Added"
+msgstr "Added"
 
 #. js-lingui-id: vLO+NG
 #: src/modules/ui/layout/show-page/components/ShowPageSummaryCard.tsx
@@ -1213,6 +1230,11 @@ msgstr "After a set amount of time"
 #: src/modules/object-record/record-calendar/month/hooks/useRecordCalendarQueryDateRangeFilter.tsx
 msgid "After or equal"
 msgstr "After or equal"
+
+#. js-lingui-id: TI04tX
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Agenda, Zoom link, or notes for the attendee…"
+msgstr "Agenda, Zoom link, or notes for the attendee…"
 
 #. js-lingui-id: fcYF58
 #: src/modules/metadata-error-handler/hooks/useMetadataErrorHandler.ts
@@ -2530,6 +2552,7 @@ msgstr "Can't scan? Copy the"
 #: src/modules/object-record/record-update-multiple/components/UpdateMultipleRecordsFooter.tsx
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
 #: src/modules/command-menu-item/record/constants/DashboardCommandMenuItemsConfig.tsx
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -3166,6 +3189,11 @@ msgstr "Connect a new account to your workspace"
 msgid "Connect Account"
 msgstr "Connect Account"
 
+#. js-lingui-id: kQ1/5f
+#: src/pages/inbox/InboxPage.tsx
+msgid "Connect an email account in Settings to start syncing your inbox."
+msgstr "Connect an email account in Settings to start syncing your inbox."
+
 #. js-lingui-id: Zgi9Fd
 #: src/modules/settings/accounts/components/SettingsAccountsListEmptyStateCard.tsx
 msgid "Connect with Google"
@@ -3205,6 +3233,12 @@ msgstr "Consider adding a filter or changing the date granularity to display mor
 #: src/modules/side-panel/pages/page-layout/components/ChartLimitInfoBanner.tsx
 msgid "Consider adding a filter to display more data."
 msgstr "Consider adding a filter to display more data."
+
+#. js-lingui-id: PS4F+Q
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Contact added"
+msgstr "Contact added"
 
 #. js-lingui-id: Y2y0mC
 #: src/modules/settings/accounts/components/SettingsAccountsMessageChannelDetails.tsx
@@ -3568,6 +3602,11 @@ msgstr "Create custom view"
 msgid "Create date field"
 msgstr "Create date field"
 
+#. js-lingui-id: PybJS2
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Create event"
+msgstr "Create event"
+
 #. js-lingui-id: kCNBJG
 #: src/modules/command-menu-item/record/constants/DashboardCommandMenuItemsConfig.tsx
 msgid "Create new dashboard"
@@ -3682,6 +3721,11 @@ msgstr "Creating your data model..."
 #: src/pages/onboarding/CreateWorkspace.tsx
 msgid "Creating your workspace"
 msgstr "Creating your workspace"
+
+#. js-lingui-id: /DwR+n
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Creating…"
+msgstr "Creating…"
 
 #. js-lingui-id: L3dKdL
 #: src/pages/settings/applications/tabs/SettingsApplicationRegistrationOAuthTab.tsx
@@ -4505,6 +4549,7 @@ msgstr "Describe what you want the AI to do..."
 #: src/modules/settings/logic-functions/components/SettingsLogicFunctionNewForm.tsx
 #: src/modules/settings/developers/components/SettingsDevelopersWebhookForm.tsx
 #: src/modules/settings/data-model/new-object/components/SettingsAvailableStandardObjectsSection.tsx
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
 msgid "Description"
 msgstr "Description"
 
@@ -5189,6 +5234,11 @@ msgstr "End trial period to continue using Workflow or AI features."
 msgid "Endpoint URL"
 msgstr "Endpoint URL"
 
+#. js-lingui-id: fPOajI
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Ends at"
+msgstr "Ends at"
+
 #. js-lingui-id: Vv4JVS
 #: src/modules/settings/security/components/Toggle2FA.tsx
 msgid "Enforce two-step verification for every user login."
@@ -5646,6 +5696,16 @@ msgstr "Evaluations"
 msgid "Event"
 msgstr "Event"
 
+#. js-lingui-id: XKETZE
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Event created — invite sent to attendee."
+msgstr "Event created — invite sent to attendee."
+
+#. js-lingui-id: cQ6HUG
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Event created — Teams link sent to attendee."
+msgstr "Event created — Teams link sent to attendee."
+
 #. js-lingui-id: ailPEn
 #: src/pages/settings/security/event-logs/components/EventLogFilters.tsx
 msgid "Event Type"
@@ -5999,6 +6059,16 @@ msgstr "Failed to {translatedOperationType} {translatedMetadataName}. Related {r
 #: src/pages/settings/ai/components/SettingsSkillsTable.tsx
 msgid "Failed to activate skill"
 msgstr "Failed to activate skill"
+
+#. js-lingui-id: NuebbK
+#: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
+msgid "Failed to add contact"
+msgstr "Failed to add contact"
+
+#. js-lingui-id: w8p+2b
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Failed to create calendar event."
+msgstr "Failed to create calendar event."
 
 #. js-lingui-id: WM7GKt
 #: src/pages/settings/ai/components/SettingsToolsTable.tsx
@@ -7239,6 +7309,9 @@ msgid "Inactive Skill Options"
 msgstr "Inactive Skill Options"
 
 #. js-lingui-id: Gp4Yi6
+#: src/pages/inbox/InboxPage.tsx
+#: src/pages/inbox/InboxPage.tsx
+#: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "Inbox"
 msgstr "Inbox"
@@ -7311,6 +7384,11 @@ msgstr "Input tokens"
 #: src/modules/settings/logic-functions/components/tabs/SettingsLogicFunctionTestTab.tsx
 msgid "Insert a JSON input, then press \"Run\" to test your function."
 msgstr "Insert a JSON input, then press \"Run\" to test your function."
+
+#. js-lingui-id: lXCD6j
+#: src/modules/object-record/record-table/record-table-header/components/RecordTableColumnHeadDropdownMenu.tsx
+msgid "Insert field"
+msgstr "Insert field"
 
 #. js-lingui-id: TKQ7K+
 #: src/pages/settings/applications/SettingsAvailableApplicationDetails.tsx
@@ -8933,6 +9011,13 @@ msgstr "New conversation"
 msgid "New Emailing Domain"
 msgstr "New Emailing Domain"
 
+#. js-lingui-id: jVyc7D
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+#: src/modules/activities/calendar/components/CalendarEventsCard.tsx
+#: src/modules/activities/calendar/components/CalendarEventsCard.tsx
+msgid "New event"
+msgstr "New event"
+
 #. js-lingui-id: 8YPqRx
 #: src/pages/settings/data-model/SettingsObjectDetailPage.tsx
 #: src/modules/settings/data-model/fields/forms/number/components/SettingsDataModelFieldNumberSettingsFormCard.tsx
@@ -9235,6 +9320,11 @@ msgstr "No deleted records matching the filter criteria were found."
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "No email exchange has occurred with this record yet."
 msgstr "No email exchange has occurred with this record yet."
+
+#. js-lingui-id: VfYmcd
+#: src/pages/inbox/InboxPage.tsx
+msgid "No emails yet"
+msgstr "No emails yet"
 
 #. js-lingui-id: p3Hivn
 #: src/pages/settings/ai/components/SettingsAgentEvalsTab.tsx
@@ -12623,6 +12713,11 @@ msgstr "Start Your Subscription"
 msgid "Started verification process"
 msgstr "Started verification process"
 
+#. js-lingui-id: ETsH83
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Starts at"
+msgstr "Starts at"
+
 #. js-lingui-id: RS0o7b
 #: src/modules/ui/field/input/components/AddressInput.tsx
 #: src/modules/settings/data-model/fields/forms/address/constants/DefaultSelectionAddressWithMessages.ts
@@ -12665,6 +12760,11 @@ msgstr "Stop impersonating"
 #: src/modules/settings/admin-panel/config-variables/utils/useSourceContent.ts
 msgid "Stored in database"
 msgstr "Stored in database"
+
+#. js-lingui-id: sqGJO/
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Strategy call"
+msgstr "Strategy call"
 
 #. js-lingui-id: C9VfWO
 #: src/modules/object-record/record-field/ui/form-types/components/FormAddressFieldInput.tsx
@@ -13537,6 +13637,16 @@ msgstr "Timing"
 msgid "title"
 msgstr "title"
 
+#. js-lingui-id: MHrjPM
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Title"
+msgstr "Title"
+
+#. js-lingui-id: 9udQT9
+#: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
+msgid "Title is required"
+msgstr "Title is required"
+
 #. js-lingui-id: /jQctM
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "To"
@@ -14033,7 +14143,6 @@ msgstr "Unordered list with bullets"
 #: src/modules/ai/components/RecordLink.tsx
 #: src/modules/ai/components/AIChatThreadGroup.tsx
 #: src/modules/ai/components/internal/AgentChatFilePreview.tsx
-#: src/modules/activities/timeline-activities/rows/activity/components/EventRowActivity.tsx
 msgid "Untitled"
 msgstr "Untitled"
 
