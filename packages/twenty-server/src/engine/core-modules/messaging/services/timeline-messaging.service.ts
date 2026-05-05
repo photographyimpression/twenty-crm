@@ -174,10 +174,10 @@ export class TimelineMessagingService {
               'searchParticipants',
             ).andWhere(
               `(
-                messages.subject ILIKE :search
-                OR messages.text ILIKE :search
-                OR searchParticipants.handle ILIKE :search
-                OR searchParticipants."displayName" ILIKE :search
+                "messages"."subject" ILIKE :search
+                OR "messages"."text" ILIKE :search
+                OR "searchParticipants"."handle" ILIKE :search
+                OR "searchParticipants"."displayName" ILIKE :search
               )`,
               { search: searchPattern },
             );
@@ -275,7 +275,7 @@ export class TimelineMessagingService {
 
         if (excludeWorkspaceMemberId) {
           qb.andWhere(
-            '(messageParticipant."workspaceMemberId" IS NULL OR messageParticipant."workspaceMemberId" != :excludeWorkspaceMemberId)',
+            '("messageParticipant"."workspaceMemberId" IS NULL OR "messageParticipant"."workspaceMemberId" != :excludeWorkspaceMemberId)',
             { excludeWorkspaceMemberId },
           );
         }
