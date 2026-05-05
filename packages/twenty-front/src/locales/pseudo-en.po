@@ -2841,6 +2841,11 @@ msgstr ""
 msgid "Click on the checkmark to apply your changes."
 msgstr ""
 
+#. js-lingui-id: w+X8Fk
+#: src/modules/activities/emails/components/InteractiveParticipantChip.tsx
+msgid "Click to add to CRM"
+msgstr ""
+
 #. js-lingui-id: WTlZnA
 #: src/modules/page-layout/widgets/components/DashboardWidgetPlaceholder.tsx
 msgid "Click to add your first widget"
@@ -3241,6 +3246,7 @@ msgid "Consider adding a filter to display more data."
 msgstr ""
 
 #. js-lingui-id: PS4F+Q
+#: src/modules/activities/emails/components/InteractiveParticipantChip.tsx
 #: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
 #: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
 msgid "Contact added"
@@ -6068,6 +6074,7 @@ msgid "Failed to activate skill"
 msgstr ""
 
 #. js-lingui-id: NuebbK
+#: src/modules/activities/emails/components/InteractiveParticipantChip.tsx
 #: src/modules/activities/emails/components/EmailParticipantAddContactButton.tsx
 msgid "Failed to add contact"
 msgstr ""
@@ -13701,6 +13708,11 @@ msgstr ""
 #. js-lingui-id: /jQctM
 #: src/modules/workflow/workflow-steps/workflow-actions/components/WorkflowEditActionEmailBase.tsx
 msgid "To"
+msgstr ""
+
+#. js-lingui-id: iGE3dP
+#: src/modules/activities/emails/components/EmailThreadMessageReceivers.tsx
+msgid "to:"
 msgstr ""
 
 #. js-lingui-id: ecUA8p

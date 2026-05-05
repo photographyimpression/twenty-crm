@@ -1,10 +1,8 @@
 import { styled } from '@linaria/react';
 
-import { ParticipantChip } from '@/activities/components/ParticipantChip';
-import { EmailParticipantAddContactButton } from '@/activities/emails/components/EmailParticipantAddContactButton';
+import { InteractiveParticipantChip } from '@/activities/emails/components/InteractiveParticipantChip';
 import { type EmailThreadMessageParticipant } from '@/activities/emails/types/EmailThreadMessageParticipant';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
-import { isDefined } from 'twenty-shared/utils';
 import { AppTooltip, TooltipPosition } from 'twenty-ui/display';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 import { dateLocaleState } from '~/localization/states/dateLocaleState';
@@ -44,16 +42,10 @@ export const EmailThreadMessageSender = ({
   const { localeCatalog } = useAtomStateValue(dateLocaleState);
   const tooltipId = `date-tooltip-${sentAt.replace(/[^a-zA-Z0-9]/g, '-')}`;
 
-  const senderHasNoLinkedRecord =
-    !isDefined(sender.person) && !isDefined(sender.workspaceMember);
-
   return (
     <StyledEmailThreadMessageSender>
       <StyledSenderLeft>
-        <ParticipantChip participant={sender} variant="bold" />
-        {senderHasNoLinkedRecord && (
-          <EmailParticipantAddContactButton participant={sender} />
-        )}
+        <InteractiveParticipantChip participant={sender} variant="bold" />
       </StyledSenderLeft>
       <StyledThreadMessageSentAt id={tooltipId}>
         {beautifyPastDateRelativeToNow(sentAt, localeCatalog)}
