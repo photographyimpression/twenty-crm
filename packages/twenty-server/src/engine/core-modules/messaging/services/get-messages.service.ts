@@ -121,6 +121,8 @@ export class GetMessagesService {
     workspaceId: string,
     page = 1,
     pageSize: number = TIMELINE_THREADS_DEFAULT_PAGE_SIZE,
+    folder: 'inbox' | 'sent' = 'inbox',
+    search?: string | null,
   ): Promise<TimelineThreadsWithTotalDTO> {
     const { messageThreads, totalNumberOfThreads } =
       await this.timelineMessagingService.getAndCountAllMessageThreadsForWorkspaceMember(
@@ -128,6 +130,8 @@ export class GetMessagesService {
         workspaceId,
         (page - 1) * pageSize,
         pageSize,
+        folder,
+        search,
       );
 
     if (!messageThreads || messageThreads.length === 0) {
@@ -141,10 +145,14 @@ export class GetMessagesService {
       (messageThread) => messageThread.id,
     );
 
+    // Hide the user themselves from the participant list — Outlook/Salesmate
+    // style. The Inbox is the user's, so they don't need to see "You" in the
+    // sender column; they want the OTHER party highlighted.
     const threadParticipantsByThreadId =
       await this.timelineMessagingService.getThreadParticipantsByThreadId(
         messageThreadIds,
         workspaceId,
+        workspaceMemberId,
       );
 
     const threadVisibilityByThreadId =

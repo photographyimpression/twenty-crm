@@ -69,6 +69,12 @@ class GetTimelineThreadsForCurrentWorkspaceMemberArgs {
   @Field(() => Int)
   @Max(TIMELINE_THREADS_MAX_PAGE_SIZE)
   pageSize: number;
+
+  @Field(() => String, { nullable: true })
+  folder?: 'inbox' | 'sent' | null;
+
+  @Field(() => String, { nullable: true })
+  search?: string | null;
 }
 
 @ArgsType()
@@ -176,7 +182,13 @@ export class TimelineMessagingResolver {
   async getTimelineThreadsFromCurrentWorkspaceMember(
     @AuthUser() user: AuthContextUser,
     @AuthWorkspace() workspace: WorkspaceEntity,
-    @Args() { page, pageSize }: GetTimelineThreadsForCurrentWorkspaceMemberArgs,
+    @Args()
+    {
+      page,
+      pageSize,
+      folder,
+      search,
+    }: GetTimelineThreadsForCurrentWorkspaceMemberArgs,
   ) {
     const workspaceMember = await this.userService.loadWorkspaceMember(
       user,
@@ -187,12 +199,17 @@ export class TimelineMessagingResolver {
       return;
     }
 
+    const normalizedFolder: 'inbox' | 'sent' =
+      folder === 'sent' ? 'sent' : 'inbox';
+
     const timelineThreads =
       await this.getMessagesFromPersonIdsService.getMessagesForCurrentWorkspaceMember(
         workspaceMember.id,
         workspace.id,
         page,
         pageSize,
+        normalizedFolder,
+        search,
       );
 
     return timelineThreads;

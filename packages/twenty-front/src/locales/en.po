@@ -2816,6 +2816,11 @@ msgstr "City"
 msgid "Clear"
 msgstr "Clear"
 
+#. js-lingui-id: V8yTm6
+#: src/pages/inbox/InboxPage.tsx
+msgid "Clear search"
+msgstr "Clear search"
+
 #. js-lingui-id: wu0RfR
 #: src/modules/settings/admin-panel/config-variables/components/ConfigVariableHelpText.tsx
 msgid "Clear the field or \"X\" to revert to environment/default value."
@@ -7319,6 +7324,7 @@ msgstr "Inactive Skill Options"
 #. js-lingui-id: Gp4Yi6
 #: src/pages/inbox/InboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
+#: src/pages/inbox/InboxPage.tsx
 #: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "Inbox"
@@ -9447,6 +9453,11 @@ msgstr "No latest version found"
 msgid "No logs yet"
 msgstr "No logs yet"
 
+#. js-lingui-id: uFIUHo
+#: src/pages/inbox/InboxPage.tsx
+msgid "No matching emails"
+msgstr "No matching emails"
+
 #. js-lingui-id: UwvrGq
 #: src/pages/settings/members/SettingsWorkspaceMembers.tsx
 msgid "No members"
@@ -9596,6 +9607,11 @@ msgstr "No rows with errors"
 #: src/modules/views/view-picker/components/ViewPickerContentCreateMode.tsx
 msgid "No Select field"
 msgstr "No Select field"
+
+#. js-lingui-id: KxRvbc
+#: src/pages/inbox/InboxPage.tsx
+msgid "No sent emails yet"
+msgstr "No sent emails yet"
 
 #. js-lingui-id: RQ6tfU
 #: src/modules/side-panel/pages/navigation-menu-item/components/SidePanelSystemObjectPickerSubView.tsx
@@ -11732,6 +11748,11 @@ msgstr "Search any field"
 msgid "Search API keys"
 msgstr "Search API keys"
 
+#. js-lingui-id: OQe6ZX
+#: src/pages/inbox/InboxPage.tsx
+msgid "Search by subject, name, or email…"
+msgstr "Search by subject, name, or email…"
+
 #. js-lingui-id: yI4D/V
 #: src/modules/side-panel/pages/page-layout/components/dropdown-content/ChartColorSelectionDropdownContent.tsx
 msgid "Search colors"
@@ -11756,6 +11777,11 @@ msgstr "Search country"
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownCurrencySelect.tsx
 msgid "Search currency"
 msgstr "Search currency"
+
+#. js-lingui-id: aNkbfM
+#: src/pages/inbox/InboxPage.tsx
+msgid "Search emails"
+msgstr "Search emails"
 
 #. js-lingui-id: 7taA9j
 #: src/modules/views/components/ViewBarFilterDropdownFieldSelectMenu.tsx
@@ -12218,6 +12244,8 @@ msgid "Sending…"
 msgstr "Sending…"
 
 #. js-lingui-id: h69WC6
+#: src/pages/inbox/InboxPage.tsx
+#: src/pages/inbox/InboxPage.tsx
 #: src/modules/settings/accounts/components/SettingsAccountsMessageAutoCreationCard.tsx
 msgid "Sent"
 msgstr "Sent"
@@ -13866,6 +13894,11 @@ msgstr "Triggers the function with Http request"
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownBooleanSelect.tsx
 msgid "True"
 msgstr "True"
+
+#. js-lingui-id: XYV3Jj
+#: src/pages/inbox/InboxPage.tsx
+msgid "Try a different keyword."
+msgstr "Try a different keyword."
 
 #. js-lingui-id: haaL9N
 #: src/pages/settings/workspace/SettingsApiWebhooks.tsx

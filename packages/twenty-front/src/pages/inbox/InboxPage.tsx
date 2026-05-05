@@ -1,7 +1,7 @@
 import { styled } from '@linaria/react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { useState } from 'react';
-import { IconMail } from 'twenty-ui/display';
+import { useEffect, useState } from 'react';
+import { IconMail, IconSearch, IconSend, IconX } from 'twenty-ui/display';
 import {
   AnimatedPlaceholder,
   AnimatedPlaceholderEmptyContainer,
@@ -18,7 +18,10 @@ import { CustomResolverFetchMoreLoader } from '@/activities/components/CustomRes
 import { SkeletonLoader } from '@/activities/components/SkeletonLoader';
 import { EmailThreadPreview } from '@/activities/emails/components/EmailThreadPreview';
 import { InboxThreadPanel } from '@/activities/emails/components/InboxThreadPanel';
-import { useTimelineThreadsForCurrentWorkspaceMember } from '@/activities/emails/hooks/useTimelineThreadsForCurrentWorkspaceMember';
+import {
+  type InboxFolder,
+  useTimelineThreadsForCurrentWorkspaceMember,
+} from '@/activities/emails/hooks/useTimelineThreadsForCurrentWorkspaceMember';
 import { PageBody } from '@/ui/layout/page/components/PageBody';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
@@ -57,7 +60,7 @@ const StyledTitleRow = styled.div`
   font-size: ${themeCssVariables.font.size.xl};
   font-weight: ${themeCssVariables.font.weight.semiBold};
   gap: ${themeCssVariables.spacing[2]};
-  margin-bottom: ${themeCssVariables.spacing[4]};
+  margin-bottom: ${themeCssVariables.spacing[3]};
 `;
 
 const StyledCount = styled.span`
@@ -66,18 +69,129 @@ const StyledCount = styled.span`
   font-weight: ${themeCssVariables.font.weight.regular};
 `;
 
+const StyledControlsRow = styled.div`
+  align-items: center;
+  display: flex;
+  gap: ${themeCssVariables.spacing[3]};
+  margin-bottom: ${themeCssVariables.spacing[3]};
+`;
+
+const StyledTabs = styled.div`
+  align-items: center;
+  background: ${themeCssVariables.background.secondary};
+  border: 1px solid ${themeCssVariables.border.color.light};
+  border-radius: ${themeCssVariables.border.radius.md};
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+`;
+
+const StyledTab = styled.button<{ isActive: boolean }>`
+  align-items: center;
+  background: ${({ isActive }) =>
+    isActive ? themeCssVariables.background.primary : 'transparent'};
+  border: none;
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${({ isActive }) =>
+    isActive
+      ? themeCssVariables.font.color.primary
+      : themeCssVariables.font.color.secondary};
+  cursor: pointer;
+  display: flex;
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  gap: ${themeCssVariables.spacing[1]};
+  height: 26px;
+  padding: 0 ${themeCssVariables.spacing[2]};
+
+  &:hover {
+    color: ${themeCssVariables.font.color.primary};
+  }
+`;
+
+const StyledSearchWrapper = styled.div`
+  align-items: center;
+  background: ${themeCssVariables.background.secondary};
+  border: 1px solid ${themeCssVariables.border.color.light};
+  border-radius: ${themeCssVariables.border.radius.md};
+  display: flex;
+  flex: 1;
+  gap: ${themeCssVariables.spacing[2]};
+  height: 32px;
+  max-width: 480px;
+  padding: 0 ${themeCssVariables.spacing[2]};
+
+  &:focus-within {
+    border-color: ${themeCssVariables.border.color.medium};
+  }
+`;
+
+const StyledSearchInput = styled.input`
+  background: transparent;
+  border: none;
+  color: ${themeCssVariables.font.color.primary};
+  flex: 1;
+  font-size: ${themeCssVariables.font.size.sm};
+  outline: none;
+  padding: 0;
+
+  &::placeholder {
+    color: ${themeCssVariables.font.color.tertiary};
+  }
+`;
+
+const StyledClearButton = styled.button`
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: ${themeCssVariables.font.color.tertiary};
+  cursor: pointer;
+  display: flex;
+  padding: 0;
+
+  &:hover {
+    color: ${themeCssVariables.font.color.primary};
+  }
+`;
+
 const StyledRowWrapper = styled.div<{ isSelected: boolean }>`
   background: ${({ isSelected }) =>
-    isSelected ? themeCssVariables.background.transparent.lighter : 'transparent'};
+    isSelected
+      ? themeCssVariables.background.transparent.lighter
+      : 'transparent'};
   cursor: pointer;
 `;
 
+const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delayMs);
+
+    return () => clearTimeout(id);
+  }, [value, delayMs]);
+
+  return debounced;
+};
+
 export const InboxPage = () => {
   const { t } = useLingui();
+  const [folder, setFolder] = useState<InboxFolder>('inbox');
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 300);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
 
+  // When we change tab/search, the selected thread may not be in the new
+  // result set; clear it so the right-pane doesn't show a stale email.
+  useEffect(() => {
+    setSelectedThreadId(null);
+  }, [folder, debouncedSearch]);
+
   const { data, firstQueryLoading, isFetchingMore, fetchMoreRecords } =
-    useTimelineThreadsForCurrentWorkspaceMember();
+    useTimelineThreadsForCurrentWorkspaceMember({
+      folder,
+      search: debouncedSearch,
+    });
 
   const totalNumberOfThreads = data?.totalNumberOfThreads ?? 0;
   const timelineThreads = data?.timelineThreads ?? [];
@@ -104,9 +218,55 @@ export const InboxPage = () => {
           <StyledList>
             <Section>
               <StyledTitleRow>
-                <Trans>Inbox</Trans>
+                {folder === 'inbox' ? <Trans>Inbox</Trans> : <Trans>Sent</Trans>}
                 <StyledCount>{totalNumberOfThreads}</StyledCount>
               </StyledTitleRow>
+              <StyledControlsRow>
+                <StyledTabs role="tablist">
+                  <StyledTab
+                    type="button"
+                    role="tab"
+                    aria-selected={folder === 'inbox'}
+                    isActive={folder === 'inbox'}
+                    onClick={() => setFolder('inbox')}
+                  >
+                    <IconMail size={14} />
+                    <Trans>Inbox</Trans>
+                  </StyledTab>
+                  <StyledTab
+                    type="button"
+                    role="tab"
+                    aria-selected={folder === 'sent'}
+                    isActive={folder === 'sent'}
+                    onClick={() => setFolder('sent')}
+                  >
+                    <IconSend size={14} />
+                    <Trans>Sent</Trans>
+                  </StyledTab>
+                </StyledTabs>
+                <StyledSearchWrapper>
+                  <IconSearch
+                    size={14}
+                    color={themeCssVariables.font.color.tertiary}
+                  />
+                  <StyledSearchInput
+                    type="text"
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    placeholder={t`Search by subject, name, or email…`}
+                    aria-label={t`Search emails`}
+                  />
+                  {searchInput.length > 0 && (
+                    <StyledClearButton
+                      type="button"
+                      onClick={() => setSearchInput('')}
+                      aria-label={t`Clear search`}
+                    >
+                      <IconX size={14} />
+                    </StyledClearButton>
+                  )}
+                </StyledSearchWrapper>
+              </StyledControlsRow>
               {firstQueryLoading && <SkeletonLoader />}
               {!firstQueryLoading && timelineThreads.length === 0 && (
                 <AnimatedPlaceholderEmptyContainer
@@ -116,13 +276,23 @@ export const InboxPage = () => {
                   <AnimatedPlaceholder type="emptyInbox" />
                   <AnimatedPlaceholderEmptyTextContainer>
                     <AnimatedPlaceholderEmptyTitle>
-                      <Trans>No emails yet</Trans>
+                      {debouncedSearch.length > 0 ? (
+                        <Trans>No matching emails</Trans>
+                      ) : folder === 'sent' ? (
+                        <Trans>No sent emails yet</Trans>
+                      ) : (
+                        <Trans>No emails yet</Trans>
+                      )}
                     </AnimatedPlaceholderEmptyTitle>
                     <AnimatedPlaceholderEmptySubTitle>
-                      <Trans>
-                        Connect an email account in Settings to start syncing
-                        your inbox.
-                      </Trans>
+                      {debouncedSearch.length > 0 ? (
+                        <Trans>Try a different keyword.</Trans>
+                      ) : (
+                        <Trans>
+                          Connect an email account in Settings to start syncing
+                          your inbox.
+                        </Trans>
+                      )}
                     </AnimatedPlaceholderEmptySubTitle>
                   </AnimatedPlaceholderEmptyTextContainer>
                 </AnimatedPlaceholderEmptyContainer>

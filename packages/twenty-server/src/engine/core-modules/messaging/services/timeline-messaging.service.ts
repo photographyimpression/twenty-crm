@@ -107,6 +107,8 @@ export class TimelineMessagingService {
     workspaceId: string,
     offset: number,
     pageSize: number,
+    folder: 'inbox' | 'sent' = 'inbox',
+    search?: string | null,
   ): Promise<{
     messageThreads: Omit<
       TimelineThreadDTO,
@@ -120,6 +122,17 @@ export class TimelineMessagingService {
   }> {
     const authContext = buildSystemAuthContext(workspaceId);
 
+    // Map tab → folder name predicate. Sent folder is named "Sent Items"
+    // in Microsoft, "Sent Mail" in Gmail; isSentFolder is the reliable flag.
+    const folderPredicate =
+      folder === 'sent'
+        ? '"messageFolder"."isSentFolder" = TRUE'
+        : 'LOWER("messageFolder"."name") = \'inbox\'';
+
+    const trimmedSearch = search?.trim();
+    const hasSearch = !!trimmedSearch;
+    const searchPattern = `%${trimmedSearch ?? ''}%`;
+
     return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
         const messageThreadRepository =
@@ -128,57 +141,58 @@ export class TimelineMessagingService {
             'messageThread',
           );
 
-        const totalNumberOfThreads = await messageThreadRepository
-          .createQueryBuilder('messageThread')
-          .innerJoin('messageThread.messages', 'messages')
-          .innerJoin(
-            'messages.messageChannelMessageAssociations',
-            'messageChannelMessageAssociation',
-          )
-          .innerJoin(
-            'messageChannelMessageAssociation.messageChannel',
-            'messageChannel',
-          )
-          .innerJoin('messageChannel.connectedAccount', 'connectedAccount')
-          .innerJoin(
-            'messageChannelMessageAssociation.messageFolders',
-            'mcmamf',
-          )
-          .innerJoin('mcmamf.messageFolder', 'messageFolder')
-          .where('connectedAccount.accountOwnerId = :workspaceMemberId', {
-            workspaceMemberId,
-          })
-          .andWhere('LOWER(messageFolder.name) = :inboxName', {
-            inboxName: 'inbox',
-          })
+        const buildBaseQuery = (alias = 'messageThread') => {
+          const qb = messageThreadRepository
+            .createQueryBuilder(alias)
+            .innerJoin(`${alias}.messages`, 'messages')
+            .innerJoin(
+              'messages.messageChannelMessageAssociations',
+              'messageChannelMessageAssociation',
+            )
+            .innerJoin(
+              'messageChannelMessageAssociation.messageChannel',
+              'messageChannel',
+            )
+            .innerJoin('messageChannel.connectedAccount', 'connectedAccount')
+            .innerJoin(
+              'messageChannelMessageAssociation.messageFolders',
+              'mcmamf',
+            )
+            .innerJoin('mcmamf.messageFolder', 'messageFolder')
+            .where('connectedAccount.accountOwnerId = :workspaceMemberId', {
+              workspaceMemberId,
+            })
+            .andWhere(folderPredicate);
+
+          if (hasSearch) {
+            // Match against thread participants (sender/recipient handles &
+            // displayNames) OR message text/subject. The LEFT JOIN may fan
+            // out rows but we group by thread.id below so distinct counts
+            // are preserved.
+            qb.leftJoin(
+              'messages.messageParticipants',
+              'searchParticipants',
+            ).andWhere(
+              `(
+                messages.subject ILIKE :search
+                OR messages.text ILIKE :search
+                OR searchParticipants.handle ILIKE :search
+                OR searchParticipants."displayName" ILIKE :search
+              )`,
+              { search: searchPattern },
+            );
+          }
+
+          return qb;
+        };
+
+        const totalNumberOfThreads = await buildBaseQuery()
           .groupBy('messageThread.id')
           .getCount();
 
-        const threadIdsQuery = await messageThreadRepository
-          .createQueryBuilder('messageThread')
+        const threadIdsQuery = await buildBaseQuery()
           .select('messageThread.id', 'id')
           .addSelect('MAX(messages.receivedAt)', 'max_received_at')
-          .innerJoin('messageThread.messages', 'messages')
-          .innerJoin(
-            'messages.messageChannelMessageAssociations',
-            'messageChannelMessageAssociation',
-          )
-          .innerJoin(
-            'messageChannelMessageAssociation.messageChannel',
-            'messageChannel',
-          )
-          .innerJoin('messageChannel.connectedAccount', 'connectedAccount')
-          .innerJoin(
-            'messageChannelMessageAssociation.messageFolders',
-            'mcmamf',
-          )
-          .innerJoin('mcmamf.messageFolder', 'messageFolder')
-          .where('connectedAccount.accountOwnerId = :workspaceMemberId', {
-            workspaceMemberId,
-          })
-          .andWhere('LOWER(messageFolder.name) = :inboxName', {
-            inboxName: 'inbox',
-          })
           .groupBy('messageThread.id')
           .orderBy('max_received_at', 'DESC')
           .offset(offset)
@@ -227,6 +241,7 @@ export class TimelineMessagingService {
   public async getThreadParticipantsByThreadId(
     messageThreadIds: string[],
     workspaceId: string,
+    excludeWorkspaceMemberId?: string | null,
   ): Promise<{
     [key: string]: MessageParticipantWorkspaceEntity[];
   }> {
@@ -240,7 +255,7 @@ export class TimelineMessagingService {
             'messageParticipant',
           );
 
-        const threadParticipants = await messageParticipantRepository
+        const qb = messageParticipantRepository
           .createQueryBuilder()
           .select('messageParticipant')
           .addSelect('message.messageThreadId')
@@ -256,7 +271,16 @@ export class TimelineMessagingService {
           })
           .andWhere('messageParticipant.role = :role', {
             role: MessageParticipantRole.FROM,
-          })
+          });
+
+        if (excludeWorkspaceMemberId) {
+          qb.andWhere(
+            '(messageParticipant."workspaceMemberId" IS NULL OR messageParticipant."workspaceMemberId" != :excludeWorkspaceMemberId)',
+            { excludeWorkspaceMemberId },
+          );
+        }
+
+        const threadParticipants = await qb
           .orderBy('message.messageThreadId')
           .distinctOn(['message.messageThreadId', 'messageParticipant.handle'])
           .getMany();

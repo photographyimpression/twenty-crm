@@ -2821,6 +2821,11 @@ msgstr "Stad"
 msgid "Clear"
 msgstr "Wissen"
 
+#. js-lingui-id: V8yTm6
+#: src/pages/inbox/InboxPage.tsx
+msgid "Clear search"
+msgstr ""
+
 #. js-lingui-id: wu0RfR
 #: src/modules/settings/admin-panel/config-variables/components/ConfigVariableHelpText.tsx
 msgid "Clear the field or \"X\" to revert to environment/default value."
@@ -7324,6 +7329,7 @@ msgstr ""
 #. js-lingui-id: Gp4Yi6
 #: src/pages/inbox/InboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
+#: src/pages/inbox/InboxPage.tsx
 #: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "Inbox"
@@ -9452,6 +9458,11 @@ msgstr "Geen nieuwste versie gevonden"
 msgid "No logs yet"
 msgstr ""
 
+#. js-lingui-id: uFIUHo
+#: src/pages/inbox/InboxPage.tsx
+msgid "No matching emails"
+msgstr ""
+
 #. js-lingui-id: UwvrGq
 #: src/pages/settings/members/SettingsWorkspaceMembers.tsx
 msgid "No members"
@@ -9601,6 +9612,11 @@ msgstr "Geen rijen met fouten"
 #: src/modules/views/view-picker/components/ViewPickerContentCreateMode.tsx
 msgid "No Select field"
 msgstr "Geen selecteer veld"
+
+#. js-lingui-id: KxRvbc
+#: src/pages/inbox/InboxPage.tsx
+msgid "No sent emails yet"
+msgstr ""
 
 #. js-lingui-id: RQ6tfU
 #: src/modules/side-panel/pages/navigation-menu-item/components/SidePanelSystemObjectPickerSubView.tsx
@@ -11737,6 +11753,11 @@ msgstr "Zoek een veld"
 msgid "Search API keys"
 msgstr "Zoek API-sleutels"
 
+#. js-lingui-id: OQe6ZX
+#: src/pages/inbox/InboxPage.tsx
+msgid "Search by subject, name, or email…"
+msgstr ""
+
 #. js-lingui-id: yI4D/V
 #: src/modules/side-panel/pages/page-layout/components/dropdown-content/ChartColorSelectionDropdownContent.tsx
 msgid "Search colors"
@@ -11761,6 +11782,11 @@ msgstr "Zoek land"
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownCurrencySelect.tsx
 msgid "Search currency"
 msgstr "Valuta zoeken"
+
+#. js-lingui-id: aNkbfM
+#: src/pages/inbox/InboxPage.tsx
+msgid "Search emails"
+msgstr ""
 
 #. js-lingui-id: 7taA9j
 #: src/modules/views/components/ViewBarFilterDropdownFieldSelectMenu.tsx
@@ -12223,6 +12249,8 @@ msgid "Sending…"
 msgstr ""
 
 #. js-lingui-id: h69WC6
+#: src/pages/inbox/InboxPage.tsx
+#: src/pages/inbox/InboxPage.tsx
 #: src/modules/settings/accounts/components/SettingsAccountsMessageAutoCreationCard.tsx
 msgid "Sent"
 msgstr "Verzonden"
@@ -13871,6 +13899,11 @@ msgstr "Activeert de functie met een Http-verzoek"
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownBooleanSelect.tsx
 msgid "True"
 msgstr "Waar"
+
+#. js-lingui-id: XYV3Jj
+#: src/pages/inbox/InboxPage.tsx
+msgid "Try a different keyword."
+msgstr ""
 
 #. js-lingui-id: haaL9N
 #: src/pages/settings/workspace/SettingsApiWebhooks.tsx
