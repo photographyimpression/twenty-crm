@@ -9,6 +9,7 @@ import { UUIDScalarType } from 'src/engine/api/graphql/workspace-schema-builder/
 import { TIMELINE_THREADS_MAX_PAGE_SIZE } from 'src/engine/core-modules/messaging/constants/messaging.constants';
 import { DismissReconnectAccountBannerInput } from 'src/engine/core-modules/messaging/dtos/dismiss-reconnect-account-banner.input';
 import { TimelineThreadsWithTotalDTO } from 'src/engine/core-modules/messaging/dtos/timeline-threads-with-total.dto';
+import { EmailReplyService } from 'src/engine/core-modules/messaging/services/email-reply.service';
 import { GetMessagesService } from 'src/engine/core-modules/messaging/services/get-messages.service';
 import { UserService } from 'src/engine/core-modules/user/services/user.service';
 import { type AuthContextUser } from 'src/engine/core-modules/auth/types/auth-context.type';
@@ -70,6 +71,15 @@ class GetTimelineThreadsForCurrentWorkspaceMemberArgs {
   pageSize: number;
 }
 
+@ArgsType()
+class ReplyToEmailThreadArgs {
+  @Field(() => UUIDScalarType)
+  threadId: string;
+
+  @Field()
+  body: string;
+}
+
 @UseGuards(WorkspaceAuthGuard, UserAuthGuard, CustomPermissionGuard)
 @CoreResolver(() => TimelineThreadsWithTotalDTO)
 export class TimelineMessagingResolver {
@@ -77,6 +87,7 @@ export class TimelineMessagingResolver {
     private readonly getMessagesFromPersonIdsService: GetMessagesService,
     private readonly userService: UserService,
     private readonly accountsToReconnectService: AccountsToReconnectService,
+    private readonly emailReplyService: EmailReplyService,
   ) {}
 
   @Query(() => TimelineThreadsWithTotalDTO)
@@ -185,6 +196,31 @@ export class TimelineMessagingResolver {
       );
 
     return timelineThreads;
+  }
+
+  @Mutation(() => Boolean)
+  async replyToEmailThread(
+    @AuthUser() user: AuthContextUser,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+    @Args() { threadId, body }: ReplyToEmailThreadArgs,
+  ): Promise<boolean> {
+    const workspaceMember = await this.userService.loadWorkspaceMember(
+      user,
+      workspace,
+    );
+
+    if (!workspaceMember) {
+      return false;
+    }
+
+    const result = await this.emailReplyService.replyToThread({
+      threadId,
+      body,
+      workspaceId: workspace.id,
+      workspaceMemberId: workspaceMember.id,
+    });
+
+    return result.ok;
   }
 
   @UseGuards(SettingsPermissionGuard(PermissionFlagType.CONNECTED_ACCOUNTS))

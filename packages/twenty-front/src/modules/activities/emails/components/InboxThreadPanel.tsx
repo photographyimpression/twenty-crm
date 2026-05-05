@@ -1,16 +1,20 @@
+import { useMutation } from '@apollo/client';
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { CustomResolverFetchMoreLoader } from '@/activities/components/CustomResolverFetchMoreLoader';
 import { EmailLoader } from '@/activities/emails/components/EmailLoader';
 import { EmailThreadHeader } from '@/activities/emails/components/EmailThreadHeader';
 import { EmailThreadMessage } from '@/activities/emails/components/EmailThreadMessage';
+import { REPLY_TO_EMAIL_THREAD } from '@/activities/emails/graphql/mutations/replyToEmailThread';
 import { useInboxThread } from '@/activities/emails/hooks/useInboxThread';
+import { useApolloCoreClient } from '@/object-metadata/hooks/useApolloCoreClient';
+import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 
 import { ConnectedAccountProvider } from 'twenty-shared/types';
-import { assertUnreachable, isDefined } from 'twenty-shared/utils';
-import { IconArrowBackUp, IconX } from 'twenty-ui/display';
+import { isDefined } from 'twenty-shared/utils';
+import { IconArrowBackUp, IconSend, IconX } from 'twenty-ui/display';
 import { Button, LightIconButton } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
@@ -63,6 +67,42 @@ const StyledFooter = styled.div`
   padding: ${themeCssVariables.spacing[2]};
 `;
 
+const StyledComposeArea = styled.div`
+  background: ${themeCssVariables.background.primary};
+  border-top: 1px solid ${themeCssVariables.border.color.light};
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[2]};
+  padding: ${themeCssVariables.spacing[3]};
+`;
+
+const StyledTextarea = styled.textarea`
+  background: ${themeCssVariables.background.primary};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.md};
+  box-sizing: border-box;
+  color: ${themeCssVariables.font.color.primary};
+  font-family: inherit;
+  font-size: ${themeCssVariables.font.size.md};
+  min-height: 120px;
+  padding: ${themeCssVariables.spacing[2]};
+  resize: vertical;
+  width: 100%;
+
+  &:focus {
+    border-color: ${themeCssVariables.border.color.medium};
+    outline: none;
+  }
+`;
+
+const StyledComposeRow = styled.div`
+  align-items: center;
+  display: flex;
+  gap: ${themeCssVariables.spacing[2]};
+  justify-content: flex-end;
+`;
+
 type InboxThreadPanelProps = {
   threadId: string;
   onClose: () => void;
@@ -72,6 +112,16 @@ export const InboxThreadPanel = ({
   threadId,
   onClose,
 }: InboxThreadPanelProps) => {
+  const apolloCoreClient = useApolloCoreClient();
+  const { enqueueSuccessSnackBar, enqueueErrorSnackBar } = useSnackBar();
+  const [isComposing, setIsComposing] = useState(false);
+  const [replyBody, setReplyBody] = useState('');
+  const [isSending, setIsSending] = useState(false);
+
+  const [replyMutation] = useMutation(REPLY_TO_EMAIL_THREAD, {
+    client: apolloCoreClient,
+  });
+
   const {
     thread,
     messages,
@@ -109,24 +159,47 @@ export const InboxThreadPanel = ({
     messageThreadExternalId,
   ]);
 
+  const canReplyInApp =
+    canReply && connectedAccountProvider === ConnectedAccountProvider.MICROSOFT;
+
   const handleReplyClick = () => {
-    if (!isDefined(canReply)) return;
-    let url: string;
-    switch (connectedAccountProvider) {
-      case ConnectedAccountProvider.MICROSOFT:
-        url = `https://outlook.office.com/mail/deeplink?ItemID=${lastMessageExternalId}`;
-        window.open(url, '_blank');
-        break;
-      case ConnectedAccountProvider.GOOGLE:
-        url = `https://mail.google.com/mail/?authuser=${connectedAccountHandle}#all/${messageThreadExternalId}`;
-        window.open(url, '_blank');
-        break;
-      case ConnectedAccountProvider.IMAP_SMTP_CALDAV:
-        throw new Error('Account provider not supported');
-      case null:
-        throw new Error('Account provider not provided');
-      default:
-        assertUnreachable(connectedAccountProvider);
+    if (canReplyInApp) {
+      setIsComposing(true);
+      return;
+    }
+    if (connectedAccountProvider === ConnectedAccountProvider.GOOGLE) {
+      window.open(
+        `https://mail.google.com/mail/?authuser=${connectedAccountHandle}#all/${messageThreadExternalId}`,
+        '_blank',
+      );
+    } else if (connectedAccountProvider === ConnectedAccountProvider.MICROSOFT) {
+      window.open(
+        `https://outlook.office.com/mail/deeplink?ItemID=${lastMessageExternalId}`,
+        '_blank',
+      );
+    }
+  };
+
+  const handleSend = async () => {
+    if (!replyBody.trim() || isSending) return;
+    setIsSending(true);
+    try {
+      const result = await replyMutation({
+        variables: { threadId, body: replyBody },
+      });
+      if (result.data?.replyToEmailThread) {
+        enqueueSuccessSnackBar({ message: t`Reply sent` });
+        setReplyBody('');
+        setIsComposing(false);
+      } else {
+        enqueueErrorSnackBar({ message: t`Failed to send reply` });
+      }
+    } catch (error) {
+      enqueueErrorSnackBar({
+        message: (error as Error).message ?? t`Failed to send reply`,
+      });
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -172,7 +245,7 @@ export const InboxThreadPanel = ({
           </>
         )}
       </StyledScroll>
-      {isDefined(canReply) && !messageChannelLoading && (
+      {isDefined(canReply) && !messageChannelLoading && !isComposing && (
         <StyledFooter>
           <Button
             size="small"
@@ -182,6 +255,37 @@ export const InboxThreadPanel = ({
             disabled={!isDefined(canReply)}
           />
         </StyledFooter>
+      )}
+      {isComposing && (
+        <StyledComposeArea>
+          <StyledTextarea
+            placeholder={t`Type your reply…`}
+            value={replyBody}
+            onChange={(event) => setReplyBody(event.target.value)}
+            autoFocus
+            disabled={isSending}
+          />
+          <StyledComposeRow>
+            <Button
+              size="small"
+              variant="secondary"
+              accent="default"
+              onClick={() => {
+                setIsComposing(false);
+                setReplyBody('');
+              }}
+              title={t`Cancel`}
+              disabled={isSending}
+            />
+            <Button
+              size="small"
+              onClick={handleSend}
+              title={isSending ? t`Sending…` : t`Send`}
+              Icon={IconSend}
+              disabled={!replyBody.trim() || isSending}
+            />
+          </StyledComposeRow>
+        </StyledComposeArea>
       )}
     </StyledWrapper>
   );
