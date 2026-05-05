@@ -2557,6 +2557,7 @@ msgstr "无法扫描？复制"
 #: src/modules/object-record/record-update-multiple/components/UpdateMultipleRecordsFooter.tsx
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
 #: src/modules/command-menu-item/record/constants/DashboardCommandMenuItemsConfig.tsx
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
 #: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
 msgid "Cancel"
 msgstr "取消"
@@ -5075,6 +5076,7 @@ msgstr "电子邮件或域已在拦截列表中"
 
 #. js-lingui-id: +VjrH/
 #: src/modules/side-panel/hooks/useOpenEmailThreadInSidePanel.ts
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
 msgid "Email Thread"
 msgstr "电子邮件线程"
 
@@ -6174,6 +6176,12 @@ msgstr ""
 #. js-lingui-id: 9ryUyP
 #: src/pages/settings/ai/SettingsAIPrompts.tsx
 msgid "Failed to save workspace instructions"
+msgstr ""
+
+#. js-lingui-id: OYn3mX
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Failed to send reply"
 msgstr ""
 
 #. js-lingui-id: LVcnN8
@@ -8234,6 +8242,7 @@ msgstr ""
 
 #. js-lingui-id: 7YK6ap
 #: src/modules/side-panel/pages/message-thread/components/SidePanelMessageThreadPage.tsx
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
 msgid "Loading thread"
 msgstr "正在加载会话"
 
@@ -11196,9 +11205,15 @@ msgstr ""
 
 #. js-lingui-id: ImOQa9
 #: src/modules/side-panel/pages/message-thread/components/SidePanelMessageThreadPage.tsx
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
 #: src/modules/activities/emails/components/EmailThreadBottomBar.tsx
 msgid "Reply"
 msgstr "回复"
+
+#. js-lingui-id: PW1IbX
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Reply sent"
+msgstr ""
 
 #. js-lingui-id: QMiOjK
 #: src/modules/activities/emails/components/EmailThreadBottomBar.tsx
@@ -12171,6 +12186,11 @@ msgstr "选择值"
 msgid "Select your preferred language"
 msgstr "选择您偏好的语言"
 
+#. js-lingui-id: JlFcis
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Send"
+msgstr ""
+
 #. js-lingui-id: mjK8F3
 #: src/pages/settings/members/SettingsWorkspaceMembers.tsx
 msgid "Send an invite email to your team"
@@ -12196,6 +12216,11 @@ msgstr "正在发送请求…"
 #: src/modules/auth/sign-in-up/components/EmailVerificationSent.tsx
 msgid "Sending..."
 msgstr "发送中..."
+
+#. js-lingui-id: Sad2tK
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Sending…"
+msgstr ""
 
 #. js-lingui-id: h69WC6
 #: src/modules/settings/accounts/components/SettingsAccountsMessageAutoCreationCard.tsx
@@ -13965,6 +13990,11 @@ msgstr "输入任何内容..."
 #. js-lingui-id: UhqKcC
 #: src/modules/side-panel/pages/navigation-menu-item/components/SidePanelNewSidebarItemRecordSubView.tsx
 msgid "Type to search records"
+msgstr ""
+
+#. js-lingui-id: dCy0ww
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Type your reply…"
 msgstr ""
 
 #. js-lingui-id: 4KcBEY

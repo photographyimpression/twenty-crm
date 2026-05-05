@@ -262,6 +262,8 @@ export const InboxThreadPanel = ({
             placeholder={t`Type your reply…`}
             value={replyBody}
             onChange={(event) => setReplyBody(event.target.value)}
+            onKeyDown={(event) => event.stopPropagation()}
+            onKeyUp={(event) => event.stopPropagation()}
             autoFocus
             disabled={isSending}
           />

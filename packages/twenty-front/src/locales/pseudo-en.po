@@ -2552,6 +2552,7 @@ msgstr ""
 #: src/modules/object-record/record-update-multiple/components/UpdateMultipleRecordsFooter.tsx
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
 #: src/modules/command-menu-item/record/constants/DashboardCommandMenuItemsConfig.tsx
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
 #: src/modules/activities/calendar/components/CreateCalendarEventModal.tsx
 msgid "Cancel"
 msgstr ""
@@ -5070,6 +5071,7 @@ msgstr ""
 
 #. js-lingui-id: +VjrH/
 #: src/modules/side-panel/hooks/useOpenEmailThreadInSidePanel.ts
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
 msgid "Email Thread"
 msgstr ""
 
@@ -6169,6 +6171,12 @@ msgstr ""
 #. js-lingui-id: 9ryUyP
 #: src/pages/settings/ai/SettingsAIPrompts.tsx
 msgid "Failed to save workspace instructions"
+msgstr ""
+
+#. js-lingui-id: OYn3mX
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Failed to send reply"
 msgstr ""
 
 #. js-lingui-id: LVcnN8
@@ -8229,6 +8237,7 @@ msgstr ""
 
 #. js-lingui-id: 7YK6ap
 #: src/modules/side-panel/pages/message-thread/components/SidePanelMessageThreadPage.tsx
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
 msgid "Loading thread"
 msgstr ""
 
@@ -11191,8 +11200,14 @@ msgstr ""
 
 #. js-lingui-id: ImOQa9
 #: src/modules/side-panel/pages/message-thread/components/SidePanelMessageThreadPage.tsx
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
 #: src/modules/activities/emails/components/EmailThreadBottomBar.tsx
 msgid "Reply"
+msgstr ""
+
+#. js-lingui-id: PW1IbX
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Reply sent"
 msgstr ""
 
 #. js-lingui-id: QMiOjK
@@ -12166,6 +12181,11 @@ msgstr ""
 msgid "Select your preferred language"
 msgstr ""
 
+#. js-lingui-id: JlFcis
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Send"
+msgstr ""
+
 #. js-lingui-id: mjK8F3
 #: src/pages/settings/members/SettingsWorkspaceMembers.tsx
 msgid "Send an invite email to your team"
@@ -12190,6 +12210,11 @@ msgstr ""
 #: src/modules/auth/sign-in-up/components/EmailVerificationSent.tsx
 #: src/modules/auth/sign-in-up/components/EmailVerificationSent.tsx
 msgid "Sending..."
+msgstr ""
+
+#. js-lingui-id: Sad2tK
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Sending…"
 msgstr ""
 
 #. js-lingui-id: h69WC6
@@ -13960,6 +13985,11 @@ msgstr ""
 #. js-lingui-id: UhqKcC
 #: src/modules/side-panel/pages/navigation-menu-item/components/SidePanelNewSidebarItemRecordSubView.tsx
 msgid "Type to search records"
+msgstr ""
+
+#. js-lingui-id: dCy0ww
+#: src/modules/activities/emails/components/InboxThreadPanel.tsx
+msgid "Type your reply…"
 msgstr ""
 
 #. js-lingui-id: 4KcBEY
