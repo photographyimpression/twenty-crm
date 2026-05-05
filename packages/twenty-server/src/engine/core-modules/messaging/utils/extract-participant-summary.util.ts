@@ -1,17 +1,37 @@
 import { type TimelineThreadParticipantDTO } from 'src/engine/core-modules/messaging/dtos/timeline-thread-participant.dto';
-import { filterActiveParticipants } from 'src/engine/core-modules/messaging/utils/filter-active-participants.util';
 import { formatThreadParticipant } from 'src/engine/core-modules/messaging/utils/format-thread-participant.util';
 import { type MessageParticipantWorkspaceEntity } from 'src/modules/messaging/common/standard-objects/message-participant.workspace-entity';
 
+const EMPTY_PARTICIPANT: TimelineThreadParticipantDTO = {
+  personId: null,
+  workspaceMemberId: null,
+  firstName: '',
+  lastName: '',
+  displayName: '',
+  avatarUrl: '',
+  handle: '',
+};
+
 export const extractParticipantSummary = (
-  messageParticipants: MessageParticipantWorkspaceEntity[],
+  // The caller now controls roles via the SQL query, and may legitimately
+  // pass an empty list (e.g. Sent thread where the only FROM was the user
+  // themselves and we excluded them). Tolerate undefined and []
+  // gracefully.
+  messageParticipants: MessageParticipantWorkspaceEntity[] | undefined,
 ): {
   firstParticipant: TimelineThreadParticipantDTO;
   lastTwoParticipants: TimelineThreadParticipantDTO[];
   participantCount: number;
 } => {
-  const activeMessageParticipants =
-    filterActiveParticipants(messageParticipants);
+  const activeMessageParticipants = messageParticipants ?? [];
+
+  if (activeMessageParticipants.length === 0) {
+    return {
+      firstParticipant: EMPTY_PARTICIPANT,
+      lastTwoParticipants: [],
+      participantCount: 0,
+    };
+  }
 
   const firstParticipant = formatThreadParticipant(
     activeMessageParticipants[0],

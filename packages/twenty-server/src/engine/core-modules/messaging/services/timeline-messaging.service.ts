@@ -255,6 +255,18 @@ export class TimelineMessagingService {
             'messageParticipant',
           );
 
+        // For Sent threads, every FROM is the user themselves. Excluding
+        // the user without a fallback leaves no participants to display,
+        // so we also include TO/CC participants — i.e. the recipients of
+        // each message — so the row shows whom the user emailed.
+        const roles = excludeWorkspaceMemberId
+          ? [
+              MessageParticipantRole.FROM,
+              MessageParticipantRole.TO,
+              MessageParticipantRole.CC,
+            ]
+          : [MessageParticipantRole.FROM];
+
         const qb = messageParticipantRepository
           .createQueryBuilder()
           .select('messageParticipant')
@@ -269,9 +281,7 @@ export class TimelineMessagingService {
           .where('message.messageThreadId = ANY(:messageThreadIds)', {
             messageThreadIds,
           })
-          .andWhere('messageParticipant.role = :role', {
-            role: MessageParticipantRole.FROM,
-          });
+          .andWhere('messageParticipant.role IN (:...roles)', { roles });
 
         if (excludeWorkspaceMemberId) {
           qb.andWhere(
