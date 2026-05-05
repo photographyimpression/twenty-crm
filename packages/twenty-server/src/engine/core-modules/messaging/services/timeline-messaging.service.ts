@@ -140,8 +140,16 @@ export class TimelineMessagingService {
             'messageChannel',
           )
           .innerJoin('messageChannel.connectedAccount', 'connectedAccount')
+          .innerJoin(
+            'messageChannelMessageAssociation.messageFolders',
+            'mcmamf',
+          )
+          .innerJoin('mcmamf.messageFolder', 'messageFolder')
           .where('connectedAccount.accountOwnerId = :workspaceMemberId', {
             workspaceMemberId,
+          })
+          .andWhere('LOWER(messageFolder.name) = :inboxName', {
+            inboxName: 'inbox',
           })
           .groupBy('messageThread.id')
           .getCount();
@@ -160,8 +168,16 @@ export class TimelineMessagingService {
             'messageChannel',
           )
           .innerJoin('messageChannel.connectedAccount', 'connectedAccount')
+          .innerJoin(
+            'messageChannelMessageAssociation.messageFolders',
+            'mcmamf',
+          )
+          .innerJoin('mcmamf.messageFolder', 'messageFolder')
           .where('connectedAccount.accountOwnerId = :workspaceMemberId', {
             workspaceMemberId,
+          })
+          .andWhere('LOWER(messageFolder.name) = :inboxName', {
+            inboxName: 'inbox',
           })
           .groupBy('messageThread.id')
           .orderBy('max_received_at', 'DESC')

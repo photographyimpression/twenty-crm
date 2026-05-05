@@ -17,7 +17,7 @@ import { CustomResolverFetchMoreLoader } from '@/activities/components/CustomRes
 import { SkeletonLoader } from '@/activities/components/SkeletonLoader';
 import { EmailThreadPreview } from '@/activities/emails/components/EmailThreadPreview';
 import { useTimelineThreadsForCurrentWorkspaceMember } from '@/activities/emails/hooks/useTimelineThreadsForCurrentWorkspaceMember';
-import { PageBody } from '@/ui/layout/page/components/PageBody';
+import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { type TimelineThread } from '~/generated/graphql';
@@ -65,7 +65,7 @@ export const InboxPage = () => {
   return (
     <PageContainer>
       <PageHeader title={t`Inbox`} Icon={IconMail} />
-      <PageBody>
+      <MainContainerLayoutWithSidePanel>
         <StyledContainer>
           <Section>
             <StyledTitleRow>
@@ -105,7 +105,7 @@ export const InboxPage = () => {
             />
           </Section>
         </StyledContainer>
-      </PageBody>
+      </MainContainerLayoutWithSidePanel>
     </PageContainer>
   );
 };
