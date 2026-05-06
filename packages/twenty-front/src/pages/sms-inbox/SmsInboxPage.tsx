@@ -14,6 +14,7 @@ import {
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { ActivityList } from '@/activities/components/ActivityList';
+import { markSmsAsRead } from '@/sms/hooks/useUnreadSmsCount';
 import { PageBody } from '@/ui/layout/page/components/PageBody';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
@@ -497,6 +498,9 @@ export const SmsInboxPage = () => {
   }, [serverUrl]);
 
   useEffect(() => {
+    // Mark all SMS as read whenever the user opens this page so the
+    // unread badge in the side nav resets.
+    markSmsAsRead();
     void fetchRecords();
     const id = setInterval(() => void fetchRecords(), POLL_INTERVAL_MS);
 
@@ -544,10 +548,32 @@ export const SmsInboxPage = () => {
             : selectedThread.lastMessage.to,
         ) || `+${selectedThread.counterpartyDigits}`;
 
+      // Reply from the SAME Telnyx number that received the contact's
+      // last inbound message. Walk recent → old to find the most
+      // recent inbound and use its `to`. Fall back to the most recent
+      // outbound's `from`. Either way Telnyx threads correctly.
+      const ourNumber = (() => {
+        for (let i = selectedThread.messages.length - 1; i >= 0; i -= 1) {
+          const message = selectedThread.messages[i];
+
+          if (message.direction === 'inbound') {
+            const fromTo = extractPhoneString(message.to);
+
+            if (fromTo) return fromTo;
+          } else {
+            const fromOut = extractPhoneString(message.from);
+
+            if (fromOut) return fromOut;
+          }
+        }
+
+        return undefined;
+      })();
+
       const response = await fetch(`${serverUrl}/telnyx/sms/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: recipient, text }),
+        body: JSON.stringify({ to: recipient, text, from: ourNumber }),
       });
 
       if (response.ok) {

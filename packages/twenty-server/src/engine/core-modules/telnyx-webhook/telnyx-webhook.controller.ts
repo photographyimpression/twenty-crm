@@ -414,10 +414,10 @@ export class TelnyxWebhookController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(PublicEndpointGuard, NoPermissionGuard)
   async sendOutboundSms(
-    @Body() body: { to: string; text: string },
+    @Body() body: { to: string; text: string; from?: string },
     @Res() res: Response,
   ): Promise<void> {
-    const { to, text } = body;
+    const { to, text, from } = body;
 
     if (!to || !text) {
       res.status(400).json({ error: 'to and text are required' });
@@ -429,7 +429,7 @@ export class TelnyxWebhookController {
     const telnyxFromNumber = process.env['TELNYX_FROM_NUMBER'];
     const messagingProfileId = process.env['TELNYX_MESSAGING_PROFILE_ID'];
 
-    if (!telnyxApiKey || !telnyxFromNumber) {
+    if (!telnyxApiKey) {
       res
         .status(503)
         .json({ error: 'Telnyx credentials not configured on server' });
@@ -437,11 +437,25 @@ export class TelnyxWebhookController {
       return;
     }
 
-    const messageBody: Record<string, string> = {
-      from: telnyxFromNumber,
-      to,
-      text,
-    };
+    // Prefer the explicit `from` (the Telnyx number that received this
+    // thread's last inbound) so replies stay on the same number the
+    // contact texted. Fall back to env default. Last resort: omit and let
+    // messaging_profile_id pick.
+    const resolvedFrom = from || telnyxFromNumber;
+
+    if (!resolvedFrom && !messagingProfileId) {
+      res
+        .status(503)
+        .json({ error: 'No Telnyx source number or messaging profile' });
+
+      return;
+    }
+
+    const messageBody: Record<string, string> = { to, text };
+
+    if (resolvedFrom) {
+      messageBody['from'] = resolvedFrom;
+    }
 
     if (messagingProfileId) {
       messageBody['messaging_profile_id'] = messagingProfileId;
