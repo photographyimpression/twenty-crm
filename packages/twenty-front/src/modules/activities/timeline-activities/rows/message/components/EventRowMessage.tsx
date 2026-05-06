@@ -89,9 +89,25 @@ const StyledSubjectFallback = styled.div`
   white-space: nowrap;
 `;
 
-const collapseWhitespace = (text: string) => text.replace(/\s+/g, ' ').trim();
-
 const TRUNCATE_LIMIT = 140;
+
+// Email bodies often contain HTML, quoted-reply lines, and ASCII separators
+// (underscores, dashes) used as horizontal rules. Strip those for a clean excerpt.
+const cleanBodyForExcerpt = (text: string): string =>
+  text
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .split('\n')
+    .filter((line) => !/^\s*>/.test(line))
+    .join(' ')
+    .replace(/[_=\-*~+]{3,}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 export const EventRowMessage = ({
   event,
@@ -138,10 +154,12 @@ export const EventRowMessage = ({
       ? message.subject
       : null;
 
-  const bodyExcerpt =
+  const cleanedBody =
     isDefined(message?.text) && !textIsRestricted && message.text.length > 0
-      ? collapseWhitespace(message.text).slice(0, TRUNCATE_LIMIT)
-      : null;
+      ? cleanBodyForExcerpt(message.text)
+      : '';
+  const bodyExcerpt =
+    cleanedBody.length === 0 ? null : cleanedBody.slice(0, TRUNCATE_LIMIT);
 
   const handleRowClick = () => {
     if (isDefined(message?.messageThreadId) && !subjectIsRestricted) {
