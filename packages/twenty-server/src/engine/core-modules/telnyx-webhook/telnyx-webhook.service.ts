@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { EmailSenderService } from 'src/engine/core-modules/email/email-sender.service';
+import { EmailSendService } from 'src/engine/core-modules/messaging/services/email-send.service';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { NoteWorkspaceEntity } from 'src/modules/note/standard-objects/note.workspace-entity';
 import { NoteTargetWorkspaceEntity } from 'src/modules/note/standard-objects/note-target.workspace-entity';
@@ -88,6 +89,7 @@ export class TelnyxWebhookService {
 
   constructor(
     private readonly emailSenderService: EmailSenderService,
+    private readonly emailSendService: EmailSendService,
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {
     // Persist to the .local-storage volume so records survive container
@@ -651,34 +653,61 @@ export class TelnyxWebhookService {
     const forwardEmail =
       process.env['SMS_FORWARD_EMAIL'] || 'moshe@impressionphotography.ca';
 
+    const localTime = new Date().toLocaleString('en-CA', {
+      timeZone: 'America/Toronto',
+    });
+    const subject = `SMS from ${from}`;
+    const bodyText = `New SMS received:\n\nFrom: ${from}\nTo: ${to}\nTime: ${localTime}\n\nMessage:\n${text}`;
+    const bodyHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px;">
+        <h3 style="color: #333; border-bottom: 2px solid #1a73e8; padding-bottom: 8px;">
+          New SMS Received
+        </h3>
+        <table style="margin: 16px 0;">
+          <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">From:</td><td>${from}</td></tr>
+          <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">To:</td><td>${to}</td></tr>
+          <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">Time:</td><td>${localTime}</td></tr>
+        </table>
+        <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin-top: 12px;">
+          <p style="margin: 0; font-size: 16px; line-height: 1.5;">${text}</p>
+        </div>
+        <p style="color: #999; font-size: 12px; margin-top: 16px;">
+          Forwarded by Twenty CRM Telephony System
+        </p>
+      </div>
+    `;
+
+    // Prefer the workspace's connected Microsoft 365 account (already
+    // authorized via OAuth2 — same path as in-CRM email replies). Falls
+    // back to SMTP if Microsoft Graph fails or no account is connected.
+    const graphResult = await this.emailSendService.sendViaAnyMicrosoftAccount({
+      to: forwardEmail,
+      subject,
+      bodyText,
+      bodyHtml,
+    });
+
+    if (graphResult.ok) {
+      this.logger.log(`SMS forwarded to ${forwardEmail} via Microsoft Graph`);
+
+      return;
+    }
+
+    this.logger.warn(
+      `Microsoft Graph forward failed (${graphResult.error}); trying SMTP fallback`,
+    );
+
     try {
       await this.emailSenderService.send({
         from:
           process.env['EMAIL_FROM_ADDRESS'] || 'crm@impressionphotography.ca',
         to: forwardEmail,
-        subject: `SMS from ${from}`,
-        text: `New SMS received:\n\nFrom: ${from}\nTo: ${to}\nTime: ${new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto' })}\n\nMessage:\n${text}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px;">
-            <h3 style="color: #333; border-bottom: 2px solid #1a73e8; padding-bottom: 8px;">
-              New SMS Received
-            </h3>
-            <table style="margin: 16px 0;">
-              <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">From:</td><td>${from}</td></tr>
-              <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">To:</td><td>${to}</td></tr>
-              <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">Time:</td><td>${new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto' })}</td></tr>
-            </table>
-            <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin-top: 12px;">
-              <p style="margin: 0; font-size: 16px; line-height: 1.5;">${text}</p>
-            </div>
-            <p style="color: #999; font-size: 12px; margin-top: 16px;">
-              Forwarded by Twenty CRM Telephony System
-            </p>
-          </div>
-        `,
+        subject,
+        text: bodyText,
+        html: bodyHtml,
       });
 
-      this.logger.log(`SMS forwarded to ${forwardEmail}`);
+      this.logger.log(`SMS forwarded to ${forwardEmail} via SMTP`);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);

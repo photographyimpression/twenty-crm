@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { EmailModule } from 'src/engine/core-modules/email/email.module';
+import { TimelineMessagingModule } from 'src/engine/core-modules/messaging/timeline-messaging.module';
 import { TwentyORMModule } from 'src/engine/twenty-orm/twenty-orm.module';
 
 import {
@@ -11,7 +12,7 @@ import { TelnyxWebhookController } from './telnyx-webhook.controller';
 import { TelnyxWebhookService } from './telnyx-webhook.service';
 
 @Module({
-  imports: [EmailModule.forRoot(), TwentyORMModule],
+  imports: [EmailModule.forRoot(), TwentyORMModule, TimelineMessagingModule],
   controllers: [
     TelnyxWebhookController,
     TelnyxCallRecordsController,
