@@ -90,13 +90,32 @@ export class TelnyxWebhookService {
     private readonly emailSenderService: EmailSenderService,
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {
-    this.dataDir = path.join(
-      process.env.HOME || '/tmp',
-      '.twenty-call-recordings',
-    );
+    // Persist to the .local-storage volume so records survive container
+    // rebuilds. Override with TWENTY_CALL_RECORDINGS_DIR if needed.
+    this.dataDir =
+      process.env.TWENTY_CALL_RECORDINGS_DIR ??
+      path.join(process.cwd(), '.local-storage', 'twenty-call-recordings');
 
     if (!fs.existsSync(this.dataDir)) {
       fs.mkdirSync(this.dataDir, { recursive: true });
+    }
+
+    // One-time migration: copy any records from the legacy $HOME location
+    // (which Docker rebuilds wiped) so existing data isn't lost on upgrade.
+    const legacyDir = path.join(
+      process.env.HOME ?? '/tmp',
+      '.twenty-call-recordings',
+    );
+
+    if (legacyDir !== this.dataDir && fs.existsSync(legacyDir)) {
+      for (const file of ['call-records.json', 'sms-records.json']) {
+        const legacyFile = path.join(legacyDir, file);
+        const targetFile = path.join(this.dataDir, file);
+
+        if (fs.existsSync(legacyFile) && !fs.existsSync(targetFile)) {
+          fs.copyFileSync(legacyFile, targetFile);
+        }
+      }
     }
 
     this.loadCallRecords();

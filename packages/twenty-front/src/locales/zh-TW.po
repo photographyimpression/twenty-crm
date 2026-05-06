@@ -2822,6 +2822,7 @@ msgid "Clear"
 msgstr "清除"
 
 #. js-lingui-id: V8yTm6
+#: src/pages/sms-inbox/SmsInboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
 msgid "Clear search"
 msgstr ""
@@ -2912,6 +2913,11 @@ msgstr "關閉"
 #: src/modules/information-banner/components/InformationBanner.tsx
 msgid "Close banner"
 msgstr "關閉橫幅"
+
+#. js-lingui-id: 3k0tD1
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Close conversation"
+msgstr ""
 
 #. js-lingui-id: saip/v
 #: src/modules/ui/layout/page-header/components/PageHeaderToggleSidePanelButton.tsx
@@ -3364,6 +3370,11 @@ msgstr "控制此角色可指派於哪些實體類型"
 #. js-lingui-id: YyNOE7
 #: src/modules/ai/components/internal/AIChatContextUsageButton.tsx
 msgid "Conversation"
+msgstr ""
+
+#. js-lingui-id: EnJuK0
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Conversations"
 msgstr ""
 
 #. js-lingui-id: HRGl1X
@@ -6196,6 +6207,11 @@ msgstr ""
 msgid "Failed to send reply"
 msgstr ""
 
+#. js-lingui-id: HIsE4C
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Failed to send. Check your connection."
+msgstr ""
+
 #. js-lingui-id: LVcnN8
 #: src/pages/settings/applications/tabs/SettingsApplicationRegistrationGeneralTab.tsx
 msgid "Failed to transfer ownership. Check that the subdomain is correct."
@@ -6281,6 +6297,12 @@ msgstr "上傳圖片失敗"
 #. js-lingui-id: vWFfVs
 #: src/modules/marketplace/hooks/useUploadAppTarball.ts
 msgid "Failed to upload tarball."
+msgstr ""
+
+#. js-lingui-id: xDRSy0
+#. placeholder {0}: errorBody.error ?? 'Unknown error'
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Failed: {0}"
 msgstr ""
 
 #. js-lingui-id: K0joU5
@@ -7331,6 +7353,11 @@ msgstr "停用的物件選項"
 #. js-lingui-id: sdlhyk
 #: src/pages/settings/ai/components/SettingsSkillInactiveMenuDropDown.tsx
 msgid "Inactive Skill Options"
+msgstr ""
+
+#. js-lingui-id: y7CwLQ
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Inbound SMS messages will appear here automatically."
 msgstr ""
 
 #. js-lingui-id: Gp4Yi6
@@ -9465,6 +9492,11 @@ msgstr "未找到最新版本"
 msgid "No logs yet"
 msgstr ""
 
+#. js-lingui-id: fV9l8S
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "No matching conversations"
+msgstr ""
+
 #. js-lingui-id: uFIUHo
 #: src/pages/inbox/InboxPage.tsx
 msgid "No matching emails"
@@ -9623,6 +9655,11 @@ msgstr "無選擇字段"
 #. js-lingui-id: KxRvbc
 #: src/pages/inbox/InboxPage.tsx
 msgid "No sent emails yet"
+msgstr ""
+
+#. js-lingui-id: gnfNOR
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "No SMS messages yet"
 msgstr ""
 
 #. js-lingui-id: RQ6tfU
@@ -11765,6 +11802,11 @@ msgstr "搜尋任何字段"
 msgid "Search API keys"
 msgstr "搜索 API 密鑰"
 
+#. js-lingui-id: MoFjx9
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Search by number or message…"
+msgstr ""
+
 #. js-lingui-id: OQe6ZX
 #: src/pages/inbox/InboxPage.tsx
 msgid "Search by subject, name, or email…"
@@ -11857,6 +11899,11 @@ msgstr ""
 #. js-lingui-id: wCw+0a
 #: src/modules/settings/admin-panel/apps/components/SettingsAdminApps.tsx
 msgid "Search registrations..."
+msgstr ""
+
+#. js-lingui-id: 3G9OYE
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Search SMS"
 msgstr ""
 
 #. js-lingui-id: YIix5Y
@@ -12244,6 +12291,11 @@ msgstr "發送電子郵件"
 msgid "Send emails via connected accounts"
 msgstr "允許通過已連接的帳戶發送電子郵件"
 
+#. js-lingui-id: PJyLee
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Send SMS"
+msgstr ""
+
 #. js-lingui-id: asU5VT
 #: src/modules/workflow/workflow-steps/workflow-actions/http-request-action/components/HttpRequestExecutionResult.tsx
 msgid "Sending request..."
@@ -12256,11 +12308,13 @@ msgid "Sending..."
 msgstr "發送中..."
 
 #. js-lingui-id: Sad2tK
+#: src/pages/sms-inbox/SmsInboxPage.tsx
 #: src/modules/activities/emails/components/InboxThreadPanel.tsx
 msgid "Sending…"
 msgstr ""
 
 #. js-lingui-id: h69WC6
+#: src/pages/sms-inbox/SmsInboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
 #: src/modules/settings/accounts/components/SettingsAccountsMessageAutoCreationCard.tsx
@@ -12600,6 +12654,12 @@ msgstr ""
 #. js-lingui-id: 5J8ZFl
 #: src/pages/settings/ai/components/SettingsAIModelsTab.tsx
 msgid "Smart Model"
+msgstr ""
+
+#. js-lingui-id: TEERTx
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+#: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
+msgid "SMS"
 msgstr ""
 
 #. js-lingui-id: w+rJId
@@ -13916,6 +13976,7 @@ msgid "True"
 msgstr "真"
 
 #. js-lingui-id: XYV3Jj
+#: src/pages/sms-inbox/SmsInboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
 msgid "Try a different keyword."
 msgstr ""
@@ -14029,6 +14090,11 @@ msgstr "類型"
 #. js-lingui-id: SKD2e4
 #: src/modules/activities/components/ActivityRichTextEditor.tsx
 msgid "Type '/' for commands, '@' for mentions"
+msgstr ""
+
+#. js-lingui-id: JLMiH6
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Type a reply… (Enter to send, Shift+Enter for newline)"
 msgstr ""
 
 #. js-lingui-id: qzD6hf
@@ -15267,6 +15333,11 @@ msgstr ""
 #: src/modules/ai/utils/getDateGroupTitle.ts
 msgid "Yesterday"
 msgstr "昨天"
+
+#. js-lingui-id: kWJmRL
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "You"
+msgstr ""
 
 #. js-lingui-id: lWUeEt
 #: src/modules/auth/sign-in-up/hooks/useWorkspaceFromInviteHash.ts
