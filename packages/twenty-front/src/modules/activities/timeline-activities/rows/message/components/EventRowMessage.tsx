@@ -91,8 +91,15 @@ const StyledSubjectFallback = styled.div`
 
 const TRUNCATE_LIMIT = 140;
 
-// Email bodies often contain HTML, quoted-reply lines, and ASCII separators
-// (underscores, dashes) used as horizontal rules. Strip those for a clean excerpt.
+// Email bodies are noisy: HTML, quoted replies, header blocks
+// ("From:" / "Sent:" / "To:" / "Subject:"), tracking-link URLs,
+// and ASCII horizontal rules (___ / --- / ===). Strip all of that so
+// the excerpt shows actual prose.
+const REPLY_HEADER_LINE = /^\s*(From|Sent|To|Cc|Bcc|Subject|Date|Reply-To):/i;
+const QUOTED_REPLY_LINE = /^\s*>/;
+const LONG_URL = /https?:\/\/\S{40,}/gi;
+const HORIZONTAL_RULE = /[_=\-*~+]{3,}/g;
+
 const cleanBodyForExcerpt = (text: string): string =>
   text
     .replace(/<[^>]+>/g, ' ')
@@ -103,9 +110,12 @@ const cleanBodyForExcerpt = (text: string): string =>
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
     .split('\n')
-    .filter((line) => !/^\s*>/.test(line))
+    .filter(
+      (line) => !QUOTED_REPLY_LINE.test(line) && !REPLY_HEADER_LINE.test(line),
+    )
     .join(' ')
-    .replace(/[_=\-*~+]{3,}/g, ' ')
+    .replace(LONG_URL, '[link]')
+    .replace(HORIZONTAL_RULE, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
