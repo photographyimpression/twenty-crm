@@ -11,6 +11,7 @@ import {
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
+import { useUnreadSmsCount } from '@/sms/hooks/useUnreadSmsCount';
 import { getDocumentationUrl } from '@/support/utils/getDocumentationUrl';
 import { isNavigationDrawerExpandedState } from '@/ui/navigation/states/isNavigationDrawerExpanded';
 import { navigationDrawerExpandedMemorizedState } from '@/ui/navigation/states/navigationDrawerExpandedMemorizedState';
@@ -40,6 +41,8 @@ export const NavigationDrawerOtherSection = () => {
   const setNavigationMemorizedUrl = useSetAtomState(
     navigationMemorizedUrlState,
   );
+
+  const unreadSmsCount = useUnreadSmsCount();
 
   const { toggleNavigationSection } = useNavigationSection('Other');
   const isNavigationSectionOpen = useAtomFamilyStateValue(
@@ -81,6 +84,7 @@ export const NavigationDrawerOtherSection = () => {
           Icon={IconMessage}
           to={AppPath.SmsInboxPage}
           active={location.pathname === AppPath.SmsInboxPage}
+          count={unreadSmsCount > 0 ? unreadSmsCount : undefined}
         />
         <NavigationDrawerItem
           label={t`Settings`}
