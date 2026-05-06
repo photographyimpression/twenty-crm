@@ -91,14 +91,15 @@ export class TelnyxWebhookService {
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {
     // Persist to the .local-storage volume so records survive container
-    // rebuilds. Override with TWENTY_CALL_RECORDINGS_DIR if needed.
-    this.dataDir =
+    // rebuilds. Override with TWENTY_CALL_RECORDINGS_DIR if needed. Falls
+    // back to /tmp if neither path is writable so a misconfigured volume
+    // can't take the whole server down — call/SMS history just won't
+    // persist across restarts.
+    const preferredDir =
       process.env.TWENTY_CALL_RECORDINGS_DIR ??
       path.join(process.cwd(), '.local-storage', 'twenty-call-recordings');
 
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
-    }
+    this.dataDir = this.ensureWritableDir(preferredDir);
 
     // One-time migration: copy any records from the legacy $HOME location
     // (which Docker rebuilds wiped) so existing data isn't lost on upgrade.
@@ -112,8 +113,14 @@ export class TelnyxWebhookService {
         const legacyFile = path.join(legacyDir, file);
         const targetFile = path.join(this.dataDir, file);
 
-        if (fs.existsSync(legacyFile) && !fs.existsSync(targetFile)) {
-          fs.copyFileSync(legacyFile, targetFile);
+        try {
+          if (fs.existsSync(legacyFile) && !fs.existsSync(targetFile)) {
+            fs.copyFileSync(legacyFile, targetFile);
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Failed to migrate ${file} from legacy dir: ${error}`,
+          );
         }
       }
     }
@@ -121,6 +128,33 @@ export class TelnyxWebhookService {
     this.loadCallRecords();
     this.loadSmsRecords();
     this.cleanupStaleRecords();
+  }
+
+  // Try to ensure the preferred dir exists and is writable; fall back to a
+  // tmpfs path on any error so a bad volume mount can never crash startup.
+  private ensureWritableDir(preferredDir: string): string {
+    const fallback = path.join('/tmp', 'twenty-call-recordings');
+
+    for (const candidate of [preferredDir, fallback]) {
+      try {
+        if (!fs.existsSync(candidate)) {
+          fs.mkdirSync(candidate, { recursive: true });
+        }
+        // Probe write access — mkdir succeeds even if perms forbid writes.
+        fs.accessSync(candidate, fs.constants.W_OK);
+        if (candidate !== preferredDir) {
+          this.logger.warn(
+            `Falling back to ${candidate} for call/SMS records (preferred ${preferredDir} not writable)`,
+          );
+        }
+
+        return candidate;
+      } catch (error) {
+        this.logger.warn(`Cannot use ${candidate} for SMS records: ${error}`);
+      }
+    }
+
+    return fallback;
   }
 
   async handleVoiceEvent(body: TelnyxWebhookBody): Promise<void> {
