@@ -5050,6 +5050,7 @@ msgstr ""
 #: src/modules/settings/admin-panel/components/SettingsAdminGeneral.tsx
 #: src/modules/object-record/record-field/ui/meta-types/input/components/EmailsFieldInput.tsx
 #: src/modules/auth/sign-in-up/components/internal/SignInUpEmailField.tsx
+#: src/modules/activities/timeline-activities/rows/message/components/EventRowMessage.tsx
 msgid "Email"
 msgstr "البريد الإلكتروني"
 
@@ -6547,6 +6548,11 @@ msgstr "انتهى التفكير"
 #: src/pages/settings/profile/appearance/components/LocalePicker.tsx
 msgid "Finnish"
 msgstr "الفنلندية"
+
+#. js-lingui-id: OUMa9d
+#: src/modules/workflow/workflow-trigger/components/WorkflowEditTriggerDatabaseEventForm.tsx
+msgid "Fires whenever an SMS is received on any of your Telnyx numbers. The workflow run history shows every fire — failures show up with the per-step error."
+msgstr ""
 
 #. js-lingui-id: hy+Mfg
 #: src/modules/workflow/workflow-trigger/utils/cron-to-human/descriptors/getDayOfWeekDescription.ts
@@ -8164,11 +8170,6 @@ msgstr ""
 #: src/modules/activities/timeline-activities/rows/calendar/components/EventRowCalendarEvent.tsx
 msgid "linked a calendar event with {labelIdentifierValue}"
 msgstr "ربط حدث تقويم بـ {labelIdentifierValue}"
-
-#. js-lingui-id: fd8C68
-#: src/modules/activities/timeline-activities/rows/message/components/EventRowMessage.tsx
-msgid "linked an email with"
-msgstr "ربط رسالة بريد إلكتروني بـ"
 
 #. js-lingui-id: 82kQhK
 #: src/modules/advanced-text-editor/extensions/slash-command/DefaultSlashCommands.ts
@@ -12959,6 +12960,7 @@ msgid "Subject and metadata will be shared with your team."
 msgstr "سيتم مشاركة الموضوع والبيانات الوصفية مع فريقك."
 
 #. js-lingui-id: DvSvG9
+#: src/modules/activities/timeline-activities/rows/message/components/EventRowMessage.tsx
 #: src/modules/activities/timeline-activities/rows/message/components/EventCardMessageForbidden.tsx
 #: src/modules/activities/timeline-activities/rows/message/components/EventCardMessage.tsx
 msgid "Subject not shared"
@@ -13918,6 +13920,7 @@ msgid "Trial expired. Please update your billing details."
 msgstr "انتهت الفترة التجريبية. يرجى تحديث تفاصيل الفوترة."
 
 #. js-lingui-id: H2Sfhg
+#: src/modules/workflow/workflow-trigger/components/WorkflowEditTriggerDatabaseEventForm.tsx
 #: src/modules/workflow/workflow-diagram/workflow-nodes/components/WorkflowDiagramEmptyTriggerReadonly.tsx
 #: src/modules/workflow/workflow-diagram/workflow-nodes/components/WorkflowDiagramEmptyTriggerEditable.tsx
 #: src/modules/side-panel/components/SidePanelWorkflowStepInfo.tsx

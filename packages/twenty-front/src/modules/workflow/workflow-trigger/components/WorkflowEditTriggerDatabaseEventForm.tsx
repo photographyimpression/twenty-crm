@@ -79,6 +79,7 @@ export const WorkflowEditTriggerDatabaseEventForm = ({
   const isUpdateEvent = triggerEvent.event === 'updated';
   const isUpsertEvent = triggerEvent.event === 'upserted';
   const isFieldFilteringSupported = isUpdateEvent || isUpsertEvent;
+  const isSmsReceived = trigger.settings.eventName === 'sms.received';
 
   const defaultSelectedOption = useMemo(
     () => ({ label: t`Select an option`, value: '' }),
@@ -169,6 +170,26 @@ export const WorkflowEditTriggerDatabaseEventForm = ({
     },
     [],
   );
+
+  if (isSmsReceived) {
+    return (
+      <>
+        <WorkflowStepBody>
+          <StyledLabel>{t`Trigger`}</StyledLabel>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
+            <Trans>
+              Fires whenever an SMS is received on any of your Telnyx
+              numbers. The workflow run history shows every fire — failures
+              show up with the per-step error.
+            </Trans>
+          </p>
+        </WorkflowStepBody>
+        {!triggerOptions.readonly && (
+          <WorkflowStepFooter stepId={TRIGGER_STEP_ID} />
+        )}
+      </>
+    );
+  }
 
   return (
     <>

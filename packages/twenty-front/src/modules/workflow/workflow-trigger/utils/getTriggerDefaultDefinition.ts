@@ -4,6 +4,7 @@ import {
   type WorkflowTriggerType,
 } from '@/workflow/types/Workflow';
 import { DATABASE_TRIGGER_TYPES } from '@/workflow/workflow-trigger/constants/DatabaseTriggerTypes';
+import { SMS_RECEIVED_TRIGGER_LABEL } from '@/workflow/workflow-trigger/constants/triggers/SmsReceivedTrigger';
 import { getManualTriggerDefaultSettings } from '@/workflow/workflow-trigger/utils/getManualTriggerDefaultSettings';
 import { assertUnreachable } from 'twenty-shared/utils';
 
@@ -30,6 +31,19 @@ export const getTriggerDefaultDefinition = ({
 
   switch (type) {
     case 'DATABASE_EVENT': {
+      // System trigger: SMS Received uses a non-object eventName so the
+      // Telnyx webhook handler can match it directly.
+      if (defaultLabel === SMS_RECEIVED_TRIGGER_LABEL) {
+        return {
+          ...baseTriggerDefinition,
+          type,
+          settings: {
+            eventName: 'sms.received',
+            outputSchema: {},
+          },
+        };
+      }
+
       return {
         ...baseTriggerDefinition,
         type,
