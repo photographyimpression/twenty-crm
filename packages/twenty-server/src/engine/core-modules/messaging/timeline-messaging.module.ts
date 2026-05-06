@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { EmailReplyService } from 'src/engine/core-modules/messaging/services/email-reply.service';
+import { EmailSendService } from 'src/engine/core-modules/messaging/services/email-send.service';
 import { GetMessagesService } from 'src/engine/core-modules/messaging/services/get-messages.service';
 import { TimelineMessagingService } from 'src/engine/core-modules/messaging/services/timeline-messaging.service';
 import { TimelineMessagingResolver } from 'src/engine/core-modules/messaging/timeline-messaging.resolver';
@@ -26,6 +27,7 @@ import { PermissionsModule } from 'src/engine/metadata-modules/permissions/permi
     TimelineMessagingService,
     GetMessagesService,
     EmailReplyService,
+    EmailSendService,
   ],
 })
 export class TimelineMessagingModule {}

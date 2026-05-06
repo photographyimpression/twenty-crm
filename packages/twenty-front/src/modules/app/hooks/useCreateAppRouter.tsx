@@ -106,6 +106,12 @@ const InboxPage = lazy(() =>
   })),
 );
 
+const SmsInboxPage = lazy(() =>
+  import('~/pages/sms-inbox/SmsInboxPage').then((module) => ({
+    default: module.SmsInboxPage,
+  })),
+);
+
 export const useCreateAppRouter = (
   isFunctionSettingsEnabled?: boolean,
   isAdminPageEnabled?: boolean,
@@ -215,6 +221,14 @@ export const useCreateAppRouter = (
             element={
               <LazyRoute>
                 <InboxPage />
+              </LazyRoute>
+            }
+          />
+          <Route
+            path={AppPath.SmsInboxPage}
+            element={
+              <LazyRoute>
+                <SmsInboxPage />
               </LazyRoute>
             }
           />
