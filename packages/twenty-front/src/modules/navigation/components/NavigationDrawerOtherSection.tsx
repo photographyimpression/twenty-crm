@@ -2,7 +2,12 @@ import { useLingui } from '@lingui/react/macro';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AppPath, SettingsPath } from 'twenty-shared/types';
 import { getSettingsPath } from 'twenty-shared/utils';
-import { IconHelpCircle, IconMail, IconSettings } from 'twenty-ui/display';
+import {
+  IconHelpCircle,
+  IconMail,
+  IconMessage,
+  IconSettings,
+} from 'twenty-ui/display';
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
@@ -70,6 +75,12 @@ export const NavigationDrawerOtherSection = () => {
           Icon={IconMail}
           to={AppPath.InboxPage}
           active={location.pathname === AppPath.InboxPage}
+        />
+        <NavigationDrawerItem
+          label={t`SMS`}
+          Icon={IconMessage}
+          to={AppPath.SmsInboxPage}
+          active={location.pathname === AppPath.SmsInboxPage}
         />
         <NavigationDrawerItem
           label={t`Settings`}

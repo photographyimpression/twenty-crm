@@ -10,6 +10,7 @@ import { TIMELINE_THREADS_MAX_PAGE_SIZE } from 'src/engine/core-modules/messagin
 import { DismissReconnectAccountBannerInput } from 'src/engine/core-modules/messaging/dtos/dismiss-reconnect-account-banner.input';
 import { TimelineThreadsWithTotalDTO } from 'src/engine/core-modules/messaging/dtos/timeline-threads-with-total.dto';
 import { EmailReplyService } from 'src/engine/core-modules/messaging/services/email-reply.service';
+import { EmailSendService } from 'src/engine/core-modules/messaging/services/email-send.service';
 import { GetMessagesService } from 'src/engine/core-modules/messaging/services/get-messages.service';
 import { UserService } from 'src/engine/core-modules/user/services/user.service';
 import { type AuthContextUser } from 'src/engine/core-modules/auth/types/auth-context.type';
@@ -86,6 +87,18 @@ class ReplyToEmailThreadArgs {
   body: string;
 }
 
+@ArgsType()
+class SendNewEmailArgs {
+  @Field()
+  to: string;
+
+  @Field()
+  subject: string;
+
+  @Field()
+  body: string;
+}
+
 @UseGuards(WorkspaceAuthGuard, UserAuthGuard, CustomPermissionGuard)
 @CoreResolver(() => TimelineThreadsWithTotalDTO)
 export class TimelineMessagingResolver {
@@ -94,6 +107,7 @@ export class TimelineMessagingResolver {
     private readonly userService: UserService,
     private readonly accountsToReconnectService: AccountsToReconnectService,
     private readonly emailReplyService: EmailReplyService,
+    private readonly emailSendService: EmailSendService,
   ) {}
 
   @Query(() => TimelineThreadsWithTotalDTO)
@@ -232,6 +246,32 @@ export class TimelineMessagingResolver {
 
     const result = await this.emailReplyService.replyToThread({
       threadId,
+      body,
+      workspaceId: workspace.id,
+      workspaceMemberId: workspaceMember.id,
+    });
+
+    return result.ok;
+  }
+
+  @Mutation(() => Boolean)
+  async sendNewEmail(
+    @AuthUser() user: AuthContextUser,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+    @Args() { to, subject, body }: SendNewEmailArgs,
+  ): Promise<boolean> {
+    const workspaceMember = await this.userService.loadWorkspaceMember(
+      user,
+      workspace,
+    );
+
+    if (!workspaceMember) {
+      return false;
+    }
+
+    const result = await this.emailSendService.sendNewEmail({
+      to,
+      subject,
       body,
       workspaceId: workspace.id,
       workspaceMemberId: workspaceMember.id,
