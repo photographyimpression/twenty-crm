@@ -263,18 +263,32 @@ export const SmsChatWidget: React.FC<SmsChatWidgetProps> = ({
 
     try {
       // Reply from the same Telnyx number that received this contact's
-      // last inbound (so the conversation stays threaded). Walk recent →
-      // old to find the most recent message and use its `to` (inbound)
-      // or `from` (outbound) — both refer to "our" number.
+      // last inbound — that's guaranteed to be Telnyx-accepted on this
+      // profile. Always prefer inbound `to` over outbound `from` (older
+      // outbound records may have the wrong `from`).
       let ourNumber: string | undefined;
 
       for (let i = messages.length - 1; i >= 0; i -= 1) {
         const m = messages[i];
-        const candidate = m.direction === 'inbound' ? m.to : m.from;
 
-        if (candidate && typeof candidate === 'string') {
-          ourNumber = candidate;
+        if (m.direction === 'inbound' && typeof m.to === 'string' && m.to) {
+          ourNumber = m.to;
           break;
+        }
+      }
+
+      if (!ourNumber) {
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          const m = messages[i];
+
+          if (
+            m.direction === 'outbound' &&
+            typeof m.from === 'string' &&
+            m.from
+          ) {
+            ourNumber = m.from;
+            break;
+          }
         }
       }
 

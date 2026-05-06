@@ -339,11 +339,14 @@ export class TelnyxWebhookService {
     }
   }
 
-  // Store an outbound SMS record (called from the controller)
-  storeOutboundSms(to: string, text: string): void {
+  // Store an outbound SMS record (called from the controller).
+  // `from` should be the actual Telnyx number used as the source so
+  // subsequent replies in the same thread can derive the correct
+  // source number from history.
+  storeOutboundSms(to: string, text: string, from?: string): void {
     const smsRecord: SmsRecord = {
       id: `sms-out-${Date.now()}`,
-      from: process.env['TELNYX_FROM_NUMBER'] || '+15142702784',
+      from: from || process.env['TELNYX_FROM_NUMBER'] || '+15142702784',
       to,
       text,
       direction: 'outbound',

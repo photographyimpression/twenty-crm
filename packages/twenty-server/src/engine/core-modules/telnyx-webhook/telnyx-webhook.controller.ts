@@ -482,8 +482,8 @@ export class TelnyxWebhookController {
         return;
       }
 
-      this.logger.log(`Outbound SMS sent to ${to}`);
-      this.telnyxWebhookService.storeOutboundSms(to, text);
+      this.logger.log(`Outbound SMS sent from ${resolvedFrom ?? 'profile'} to ${to}`);
+      this.telnyxWebhookService.storeOutboundSms(to, text, resolvedFrom);
       res.json({ sent: true });
     } catch (error) {
       const errorMessage =
