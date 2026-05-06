@@ -3,9 +3,26 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { Raw, Repository } from 'typeorm';
+
 import { EmailSenderService } from 'src/engine/core-modules/email/email-sender.service';
 import { EmailSendService } from 'src/engine/core-modules/messaging/services/email-send.service';
+import { InjectMessageQueue } from 'src/engine/core-modules/message-queue/decorators/message-queue.decorator';
+import { MessageQueue } from 'src/engine/core-modules/message-queue/message-queue.constants';
+import { MessageQueueService } from 'src/engine/core-modules/message-queue/services/message-queue.service';
+import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
+import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+import {
+  AutomatedTriggerType,
+  type WorkflowAutomatedTriggerWorkspaceEntity,
+} from 'src/modules/workflow/common/standard-objects/workflow-automated-trigger.workspace-entity';
+import {
+  WorkflowTriggerJob,
+  type WorkflowTriggerJobData,
+} from 'src/modules/workflow/workflow-trigger/jobs/workflow-trigger.job';
 import { NoteWorkspaceEntity } from 'src/modules/note/standard-objects/note.workspace-entity';
 import { NoteTargetWorkspaceEntity } from 'src/modules/note/standard-objects/note-target.workspace-entity';
 import { PersonWorkspaceEntity } from 'src/modules/person/standard-objects/person.workspace-entity';
@@ -91,6 +108,10 @@ export class TelnyxWebhookService {
     private readonly emailSenderService: EmailSenderService,
     private readonly emailSendService: EmailSendService,
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
+    @InjectRepository(WorkspaceEntity)
+    private readonly workspaceRepository: Repository<WorkspaceEntity>,
+    @InjectMessageQueue(MessageQueue.workflowQueue)
+    private readonly workflowMessageQueueService: MessageQueueService,
   ) {
     // Persist to the .local-storage volume so records survive container
     // rebuilds. Override with TWENTY_CALL_RECORDINGS_DIR if needed. Falls
@@ -328,8 +349,15 @@ export class TelnyxWebhookService {
         this.logger.error(`Failed to log SMS to timeline: ${err}`),
       );
 
-      // Forward SMS to email
-      await this.forwardSmsToEmail(fromNumber, toNumber, payload.text || '');
+      // Fire any "sms.received" workflow first (gives the user a per-run
+      // execution log in the Workflows UI). Only fall back to the
+      // hardcoded forwarder if no workflow is configured.
+      const workflowsFired =
+        await this.dispatchSmsReceivedWorkflow(smsRecord);
+
+      if (!workflowsFired) {
+        await this.forwardSmsToEmail(fromNumber, toNumber, payload.text || '');
+      }
 
       // AI auto-reply
       await this.sendAutoReply(fromNumber, payload.text || '');
@@ -643,6 +671,72 @@ export class TelnyxWebhookService {
 
   getCallRecord(sessionId: string): CallRecord | undefined {
     return this.callRecords.get(sessionId);
+  }
+
+  // Dispatches all workflows configured with a DATABASE_EVENT trigger
+  // whose eventName is "sms.received". Returns true if at least one
+  // workflow was queued so the caller can skip the hardcoded fallback.
+  // Failures are caught and logged — they should never block the inbound
+  // SMS pipeline.
+  private async dispatchSmsReceivedWorkflow(
+    smsRecord: SmsRecord,
+  ): Promise<boolean> {
+    try {
+      const workspace = await this.workspaceRepository.findOne({ where: {} });
+
+      if (!workspace) return false;
+
+      const authContext = buildSystemAuthContext(workspace.id);
+
+      return await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          const repository =
+            await this.globalWorkspaceOrmManager.getRepository<WorkflowAutomatedTriggerWorkspaceEntity>(
+              workspace.id,
+              'workflowAutomatedTrigger',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          const triggers = await repository.find({
+            where: {
+              type: AutomatedTriggerType.DATABASE_EVENT,
+              settings: Raw(
+                () =>
+                  `"workflowAutomatedTrigger"."settings"->>'eventName' = :eventName`,
+                { eventName: 'sms.received' },
+              ),
+            },
+          });
+
+          if (triggers.length === 0) return false;
+
+          for (const trigger of triggers) {
+            await this.workflowMessageQueueService.add<WorkflowTriggerJobData>(
+              WorkflowTriggerJob.name,
+              {
+                workspaceId: workspace.id,
+                workflowId: trigger.workflowId,
+                payload: { sms: smsRecord },
+              },
+              { retryLimit: 3 },
+            );
+          }
+
+          this.logger.log(
+            `Dispatched ${triggers.length} sms.received workflow(s)`,
+          );
+
+          return true;
+        },
+        authContext,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`Failed to dispatch sms.received workflow: ${message}`);
+
+      return false;
+    }
   }
 
   private async forwardSmsToEmail(
