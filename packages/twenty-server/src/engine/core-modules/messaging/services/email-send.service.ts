@@ -17,7 +17,7 @@ export class EmailSendService {
   constructor(
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
     private readonly oAuth2ClientManagerService: OAuth2ClientManagerService,
-    @InjectRepository(WorkspaceEntity, 'core')
+    @InjectRepository(WorkspaceEntity)
     private readonly workspaceRepository: Repository<WorkspaceEntity>,
   ) {}
 

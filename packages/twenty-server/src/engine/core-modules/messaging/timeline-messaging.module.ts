@@ -16,7 +16,7 @@ import { PermissionsModule } from 'src/engine/metadata-modules/permissions/permi
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([WorkspaceEntity], 'core'),
+    TypeOrmModule.forFeature([WorkspaceEntity]),
     WorkspaceDataSourceModule,
     UserModule,
     ConnectedAccountModule,
