@@ -318,10 +318,17 @@ export const SmsChatWidget: React.FC<SmsChatWidgetProps> = ({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
+    // Prevent single-letter keys from triggering Twenty's global hotkeys.
+    event.stopPropagation();
+
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSend();
     }
+  };
+
+  const handleKeyUp = (event: React.KeyboardEvent) => {
+    event.stopPropagation();
   };
 
   return (
@@ -370,6 +377,7 @@ export const SmsChatWidget: React.FC<SmsChatWidgetProps> = ({
             value={inputText}
             onChange={(event) => setInputText(event.target.value)}
             onKeyDown={handleKeyDown}
+            onKeyUp={handleKeyUp}
             placeholder="Type a message..."
             rows={1}
           />

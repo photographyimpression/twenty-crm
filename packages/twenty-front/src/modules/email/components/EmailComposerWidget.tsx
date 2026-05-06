@@ -233,12 +233,17 @@ export const EmailComposerWidget: React.FC<EmailComposerWidgetProps> = ({
             type="text"
             value={subject}
             onChange={(event) => setSubject(event.target.value)}
+            // Prevent letter keys from triggering Twenty's global hotkeys.
+            onKeyDown={(event) => event.stopPropagation()}
+            onKeyUp={(event) => event.stopPropagation()}
             placeholder="Subject"
           />
           <StyledFieldLabel>Message</StyledFieldLabel>
           <StyledTextArea
             value={bodyText}
             onChange={(event) => setBodyText(event.target.value)}
+            onKeyDown={(event) => event.stopPropagation()}
+            onKeyUp={(event) => event.stopPropagation()}
             placeholder="Write your message…"
           />
           <StyledFooter>

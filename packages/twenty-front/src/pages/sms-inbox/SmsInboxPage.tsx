@@ -608,6 +608,10 @@ export const SmsInboxPage = () => {
   };
 
   const handleComposerKeyDown = (event: React.KeyboardEvent) => {
+    // Always stop propagation so single-letter keys don't trigger
+    // Twenty's global hotkeys (c → Companies, p → People, etc.).
+    event.stopPropagation();
+
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void handleSend(event as unknown as React.FormEvent);
@@ -635,6 +639,8 @@ export const SmsInboxPage = () => {
                     type="text"
                     value={searchInput}
                     onChange={(event) => setSearchInput(event.target.value)}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    onKeyUp={(event) => event.stopPropagation()}
                     placeholder={t`Search by number or message…`}
                     aria-label={t`Search SMS`}
                   />
@@ -740,6 +746,9 @@ export const SmsInboxPage = () => {
                   value={composerText}
                   onChange={(event) => setComposerText(event.target.value)}
                   onKeyDown={handleComposerKeyDown}
+                  // Stop letter keys (c, p, t, …) from triggering
+                  // Twenty's global goto-page hotkeys.
+                  onKeyUp={(event) => event.stopPropagation()}
                   placeholder={t`Type a reply… (Enter to send, Shift+Enter for newline)`}
                   rows={1}
                 />
