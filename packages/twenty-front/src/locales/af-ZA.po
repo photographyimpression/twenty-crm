@@ -10045,6 +10045,11 @@ msgstr "Slegs die tydstempel en deelnemers sal met jou span gedeel word."
 msgid "Open"
 msgstr "Maak Oop"
 
+#. js-lingui-id: N5Vrl2
+#: src/modules/activities/emails/components/InteractiveParticipantChip.tsx
+msgid "Open {profileName}'s profile"
+msgstr ""
+
 #. js-lingui-id: JG4LoU
 #: src/modules/settings/data-model/fields/forms/components/SettingsDataModelFieldOnClickActionForm.tsx
 msgid "Open as link"

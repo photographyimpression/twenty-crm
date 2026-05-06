@@ -10045,6 +10045,11 @@ msgstr "仅时间戳和参与者将与您的团队分享。"
 msgid "Open"
 msgstr "打开"
 
+#. js-lingui-id: N5Vrl2
+#: src/modules/activities/emails/components/InteractiveParticipantChip.tsx
+msgid "Open {profileName}'s profile"
+msgstr ""
+
 #. js-lingui-id: JG4LoU
 #: src/modules/settings/data-model/fields/forms/components/SettingsDataModelFieldOnClickActionForm.tsx
 msgid "Open as link"

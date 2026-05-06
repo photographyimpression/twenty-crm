@@ -10040,6 +10040,11 @@ msgstr ""
 msgid "Open"
 msgstr ""
 
+#. js-lingui-id: N5Vrl2
+#: src/modules/activities/emails/components/InteractiveParticipantChip.tsx
+msgid "Open {profileName}'s profile"
+msgstr ""
+
 #. js-lingui-id: JG4LoU
 #: src/modules/settings/data-model/fields/forms/components/SettingsDataModelFieldOnClickActionForm.tsx
 msgid "Open as link"

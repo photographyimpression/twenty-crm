@@ -1,9 +1,10 @@
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 import { capitalize, isDefined } from 'twenty-shared/utils';
-import { Avatar, IconUserPlus } from 'twenty-ui/display';
+import { Avatar, IconExternalLink, IconUserPlus } from 'twenty-ui/display';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { ParticipantChip } from '@/activities/components/ParticipantChip';
@@ -18,6 +19,27 @@ type InteractiveParticipantChipProps = {
   participant: EmailThreadMessageParticipant;
   variant?: Variant;
 };
+
+const StyledLinkedWrapper = styled(Link)`
+  align-items: center;
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: ${themeCssVariables.spacing[0.5]};
+  text-decoration: none;
+
+  &:hover {
+    background: ${themeCssVariables.background.transparent.lighter};
+  }
+`;
+
+const StyledLinkIcon = styled.span`
+  align-items: center;
+  color: ${themeCssVariables.font.color.tertiary};
+  display: inline-flex;
+  pointer-events: none;
+`;
 
 const StyledClickableChip = styled.button<{
   variant: Variant;
@@ -108,8 +130,35 @@ export const InteractiveParticipantChip = ({
   if (isLinked) {
     // RecordChip itself navigates to /object/person/:id when clicked.
     const merged = createdPerson
-      ? { ...participant, person: createdPerson }
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ({ ...participant, person: createdPerson } as any as EmailThreadMessageParticipant)
       : participant;
+
+    // Workspace member (the user themselves) doesn't have a Person record
+    // to navigate to, so render their chip without the link affordance.
+    const personIsLinked =
+      isDefined(merged.person?.id) || isDefined(createdPerson?.id);
+
+    if (personIsLinked) {
+      const profileName = getDisplayNameFromParticipant({
+        participant: merged,
+        shouldUseFullName: true,
+      });
+      const personId = merged.person?.id ?? createdPerson?.id;
+
+      return (
+        <StyledLinkedWrapper
+          to={`/object/person/${personId}`}
+          title={t`Open ${profileName}'s profile`}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <ParticipantChip participant={merged} variant={variant} />
+          <StyledLinkIcon>
+            <IconExternalLink size={12} />
+          </StyledLinkIcon>
+        </StyledLinkedWrapper>
+      );
+    }
 
     return <ParticipantChip participant={merged} variant={variant} />;
   }
