@@ -1,6 +1,7 @@
 import { gql, useMutation } from '@apollo/client';
-import styled from '@emotion/styled';
+import { styled } from '@linaria/react';
 import React, { useEffect, useRef, useState } from 'react';
+import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 const SEND_NEW_EMAIL = gql`
   mutation SendNewEmail($to: String!, $subject: String!, $body: String!) {
@@ -8,145 +9,151 @@ const SEND_NEW_EMAIL = gql`
   }
 `;
 
-const Overlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+const StyledOverlay = styled.div`
+  background: ${themeCssVariables.background.transparent.medium};
   bottom: 0;
-  background: rgba(0, 0, 0, 0.3);
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
   z-index: 9998;
 `;
 
-const WidgetContainer = styled.div`
-  position: fixed;
+const StyledWidgetContainer = styled.div`
+  background-color: ${themeCssVariables.background.primary};
+  border: 1px solid ${themeCssVariables.border.color.light};
+  border-radius: ${themeCssVariables.border.radius.md};
   bottom: 24px;
-  right: 24px;
-  background-color: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  width: 480px;
-  max-height: 600px;
-  z-index: 9999;
+  box-shadow: 0 8px 32px ${themeCssVariables.background.transparent.light};
   display: flex;
   flex-direction: column;
   font-family: inherit;
+  max-height: 600px;
   overflow: hidden;
+  position: fixed;
+  right: 24px;
+  width: 480px;
+  z-index: 9999;
 `;
 
-const Header = styled.div`
+const StyledHeader = styled.div`
+  align-items: center;
+  background: ${themeCssVariables.color.blue};
+  color: ${themeCssVariables.font.color.inverted};
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 14px 16px;
-  background: #1a73e8;
-  color: white;
+  padding: ${themeCssVariables.spacing[3]} ${themeCssVariables.spacing[4]};
 `;
 
-const HeaderTitle = styled.div`
-  font-size: 15px;
-  font-weight: 600;
+const StyledHeaderTitle = styled.div`
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: ${themeCssVariables.font.weight.semiBold};
 `;
 
-const HeaderSubtitle = styled.div`
-  font-size: 12px;
-  opacity: 0.85;
+const StyledHeaderSubtitle = styled.div`
+  font-size: ${themeCssVariables.font.size.sm};
   margin-top: 2px;
+  opacity: 0.85;
 `;
 
-const CloseButton = styled.button`
+const StyledCloseButton = styled.button`
   background: none;
   border: none;
-  color: white;
-  font-size: 20px;
+  color: ${themeCssVariables.font.color.inverted};
   cursor: pointer;
-  padding: 4px;
+  font-size: 20px;
   line-height: 1;
   opacity: 0.8;
+  padding: ${themeCssVariables.spacing[1]};
 
   &:hover {
     opacity: 1;
   }
 `;
 
-const Body = styled.form`
+const StyledBody = styled.form`
   display: flex;
-  flex-direction: column;
   flex: 1;
-  gap: 8px;
-  padding: 14px 16px 12px;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[2]};
   overflow: hidden;
+  padding: ${themeCssVariables.spacing[3]} ${themeCssVariables.spacing[4]}
+    ${themeCssVariables.spacing[2]};
 `;
 
-const FieldLabel = styled.div`
-  color: #5f6368;
-  font-size: 12px;
-  font-weight: 500;
+const StyledFieldLabel = styled.div`
+  color: ${themeCssVariables.font.color.secondary};
+  font-size: ${themeCssVariables.font.size.xs};
+  font-weight: ${themeCssVariables.font.weight.medium};
   letter-spacing: 0.3px;
   text-transform: uppercase;
 `;
 
-const TextField = styled.input`
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+const StyledTextField = styled.input`
+  background: ${themeCssVariables.background.secondary};
+  border: 1px solid ${themeCssVariables.border.color.light};
+  border-radius: ${themeCssVariables.border.radius.md};
+  color: ${themeCssVariables.font.color.primary};
   font-family: inherit;
-  font-size: 14px;
+  font-size: ${themeCssVariables.font.size.md};
   outline: none;
-  padding: 8px 10px;
+  padding: ${themeCssVariables.spacing[2]} ${themeCssVariables.spacing[3]};
 
   &:focus {
-    border-color: #1a73e8;
+    border-color: ${themeCssVariables.border.color.medium};
   }
 `;
 
-const TextArea = styled.textarea`
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+const StyledTextArea = styled.textarea`
+  background: ${themeCssVariables.background.secondary};
+  border: 1px solid ${themeCssVariables.border.color.light};
+  border-radius: ${themeCssVariables.border.radius.md};
+  color: ${themeCssVariables.font.color.primary};
   flex: 1;
   font-family: inherit;
-  font-size: 14px;
+  font-size: ${themeCssVariables.font.size.md};
   min-height: 200px;
   outline: none;
-  padding: 10px;
+  padding: ${themeCssVariables.spacing[3]};
   resize: vertical;
 
   &:focus {
-    border-color: #1a73e8;
+    border-color: ${themeCssVariables.border.color.medium};
   }
 `;
 
-const Footer = styled.div`
-  display: flex;
+const StyledFooter = styled.div`
   align-items: center;
-  gap: 12px;
-  padding: 8px 16px 14px;
+  display: flex;
+  gap: ${themeCssVariables.spacing[3]};
+  padding: ${themeCssVariables.spacing[2]} ${themeCssVariables.spacing[4]}
+    ${themeCssVariables.spacing[3]};
 `;
 
-const SendButton = styled.button`
-  background: #1a73e8;
-  color: white;
+const StyledSendButton = styled.button`
+  background: ${themeCssVariables.color.blue};
   border: none;
-  border-radius: 6px;
+  border-radius: ${themeCssVariables.border.radius.md};
+  color: ${themeCssVariables.font.color.inverted};
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  padding: 8px 18px;
-
-  &:hover {
-    background: #1557b0;
-  }
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  padding: ${themeCssVariables.spacing[2]} ${themeCssVariables.spacing[5]};
 
   &:disabled {
-    background: #d1d5db;
+    background: ${themeCssVariables.background.transparent.medium};
     cursor: not-allowed;
   }
 `;
 
-const StatusText = styled.div<{ isError: boolean }>`
-  color: ${(props) => (props.isError ? '#d93025' : '#5f6368')};
+const StyledStatusText = styled.div<{ isError: boolean }>`
+  color: ${({ isError }) =>
+    isError
+      ? themeCssVariables.color.red
+      : themeCssVariables.font.color.secondary};
   flex: 1;
-  font-size: 12px;
+  font-size: ${themeCssVariables.font.size.xs};
 `;
 
 type EmailComposerWidgetProps = {
@@ -193,12 +200,13 @@ export const EmailComposerWidget: React.FC<EmailComposerWidgetProps> = ({
         setStatusText('Sent');
         setTimeout(onClose, 800);
       } else {
-        setStatusText('Failed to send. Make sure your Microsoft account is connected in Settings.');
+        setStatusText(
+          'Failed to send. Make sure your Microsoft account is connected in Settings.',
+        );
         setIsError(true);
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown error';
+      const message = error instanceof Error ? error.message : 'Unknown error';
 
       setStatusText(`Failed: ${message}`);
       setIsError(true);
@@ -207,41 +215,43 @@ export const EmailComposerWidget: React.FC<EmailComposerWidgetProps> = ({
 
   return (
     <>
-      <Overlay onClick={onClose} />
-      <WidgetContainer>
-        <Header>
+      <StyledOverlay onClick={onClose} />
+      <StyledWidgetContainer>
+        <StyledHeader>
           <div>
-            <HeaderTitle>New email{contactName ? ` to ${contactName}` : ''}</HeaderTitle>
-            <HeaderSubtitle>{toEmail}</HeaderSubtitle>
+            <StyledHeaderTitle>
+              New email{contactName ? ` to ${contactName}` : ''}
+            </StyledHeaderTitle>
+            <StyledHeaderSubtitle>{toEmail}</StyledHeaderSubtitle>
           </div>
-          <CloseButton onClick={onClose}>×</CloseButton>
-        </Header>
-        <Body onSubmit={handleSubmit}>
-          <FieldLabel>Subject</FieldLabel>
-          <TextField
+          <StyledCloseButton onClick={onClose}>×</StyledCloseButton>
+        </StyledHeader>
+        <StyledBody onSubmit={handleSubmit}>
+          <StyledFieldLabel>Subject</StyledFieldLabel>
+          <StyledTextField
             ref={subjectRef}
             type="text"
             value={subject}
             onChange={(event) => setSubject(event.target.value)}
             placeholder="Subject"
           />
-          <FieldLabel>Message</FieldLabel>
-          <TextArea
+          <StyledFieldLabel>Message</StyledFieldLabel>
+          <StyledTextArea
             value={bodyText}
             onChange={(event) => setBodyText(event.target.value)}
             placeholder="Write your message…"
           />
-          <Footer>
-            <StatusText isError={isError}>{statusText}</StatusText>
-            <SendButton
+          <StyledFooter>
+            <StyledStatusText isError={isError}>{statusText}</StyledStatusText>
+            <StyledSendButton
               type="submit"
               disabled={loading || !subject.trim() || !bodyText.trim()}
             >
               {loading ? 'Sending…' : 'Send'}
-            </SendButton>
-          </Footer>
-        </Body>
-      </WidgetContainer>
+            </StyledSendButton>
+          </StyledFooter>
+        </StyledBody>
+      </StyledWidgetContainer>
     </>
   );
 };

@@ -61,13 +61,13 @@ const StyledList = styled.div`
 `;
 
 const StyledDetailColumn = styled.div`
+  background: ${themeCssVariables.background.primary};
+  border-left: 1px solid ${themeCssVariables.border.color.light};
   display: flex;
   flex: 0 0 480px;
   flex-direction: column;
   height: 100%;
   min-width: 0;
-  background: ${themeCssVariables.background.primary};
-  border-left: 1px solid ${themeCssVariables.border.color.light};
 `;
 
 const StyledTitleRow = styled.div`
@@ -157,8 +157,8 @@ const StyledThreadRow = styled.div<{ isSelected: boolean }>`
 const StyledThreadHeader = styled.div`
   align-items: center;
   display: flex;
-  justify-content: space-between;
   gap: ${themeCssVariables.spacing[2]};
+  justify-content: space-between;
 `;
 
 const StyledThreadName = styled.div`
@@ -226,18 +226,21 @@ const StyledMessages = styled.div`
 `;
 
 const StyledBubbleWrapper = styled.div<{ isOutbound: boolean }>`
+  align-items: ${({ isOutbound }) => (isOutbound ? 'flex-end' : 'flex-start')};
   display: flex;
   flex-direction: column;
-  align-items: ${({ isOutbound }) =>
-    isOutbound ? 'flex-end' : 'flex-start'};
 `;
 
 const StyledBubble = styled.div<{ isOutbound: boolean }>`
   background: ${({ isOutbound }) =>
-    isOutbound ? '#1a73e8' : themeCssVariables.background.tertiary};
+    isOutbound
+      ? themeCssVariables.color.blue
+      : themeCssVariables.background.tertiary};
   border-radius: 16px;
   color: ${({ isOutbound }) =>
-    isOutbound ? '#ffffff' : themeCssVariables.font.color.primary};
+    isOutbound
+      ? themeCssVariables.font.color.inverted
+      : themeCssVariables.font.color.primary};
   font-size: ${themeCssVariables.font.size.md};
   line-height: 1.4;
   max-width: 80%;
@@ -282,10 +285,10 @@ const StyledComposerInput = styled.textarea`
 
 const StyledSendButton = styled.button`
   align-items: center;
-  background: #1a73e8;
+  background: ${themeCssVariables.color.blue};
   border: none;
   border-radius: 50%;
-  color: white;
+  color: ${themeCssVariables.font.color.inverted};
   cursor: pointer;
   display: flex;
   flex-shrink: 0;
@@ -319,7 +322,9 @@ const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   return debounced;
 };
 
-const extractPhoneString = (val: SmsRecord['from'] | SmsRecord['to']): string => {
+const extractPhoneString = (
+  val: SmsRecord['from'] | SmsRecord['to'],
+): string => {
   if (val == null) return '';
   if (typeof val === 'string') return val;
   if (Array.isArray(val)) return extractPhoneString(val[0] ?? null);
@@ -507,7 +512,7 @@ export const SmsInboxPage = () => {
   const selectedThread = useMemo(
     () =>
       selectedDigits
-        ? threads.find((t) => t.counterpartyDigits === selectedDigits) ?? null
+        ? (threads.find((t) => t.counterpartyDigits === selectedDigits) ?? null)
         : null,
     [selectedDigits, threads],
   );
@@ -533,10 +538,11 @@ export const SmsInboxPage = () => {
 
     try {
       const recipient =
-        extractPhoneString(selectedThread.lastMessage.direction === 'inbound'
-          ? selectedThread.lastMessage.from
-          : selectedThread.lastMessage.to) ||
-        `+${selectedThread.counterpartyDigits}`;
+        extractPhoneString(
+          selectedThread.lastMessage.direction === 'inbound'
+            ? selectedThread.lastMessage.from
+            : selectedThread.lastMessage.to,
+        ) || `+${selectedThread.counterpartyDigits}`;
 
       const response = await fetch(`${serverUrl}/telnyx/sms/send`, {
         method: 'POST',
@@ -648,9 +654,7 @@ export const SmsInboxPage = () => {
                   {visibleThreads.map((thread) => (
                     <StyledThreadRow
                       key={thread.counterpartyDigits}
-                      isSelected={
-                        selectedDigits === thread.counterpartyDigits
-                      }
+                      isSelected={selectedDigits === thread.counterpartyDigits}
                       onClick={() =>
                         handleSelectThread(thread.counterpartyDigits)
                       }

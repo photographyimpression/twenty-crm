@@ -57,12 +57,17 @@ export class EmailReplyService {
         const associations = await associationRepository
           .createQueryBuilder('mcma')
           .leftJoinAndSelect('mcma.messageChannel', 'messageChannel')
-          .leftJoinAndSelect('messageChannel.connectedAccount', 'connectedAccount')
+          .leftJoinAndSelect(
+            'messageChannel.connectedAccount',
+            'connectedAccount',
+          )
           .where('mcma.messageId = :messageId', { messageId: lastMessage.id })
           .getMany();
 
         const ownAssociation = associations.find(
-          (a) => a.messageChannel?.connectedAccount?.accountOwnerId === workspaceMemberId,
+          (a) =>
+            a.messageChannel?.connectedAccount?.accountOwnerId ===
+            workspaceMemberId,
         );
 
         const association = ownAssociation ?? associations[0];
