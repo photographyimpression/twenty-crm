@@ -11,6 +11,7 @@ import { MicrosoftGetMessagesService } from 'src/modules/messaging/message-impor
 import { MicrosoftMessageListFetchErrorHandler } from 'src/modules/messaging/message-import-manager/drivers/microsoft/services/microsoft-message-list-fetch-error-handler.service';
 import { MicrosoftMessagesImportErrorHandler } from 'src/modules/messaging/message-import-manager/drivers/microsoft/services/microsoft-messages-import-error-handler.service';
 import { MicrosoftNetworkErrorHandler } from 'src/modules/messaging/message-import-manager/drivers/microsoft/services/microsoft-network-error-handler.service';
+import { MicrosoftSearchMessagesByEmailService } from 'src/modules/messaging/message-import-manager/drivers/microsoft/services/microsoft-search-messages-by-email.service';
 
 import { MicrosoftGetMessageListService } from './services/microsoft-get-message-list.service';
 
@@ -30,12 +31,14 @@ import { MicrosoftGetMessageListService } from './services/microsoft-get-message
     MicrosoftNetworkErrorHandler,
     MicrosoftMessageListFetchErrorHandler,
     MicrosoftMessagesImportErrorHandler,
+    MicrosoftSearchMessagesByEmailService,
   ],
   exports: [
     MicrosoftGetMessageListService,
     MicrosoftGetMessagesService,
     MicrosoftMessageListFetchErrorHandler,
     MicrosoftMessagesImportErrorHandler,
+    MicrosoftSearchMessagesByEmailService,
   ],
 })
 export class MessagingMicrosoftDriverModule {}
