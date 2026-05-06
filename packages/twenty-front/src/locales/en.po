@@ -5045,6 +5045,7 @@ msgstr "else if"
 #: src/modules/settings/admin-panel/components/SettingsAdminGeneral.tsx
 #: src/modules/object-record/record-field/ui/meta-types/input/components/EmailsFieldInput.tsx
 #: src/modules/auth/sign-in-up/components/internal/SignInUpEmailField.tsx
+#: src/modules/activities/timeline-activities/rows/message/components/EventRowMessage.tsx
 msgid "Email"
 msgstr "Email"
 
@@ -6542,6 +6543,11 @@ msgstr "Finished thinking"
 #: src/pages/settings/profile/appearance/components/LocalePicker.tsx
 msgid "Finnish"
 msgstr "Finnish"
+
+#. js-lingui-id: OUMa9d
+#: src/modules/workflow/workflow-trigger/components/WorkflowEditTriggerDatabaseEventForm.tsx
+msgid "Fires whenever an SMS is received on any of your Telnyx numbers. The workflow run history shows every fire — failures show up with the per-step error."
+msgstr "Fires whenever an SMS is received on any of your Telnyx numbers. The workflow run history shows every fire — failures show up with the per-step error."
 
 #. js-lingui-id: hy+Mfg
 #: src/modules/workflow/workflow-trigger/utils/cron-to-human/descriptors/getDayOfWeekDescription.ts
@@ -8159,11 +8165,6 @@ msgstr "Link label"
 #: src/modules/activities/timeline-activities/rows/calendar/components/EventRowCalendarEvent.tsx
 msgid "linked a calendar event with {labelIdentifierValue}"
 msgstr "linked a calendar event with {labelIdentifierValue}"
-
-#. js-lingui-id: fd8C68
-#: src/modules/activities/timeline-activities/rows/message/components/EventRowMessage.tsx
-msgid "linked an email with"
-msgstr "linked an email with"
 
 #. js-lingui-id: 82kQhK
 #: src/modules/advanced-text-editor/extensions/slash-command/DefaultSlashCommands.ts
@@ -12954,6 +12955,7 @@ msgid "Subject and metadata will be shared with your team."
 msgstr "Subject and metadata will be shared with your team."
 
 #. js-lingui-id: DvSvG9
+#: src/modules/activities/timeline-activities/rows/message/components/EventRowMessage.tsx
 #: src/modules/activities/timeline-activities/rows/message/components/EventCardMessageForbidden.tsx
 #: src/modules/activities/timeline-activities/rows/message/components/EventCardMessage.tsx
 msgid "Subject not shared"
@@ -13915,6 +13917,7 @@ msgid "Trial expired. Please update your billing details."
 msgstr "Trial expired. Please update your billing details."
 
 #. js-lingui-id: H2Sfhg
+#: src/modules/workflow/workflow-trigger/components/WorkflowEditTriggerDatabaseEventForm.tsx
 #: src/modules/workflow/workflow-diagram/workflow-nodes/components/WorkflowDiagramEmptyTriggerReadonly.tsx
 #: src/modules/workflow/workflow-diagram/workflow-nodes/components/WorkflowDiagramEmptyTriggerEditable.tsx
 #: src/modules/side-panel/components/SidePanelWorkflowStepInfo.tsx
