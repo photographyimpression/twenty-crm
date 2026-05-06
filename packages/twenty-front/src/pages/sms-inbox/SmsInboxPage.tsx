@@ -549,9 +549,12 @@ export const SmsInboxPage = () => {
         ) || `+${selectedThread.counterpartyDigits}`;
 
       // Reply from the SAME Telnyx number that received the contact's
-      // last inbound message. Walk recent → old to find the most
-      // recent inbound and use its `to`. Fall back to the most recent
-      // outbound's `from`. Either way Telnyx threads correctly.
+      // last inbound — that's guaranteed to be a number Telnyx accepts
+      // for this profile. ALWAYS prefer inbound's `to` over outbound's
+      // `from` because previously stored outbound `from` may be stale
+      // (older records used the env default rather than the resolved
+      // source). Only fall back to outbound's `from` when no inbound
+      // exists.
       const ourNumber = (() => {
         for (let i = selectedThread.messages.length - 1; i >= 0; i -= 1) {
           const message = selectedThread.messages[i];
@@ -560,7 +563,13 @@ export const SmsInboxPage = () => {
             const fromTo = extractPhoneString(message.to);
 
             if (fromTo) return fromTo;
-          } else {
+          }
+        }
+
+        for (let i = selectedThread.messages.length - 1; i >= 0; i -= 1) {
+          const message = selectedThread.messages[i];
+
+          if (message.direction === 'outbound') {
             const fromOut = extractPhoneString(message.from);
 
             if (fromOut) return fromOut;
