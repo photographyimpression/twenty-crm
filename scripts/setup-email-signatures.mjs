@@ -1,0 +1,383 @@
+#!/usr/bin/env node
+
+// Setup script for per-niche email signatures.
+//
+// Adds:
+//   - `niche` SELECT field on Person (project / clothing / jewel / amazon / ppm)
+//   - EmailSignature custom object (niche, name, signatureHtml)
+//   - Seeds 5 EmailSignature rows for Impression's photography niches
+//
+// Usage:
+//   node scripts/setup-email-signatures.mjs --url https://crm.impressionphotography.ca --token YOUR_API_KEY
+//
+// For local dev:
+//   node scripts/setup-email-signatures.mjs --url http://localhost:3000 --token YOUR_API_KEY
+
+const args = process.argv.slice(2);
+const urlIndex = args.indexOf('--url');
+const tokenIndex = args.indexOf('--token');
+
+const BASE_URL = urlIndex !== -1 ? args[urlIndex + 1] : process.env.TWENTY_URL || 'http://localhost:3000';
+const TOKEN = tokenIndex !== -1 ? args[tokenIndex + 1] : process.env.TWENTY_API_TOKEN;
+
+if (!TOKEN) {
+  console.error('Error: API token required.');
+  console.error('Usage: node scripts/setup-email-signatures.mjs --url https://your-crm.com --token YOUR_API_KEY');
+  process.exit(1);
+}
+
+const METADATA_URL = `${BASE_URL}/metadata`;
+const API_URL = `${BASE_URL}`;
+
+const headers = {
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${TOKEN}`,
+};
+
+async function metadataQuery(query, variables = {}) {
+  const res = await fetch(METADATA_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ query, variables }),
+  });
+  const data = await res.json();
+  if (data.errors) {
+    throw new Error(`Metadata API error: ${JSON.stringify(data.errors)}`);
+  }
+  return data.data;
+}
+
+async function apiQuery(query, variables = {}) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ query, variables }),
+  });
+  const data = await res.json();
+  if (data.errors) {
+    throw new Error(`API error: ${JSON.stringify(data.errors)}`);
+  }
+  return data.data;
+}
+
+async function listObjects() {
+  const data = await metadataQuery(`
+    query {
+      objects(paging: { first: 200 }) {
+        edges {
+          node {
+            id
+            nameSingular
+            namePlural
+            fields(paging: { first: 100 }) {
+              edges {
+                node {
+                  id
+                  name
+                  type
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `);
+  return data.objects.edges.map(e => e.node);
+}
+
+async function createField({ objectMetadataId, name, label, type, description, options, defaultValue, isNullable }) {
+  const input = {
+    objectMetadataId,
+    name,
+    label,
+    type,
+    description: description || '',
+    isNullable: isNullable !== false,
+  };
+  if (options) input.options = options;
+  if (defaultValue !== undefined) input.defaultValue = defaultValue;
+
+  const data = await metadataQuery(`
+    mutation CreateOneField($input: CreateOneFieldMetadataInput!) {
+      createOneField(input: $input) {
+        id
+        name
+        type
+      }
+    }
+  `, { input: { field: input } });
+  return data.createOneField;
+}
+
+async function createObject({ nameSingular, namePlural, labelSingular, labelPlural, description, icon }) {
+  const data = await metadataQuery(`
+    mutation CreateOneObject($input: CreateOneObjectInput!) {
+      createOneObject(input: $input) {
+        id
+        nameSingular
+        namePlural
+      }
+    }
+  `, {
+    input: {
+      object: {
+        nameSingular,
+        namePlural,
+        labelSingular,
+        labelPlural,
+        description: description || '',
+        icon: icon || 'IconSignature',
+      },
+    },
+  });
+  return data.createOneObject;
+}
+
+const NICHE_OPTIONS = [
+  { label: 'Project / General Photography', value: 'PROJECT', position: 0, color: 'sky' },
+  { label: 'Clothing Photography',           value: 'CLOTHING', position: 1, color: 'pink' },
+  { label: 'Jewellery Photography',          value: 'JEWEL', position: 2, color: 'purple' },
+  { label: 'Amazon Photography',             value: 'AMAZON', position: 3, color: 'orange' },
+  { label: 'Product Photography Montreal',   value: 'PPM', position: 4, color: 'green' },
+];
+
+// Signatures transcribed from Moshe's Outlook signatures (Loom 8ec0588179fd42be97e6ac81c4610b85).
+// HTML is intentionally simple — user can refine in CRM EmailSignature record view.
+function signatureHtml({ brandLine, domain, email, logoTagline, signingName = 'Moshe Lerner', officePhone = '514 270 2784', cellPhone = '514 894 7978', includeBanner = true }) {
+  const banner = includeBanner
+    ? `<p style="margin:0 0 12px 0;">🍌🍌🍌 Anything new to Photograph? 👉 <a href="https://${domain}/schedule">Click here to Schedule a pickup</a></p>`
+    : '';
+  const cellLine = cellPhone ? `Cell - ${cellPhone}<br/>` : '';
+  return `
+<div style="font-family: Aptos, Arial, sans-serif; font-size: 14px; color: #1a1a1a;">
+${banner}
+<p style="margin:0;">Thank you<br/>
+${signingName}<br/>
+${brandLine}<br/>
+<a href="https://${domain}">www.${domain}</a><br/>
+Office - ${officePhone}<br/>
+${cellLine}
+<a href="mailto:${email}">${email}</a></p>
+<p style="margin:16px 0 0 0;"><strong style="font-size: 28px; font-family: 'Brush Script MT', cursive;">Impression</strong><br/>
+<span style="font-size: 11px; letter-spacing: 1px; color: #666;">${logoTagline}</span></p>
+</div>`.trim();
+}
+
+const SIGNATURES = [
+  {
+    niche: 'PROJECT',
+    name: 'Standard / Project',
+    signatureHtml: signatureHtml({
+      brandLine: 'Impression Photography',
+      domain: 'impressionphotography.ca',
+      email: 'moshe@impressionphotography.ca',
+      logoTagline: 'Product Photography',
+    }),
+  },
+  {
+    niche: 'CLOTHING',
+    name: 'Clothing',
+    signatureHtml: signatureHtml({
+      brandLine: 'Impression Clothing Photography',
+      domain: 'clothingphotography.ca',
+      email: 'moshe@clothingphotography.ca',
+      logoTagline: 'Clothing Photography',
+    }),
+  },
+  {
+    niche: 'JEWEL',
+    name: 'Jewellery',
+    signatureHtml: signatureHtml({
+      brandLine: 'Impression Jewellery Photography',
+      domain: 'impressionjewellery.ca',
+      email: 'moshe@impressionjewellery.ca',
+      logoTagline: 'Jewellery Photography',
+    }),
+  },
+  {
+    niche: 'AMAZON',
+    name: 'Amazon',
+    signatureHtml: signatureHtml({
+      brandLine: 'Impression Amazon Photography',
+      domain: 'amazonphoto.ca',
+      email: 'moshe@amazonphoto.ca',
+      logoTagline: 'Amazon Photography',
+    }),
+  },
+  {
+    niche: 'PPM',
+    name: 'Product Photography Montreal',
+    signatureHtml: signatureHtml({
+      brandLine: 'Product Photography Montreal',
+      domain: 'productphotographymontreal.ca',
+      email: 'Lee@productphotographymontreal.ca',
+      logoTagline: 'Product Photography Montreal',
+      signingName: 'Lee',
+      officePhone: '438-815-8781',
+      cellPhone: '',
+      includeBanner: false,
+    }),
+  },
+];
+
+async function main() {
+  console.log(`\nConnecting to ${BASE_URL}...\n`);
+
+  const objects = await listObjects();
+  const objectMap = Object.fromEntries(objects.map(o => [o.nameSingular, o]));
+
+  // 1) Add `niche` to Person
+  console.log('Step 1: Add niche field to Person');
+  const person = objectMap['person'];
+  if (!person) {
+    throw new Error('Person object not found');
+  }
+  const personFields = new Set(person.fields.edges.map(e => e.node.name));
+  if (personFields.has('niche')) {
+    console.log('  SKIP: person.niche already exists');
+  } else {
+    try {
+      const result = await createField({
+        objectMetadataId: person.id,
+        name: 'niche',
+        label: 'Niche',
+        type: 'SELECT',
+        description: 'Photography niche — drives auto-selected email signature when {{signature}} placeholder is used.',
+        options: NICHE_OPTIONS,
+        defaultValue: "'PROJECT'",
+      });
+      console.log(`  OK: Created person.niche → ${result.id}`);
+    } catch (err) {
+      console.error(`  FAIL: person.niche → ${err.message}`);
+      throw err;
+    }
+  }
+
+  // 2) Create EmailSignature object
+  console.log('\nStep 2: Create EmailSignature object');
+  let emailSignature = objectMap['emailSignature'];
+  if (emailSignature) {
+    console.log(`  SKIP: emailSignature object already exists → ${emailSignature.id}`);
+  } else {
+    try {
+      const result = await createObject({
+        nameSingular: 'emailSignature',
+        namePlural: 'emailSignatures',
+        labelSingular: 'Email Signature',
+        labelPlural: 'Email Signatures',
+        description: 'Per-niche email signature applied when {{signature}} placeholder is used in an email body.',
+        icon: 'IconSignature',
+      });
+      console.log(`  OK: Created emailSignature → ${result.id}`);
+      // Re-fetch with fields
+      const refreshed = await listObjects();
+      emailSignature = refreshed.find(o => o.nameSingular === 'emailSignature');
+    } catch (err) {
+      console.error(`  FAIL: emailSignature object → ${err.message}`);
+      throw err;
+    }
+  }
+
+  // 3) Add fields to EmailSignature
+  console.log('\nStep 3: Add fields to EmailSignature');
+  const sigFields = new Set(emailSignature.fields.edges.map(e => e.node.name));
+
+  const fieldsToCreate = [
+    {
+      name: 'niche',
+      label: 'Niche',
+      type: 'SELECT',
+      description: 'Which photography niche this signature belongs to.',
+      options: NICHE_OPTIONS,
+      defaultValue: "'PROJECT'",
+    },
+    {
+      name: 'signatureHtml',
+      label: 'Signature HTML',
+      type: 'TEXT',
+      description: 'HTML body that will replace the {{signature}} placeholder in outgoing emails.',
+    },
+  ];
+
+  for (const field of fieldsToCreate) {
+    if (sigFields.has(field.name)) {
+      console.log(`  SKIP: emailSignature.${field.name} already exists`);
+      continue;
+    }
+    try {
+      const result = await createField({
+        objectMetadataId: emailSignature.id,
+        ...field,
+      });
+      console.log(`  OK: Created emailSignature.${field.name} (${field.type}) → ${result.id}`);
+    } catch (err) {
+      console.error(`  FAIL: emailSignature.${field.name} → ${err.message}`);
+    }
+  }
+
+  // 4) Seed signature rows
+  console.log('\nStep 4: Seed signature rows');
+  // First check existing rows
+  let existingByNiche = {};
+  try {
+    const data = await apiQuery(`
+      query {
+        emailSignatures(paging: { first: 100 }) {
+          edges {
+            node {
+              id
+              niche
+              name
+            }
+          }
+        }
+      }
+    `);
+    existingByNiche = Object.fromEntries(
+      data.emailSignatures.edges.map(e => [e.node.niche, e.node])
+    );
+  } catch (err) {
+    console.log(`  (Could not list existing signatures: ${err.message}. Will attempt creation.)`);
+  }
+
+  for (const sig of SIGNATURES) {
+    if (existingByNiche[sig.niche]) {
+      console.log(`  SKIP: signature for ${sig.niche} already exists (${existingByNiche[sig.niche].id})`);
+      continue;
+    }
+    try {
+      const result = await apiQuery(`
+        mutation CreateOneEmailSignature($data: EmailSignatureCreateInput!) {
+          createEmailSignature(data: $data) {
+            id
+            niche
+            name
+          }
+        }
+      `, {
+        data: {
+          niche: sig.niche,
+          name: sig.name,
+          signatureHtml: sig.signatureHtml,
+        },
+      });
+      console.log(`  OK: Seeded signature ${sig.niche} (${sig.name}) → ${result.createEmailSignature.id}`);
+    } catch (err) {
+      console.error(`  FAIL: ${sig.niche} → ${err.message}`);
+    }
+  }
+
+  console.log('\n--- Setup Complete ---');
+  console.log('Next steps:');
+  console.log('  1. Open Email Signatures in the CRM sidebar — verify the 5 signatures look right');
+  console.log('  2. Open any Person — set their Niche field');
+  console.log('  3. Send an email containing the literal text {{signature}} in its body');
+  console.log('     (via EmailComposer or workflow Send Email action)');
+  console.log('  4. The {{signature}} placeholder is replaced server-side with the recipient\'s niche signature');
+}
+
+main().catch(err => {
+  console.error('\nFatal error:', err.message);
+  process.exit(1);
+});
