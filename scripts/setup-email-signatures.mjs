@@ -27,7 +27,7 @@ if (!TOKEN) {
 }
 
 const METADATA_URL = `${BASE_URL}/metadata`;
-const API_URL = `${BASE_URL}`;
+const API_URL = `${BASE_URL}/graphql`;
 
 const headers = {
   'Content-Type': 'application/json',
@@ -227,34 +227,33 @@ async function main() {
   const objects = await listObjects();
   const objectMap = Object.fromEntries(objects.map(o => [o.nameSingular, o]));
 
-  // 1) Add `niche` to Person
+  // 1) Add `niche` to Person (idempotent — "already used" error is treated as success)
   console.log('Step 1: Add niche field to Person');
   const person = objectMap['person'];
   if (!person) {
     throw new Error('Person object not found');
   }
-  const personFields = new Set(person.fields.edges.map(e => e.node.name));
-  if (personFields.has('niche')) {
-    console.log('  SKIP: person.niche already exists');
-  } else {
-    try {
-      const result = await createField({
-        objectMetadataId: person.id,
-        name: 'niche',
-        label: 'Niche',
-        type: 'SELECT',
-        description: 'Photography niche — drives auto-selected email signature when {{signature}} placeholder is used.',
-        options: NICHE_OPTIONS,
-        defaultValue: "'PROJECT'",
-      });
-      console.log(`  OK: Created person.niche → ${result.id}`);
-    } catch (err) {
+  try {
+    const result = await createField({
+      objectMetadataId: person.id,
+      name: 'niche',
+      label: 'Niche',
+      type: 'SELECT',
+      description: 'Photography niche — drives auto-selected email signature when {{signature}} placeholder is used.',
+      options: NICHE_OPTIONS,
+      defaultValue: "'PROJECT'",
+    });
+    console.log(`  OK: Created person.niche → ${result.id}`);
+  } catch (err) {
+    if (/already used by another field/i.test(err.message) || /NOT_AVAILABLE/.test(err.message)) {
+      console.log('  SKIP: person.niche already exists');
+    } else {
       console.error(`  FAIL: person.niche → ${err.message}`);
       throw err;
     }
   }
 
-  // 2) Create EmailSignature object
+  // 2) Create EmailSignature object (idempotent — "already exists" treated as success)
   console.log('\nStep 2: Create EmailSignature object');
   let emailSignature = objectMap['emailSignature'];
   if (emailSignature) {
@@ -270,18 +269,26 @@ async function main() {
         icon: 'IconSignature',
       });
       console.log(`  OK: Created emailSignature → ${result.id}`);
-      // Re-fetch with fields
       const refreshed = await listObjects();
       emailSignature = refreshed.find(o => o.nameSingular === 'emailSignature');
     } catch (err) {
-      console.error(`  FAIL: emailSignature object → ${err.message}`);
-      throw err;
+      if (/already used|NOT_AVAILABLE/i.test(err.message)) {
+        console.log('  SKIP: emailSignature object already exists, refetching...');
+        const refreshed = await listObjects();
+        emailSignature = refreshed.find(o => o.nameSingular === 'emailSignature');
+      } else {
+        console.error(`  FAIL: emailSignature object → ${err.message}`);
+        throw err;
+      }
     }
   }
 
-  // 3) Add fields to EmailSignature
+  if (!emailSignature) {
+    throw new Error('emailSignature object could not be located after create attempt.');
+  }
+
+  // 3) Add fields to EmailSignature (idempotent)
   console.log('\nStep 3: Add fields to EmailSignature');
-  const sigFields = new Set(emailSignature.fields.edges.map(e => e.node.name));
 
   const fieldsToCreate = [
     {
@@ -301,10 +308,6 @@ async function main() {
   ];
 
   for (const field of fieldsToCreate) {
-    if (sigFields.has(field.name)) {
-      console.log(`  SKIP: emailSignature.${field.name} already exists`);
-      continue;
-    }
     try {
       const result = await createField({
         objectMetadataId: emailSignature.id,
@@ -312,7 +315,11 @@ async function main() {
       });
       console.log(`  OK: Created emailSignature.${field.name} (${field.type}) → ${result.id}`);
     } catch (err) {
-      console.error(`  FAIL: emailSignature.${field.name} → ${err.message}`);
+      if (/already used|NOT_AVAILABLE/i.test(err.message)) {
+        console.log(`  SKIP: emailSignature.${field.name} already exists`);
+      } else {
+        console.error(`  FAIL: emailSignature.${field.name} → ${err.message}`);
+      }
     }
   }
 
@@ -323,7 +330,7 @@ async function main() {
   try {
     const data = await apiQuery(`
       query {
-        emailSignatures(paging: { first: 100 }) {
+        emailSignatures(first: 100) {
           edges {
             node {
               id
@@ -362,10 +369,98 @@ async function main() {
           signatureHtml: sig.signatureHtml,
         },
       });
+      if (!result || !result.createEmailSignature) {
+        throw new Error(`Mutation returned no data: ${JSON.stringify(result)}`);
+      }
       console.log(`  OK: Seeded signature ${sig.niche} (${sig.name}) → ${result.createEmailSignature.id}`);
     } catch (err) {
       console.error(`  FAIL: ${sig.niche} → ${err.message}`);
     }
+  }
+
+  // 5) Add new fields to default views so they're visible in CRM UI.
+  //    Custom fields are created with no view-fields by default; users would
+  //    have to manually edit the layout to see them. We pre-add them here.
+  console.log('\nStep 5: Surface new fields in default views');
+
+  async function findFieldByName(objectId, fieldName) {
+    const data = await metadataQuery(`
+      query Obj($id: UUID!) {
+        object(id: $id) {
+          id
+          fields(paging: { first: 200 }) { edges { node { id name } } }
+        }
+      }
+    `, { id: objectId });
+    const edge = data.object?.fields?.edges?.find(e => e.node.name === fieldName);
+    return edge?.node;
+  }
+
+  const personNicheField = await findFieldByName(person.id, 'niche');
+  const sigNicheField = await findFieldByName(emailSignature.id, 'niche');
+  const sigHtmlField = await findFieldByName(emailSignature.id, 'signatureHtml');
+
+  // For each (objectMetadataId, fields[]) pair, get all views and add the
+  // fields if not already present. We add to ALL views the object has so the
+  // field is visible everywhere.
+  async function addFieldsToObjectViews(objectMetadataId, fieldsToAdd) {
+    if (!fieldsToAdd.length) return;
+    let views;
+    try {
+      const data = await metadataQuery(`
+        query Views($oid: String) {
+          getCoreViews(objectMetadataId: $oid) {
+            id
+            name
+            type
+            viewFields { id fieldMetadataId }
+          }
+        }
+      `, { oid: objectMetadataId });
+      views = data.getCoreViews ?? [];
+    } catch (err) {
+      console.error(`  FAIL: load views for ${objectMetadataId} → ${err.message}`);
+      return;
+    }
+    if (!views.length) {
+      console.log(`  (No views found for ${objectMetadataId} — skipping)`);
+      return;
+    }
+    for (const view of views) {
+      const existingFieldIds = new Set((view.viewFields ?? []).map(f => f.fieldMetadataId));
+      let positionStart = (view.viewFields ?? []).length;
+      for (const field of fieldsToAdd) {
+        if (existingFieldIds.has(field.id)) {
+          console.log(`  SKIP: ${field.name} already on view "${view.name ?? view.id}"`);
+          continue;
+        }
+        try {
+          await metadataQuery(`
+            mutation CreateCoreViewField($input: CreateViewFieldInput!) {
+              createCoreViewField(input: $input) { id }
+            }
+          `, {
+            input: {
+              fieldMetadataId: field.id,
+              viewId: view.id,
+              isVisible: true,
+              size: 200,
+              position: positionStart++,
+            },
+          });
+          console.log(`  OK: Added ${field.name} to view "${view.name ?? view.id}"`);
+        } catch (err) {
+          console.error(`  FAIL: ${field.name} on "${view.name ?? view.id}" → ${err.message}`);
+        }
+      }
+    }
+  }
+
+  if (personNicheField) {
+    await addFieldsToObjectViews(person.id, [personNicheField]);
+  }
+  if (sigNicheField || sigHtmlField) {
+    await addFieldsToObjectViews(emailSignature.id, [sigNicheField, sigHtmlField].filter(Boolean));
   }
 
   console.log('\n--- Setup Complete ---');
