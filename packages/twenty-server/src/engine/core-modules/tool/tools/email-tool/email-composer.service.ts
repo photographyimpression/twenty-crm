@@ -19,6 +19,7 @@ import {
 import { EmailComposerResult } from 'src/engine/core-modules/tool/tools/email-tool/types/email-composer-result.type';
 import { EmailToolInput } from 'src/engine/core-modules/tool/tools/email-tool/types/email-tool-input.type';
 import { parseCommaSeparatedEmails } from 'src/engine/core-modules/tool/tools/email-tool/utils/parse-comma-separated-emails.util';
+import { resolveSignaturePlaceholder } from 'src/engine/core-modules/tool/tools/email-tool/utils/resolve-signature-placeholder.util';
 import { ToolExecutionContext } from 'src/engine/core-modules/tool/types/tool.type';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
@@ -297,13 +298,22 @@ export class EmailComposerService {
 
     const parsedBody = parseEmailBody(body);
     const reactMarkup = reactMarkupFromJSON(parsedBody);
-    const htmlBody = await render(reactMarkup);
-    const plainTextBody = toPlainText(htmlBody);
+    const renderedHtmlBody = await render(reactMarkup);
+
+    const { html: htmlBodyWithSignature, plainText: plainTextBody } =
+      await resolveSignaturePlaceholder({
+        html: renderedHtmlBody,
+        plainText: toPlainText(renderedHtmlBody),
+        primaryRecipientEmail: recipients.to[0],
+        workspaceId,
+        globalWorkspaceOrmManager: this.globalWorkspaceOrmManager,
+        logger: this.logger,
+      });
 
     const { JSDOM } = await import('jsdom');
     const window = new JSDOM('').window;
     const purify = DOMPurify(window);
-    const sanitizedHtmlBody = purify.sanitize(htmlBody || '');
+    const sanitizedHtmlBody = purify.sanitize(htmlBodyWithSignature || '');
     const sanitizedSubject = purify.sanitize(subject || '');
 
     return {

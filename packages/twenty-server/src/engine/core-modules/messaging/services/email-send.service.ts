@@ -7,8 +7,25 @@ import { ConnectedAccountProvider } from 'twenty-shared/types';
 import { type ConnectedAccountWorkspaceEntity } from 'src/modules/connected-account/standard-objects/connected-account.workspace-entity';
 import { OAuth2ClientManagerService } from 'src/modules/connected-account/oauth2-client-manager/services/oauth2-client-manager.service';
 import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
+import {
+  getSignatureForRecipient,
+  hasSignaturePlaceholder,
+  replaceSignaturePlaceholder,
+  stripSignatureHtml,
+} from 'src/engine/core-modules/tool/tools/email-tool/utils/resolve-signature-placeholder.util';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
+
+const escapeHtml = (s: string): string =>
+  s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const plainTextToHtml = (text: string): string =>
+  escapeHtml(text).replace(/\r?\n/g, '<br/>');
 
 @Injectable()
 export class EmailSendService {
@@ -68,10 +85,46 @@ export class EmailSendService {
               account,
             );
 
+          // If the body uses {{signature}}, look up the recipient's niche
+          // signature and send as HTML (so the formatting renders).
+          // Otherwise, fall through to plain-text send unchanged.
+          let messageBody: { contentType: 'Text' | 'HTML'; content: string } = {
+            contentType: 'Text',
+            content: body,
+          };
+
+          if (hasSignaturePlaceholder(body)) {
+            const signatureHtml = await getSignatureForRecipient({
+              primaryRecipientEmail: to,
+              workspaceId,
+              globalWorkspaceOrmManager: this.globalWorkspaceOrmManager,
+              logger: this.logger,
+            });
+            const replacementText = signatureHtml
+              ? stripSignatureHtml(signatureHtml)
+              : '';
+
+            if (signatureHtml) {
+              const htmlBody = replaceSignaturePlaceholder(
+                plainTextToHtml(body),
+                signatureHtml,
+              );
+
+              messageBody = { contentType: 'HTML', content: htmlBody };
+            } else {
+              // No matching signature — strip the placeholder so it doesn't
+              // appear literally in the sent message.
+              messageBody = {
+                contentType: 'Text',
+                content: replaceSignaturePlaceholder(body, replacementText),
+              };
+            }
+          }
+
           await client.api('/me/sendMail').post({
             message: {
               subject,
-              body: { contentType: 'Text', content: body },
+              body: messageBody,
               toRecipients: [{ emailAddress: { address: to } }],
             },
             saveToSentItems: true,
