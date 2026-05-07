@@ -162,24 +162,56 @@ const StyledThreadHeader = styled.div`
   justify-content: space-between;
 `;
 
-const StyledThreadName = styled.div`
+const StyledThreadNameRow = styled.div`
+  align-items: center;
+  display: flex;
+  gap: ${themeCssVariables.spacing[2]};
+  min-width: 0;
+`;
+
+const StyledUnreadDot = styled.span`
+  background: ${themeCssVariables.color.blue};
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 8px;
+  width: 8px;
+`;
+
+const StyledThreadName = styled.div<{ isUnread: boolean }>`
   color: ${themeCssVariables.font.color.primary};
   font-size: ${themeCssVariables.font.size.md};
-  font-weight: ${themeCssVariables.font.weight.semiBold};
+  font-weight: ${({ isUnread }) =>
+    isUnread
+      ? themeCssVariables.font.weight.semiBold
+      : themeCssVariables.font.weight.regular};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 `;
 
-const StyledThreadTime = styled.div`
-  color: ${themeCssVariables.font.color.tertiary};
+const StyledThreadTime = styled.div<{ isUnread: boolean }>`
+  color: ${({ isUnread }) =>
+    isUnread
+      ? themeCssVariables.color.blue
+      : themeCssVariables.font.color.tertiary};
   flex-shrink: 0;
   font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${({ isUnread }) =>
+    isUnread
+      ? themeCssVariables.font.weight.semiBold
+      : themeCssVariables.font.weight.regular};
 `;
 
-const StyledThreadPreview = styled.div`
-  color: ${themeCssVariables.font.color.secondary};
+const StyledThreadPreview = styled.div<{ isUnread: boolean }>`
+  color: ${({ isUnread }) =>
+    isUnread
+      ? themeCssVariables.font.color.primary
+      : themeCssVariables.font.color.secondary};
   font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${({ isUnread }) =>
+    isUnread
+      ? themeCssVariables.font.weight.medium
+      : themeCssVariables.font.weight.regular};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -513,6 +545,40 @@ export const SmsInboxPage = () => {
     [threads, debouncedSearch],
   );
 
+  // Per-thread "last viewed at" timestamps from localStorage. We bump
+  // `readTick` whenever a thread is opened so the UI re-evaluates which
+  // threads are unread without a full re-fetch.
+  const [readTick, setReadTick] = useState(0);
+  const unreadDigits = useMemo(() => {
+    const result = new Set<string>();
+
+    for (const thread of threads) {
+      let newestInbound = 0;
+
+      for (const message of thread.messages) {
+        if (message.direction !== 'inbound') continue;
+        const ts = Date.parse(message.timestamp);
+
+        if (Number.isFinite(ts) && ts > newestInbound) newestInbound = ts;
+      }
+
+      if (newestInbound === 0) continue;
+
+      const stored = window.localStorage.getItem(
+        `sms-thread-last-viewed-${thread.counterpartyDigits}`,
+      );
+      const lastViewed = stored ? Number(stored) : 0;
+
+      if (newestInbound > lastViewed) {
+        result.add(thread.counterpartyDigits);
+      }
+    }
+
+    return result;
+    // readTick intentionally invalidates this memo on each thread click
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads, readTick]);
+
   const selectedThread = useMemo(
     () =>
       selectedDigits
@@ -526,6 +592,11 @@ export const SmsInboxPage = () => {
   }, [selectedThread?.messages.length]);
 
   const handleSelectThread = (digits: string) => {
+    window.localStorage.setItem(
+      `sms-thread-last-viewed-${digits}`,
+      String(Date.now()),
+    );
+    setReadTick((tick) => tick + 1);
     setSelectedDigits(digits);
     setComposerText('');
     setStatusText('');
@@ -692,29 +763,42 @@ export const SmsInboxPage = () => {
               )}
               {visibleThreads.length > 0 && (
                 <ActivityList>
-                  {visibleThreads.map((thread) => (
-                    <StyledThreadRow
-                      key={thread.counterpartyDigits}
-                      isSelected={selectedDigits === thread.counterpartyDigits}
-                      onClick={() =>
-                        handleSelectThread(thread.counterpartyDigits)
-                      }
-                    >
-                      <StyledThreadHeader>
-                        <StyledThreadName>
-                          {thread.counterpartyDisplay}
-                        </StyledThreadName>
-                        <StyledThreadTime>
-                          {formatTimestamp(thread.lastMessage.timestamp)}
-                        </StyledThreadTime>
-                      </StyledThreadHeader>
-                      <StyledThreadPreview>
-                        {thread.lastMessage.direction === 'outbound'
-                          ? `${t`You`}: ${thread.lastMessage.text}`
-                          : thread.lastMessage.text}
-                      </StyledThreadPreview>
-                    </StyledThreadRow>
-                  ))}
+                  {visibleThreads.map((thread) => {
+                    const isUnread = unreadDigits.has(thread.counterpartyDigits);
+
+                    return (
+                      <StyledThreadRow
+                        key={thread.counterpartyDigits}
+                        isSelected={
+                          selectedDigits === thread.counterpartyDigits
+                        }
+                        onClick={() =>
+                          handleSelectThread(thread.counterpartyDigits)
+                        }
+                      >
+                        <StyledThreadHeader>
+                          <StyledThreadNameRow>
+                            {isUnread && (
+                              <StyledUnreadDot
+                                aria-label={t`Unread conversation`}
+                              />
+                            )}
+                            <StyledThreadName isUnread={isUnread}>
+                              {thread.counterpartyDisplay}
+                            </StyledThreadName>
+                          </StyledThreadNameRow>
+                          <StyledThreadTime isUnread={isUnread}>
+                            {formatTimestamp(thread.lastMessage.timestamp)}
+                          </StyledThreadTime>
+                        </StyledThreadHeader>
+                        <StyledThreadPreview isUnread={isUnread}>
+                          {thread.lastMessage.direction === 'outbound'
+                            ? `${t`You`}: ${thread.lastMessage.text}`
+                            : thread.lastMessage.text}
+                        </StyledThreadPreview>
+                      </StyledThreadRow>
+                    );
+                  })}
                 </ActivityList>
               )}
             </Section>
