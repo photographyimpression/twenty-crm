@@ -14282,6 +14282,11 @@ msgstr "desordenado"
 msgid "Unordered list with bullets"
 msgstr "Lista sin ordenar con puntos"
 
+#. js-lingui-id: 5IbNOs
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Unread conversation"
+msgstr ""
+
 #. js-lingui-id: wja8aL
 #: src/modules/ui/field/display/components/GlobalFilePreviewModal.tsx
 #: src/modules/ui/field/display/components/ArrayDisplay.tsx
