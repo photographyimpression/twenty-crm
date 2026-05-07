@@ -142,83 +142,24 @@ const NICHE_OPTIONS = [
   { label: 'Product Photography Montreal',   value: 'PPM', position: 4, color: 'green' },
 ];
 
-// Signatures transcribed from Moshe's Outlook signatures (Loom 8ec0588179fd42be97e6ac81c4610b85).
-// HTML is intentionally simple — user can refine in CRM EmailSignature record view.
-function signatureHtml({ brandLine, domain, email, logoTagline, signingName = 'Moshe Lerner', officePhone = '514 270 2784', cellPhone = '514 894 7978', includeBanner = true }) {
-  const banner = includeBanner
-    ? `<p style="margin:0 0 12px 0;">🍌🍌🍌 Anything new to Photograph? 👉 <a href="https://${domain}/schedule">Click here to Schedule a pickup</a></p>`
-    : '';
-  const cellLine = cellPhone ? `Cell - ${cellPhone}<br/>` : '';
-  return `
-<div style="font-family: Aptos, Arial, sans-serif; font-size: 14px; color: #1a1a1a;">
-${banner}
-<p style="margin:0;">Thank you<br/>
-${signingName}<br/>
-${brandLine}<br/>
-<a href="https://${domain}">www.${domain}</a><br/>
-Office - ${officePhone}<br/>
-${cellLine}
-<a href="mailto:${email}">${email}</a></p>
-<p style="margin:16px 0 0 0;"><strong style="font-size: 28px; font-family: 'Brush Script MT', cursive;">Impression</strong><br/>
-<span style="font-size: 11px; letter-spacing: 1px; color: #666;">${logoTagline}</span></p>
-</div>`.trim();
-}
+// The signature HTML lives in scripts/sig-assets/<niche>.html — extracted
+// verbatim from Moshe's Outlook drafts (May 2026), with cid: image refs
+// rewritten to https://crm.impressionphotography.ca/sig-images/<name>.jpg
+// (deployed by scripts/deploy-sig-assets.sh — run that once to host the
+// images on the OVH nginx).
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const sigAsset = (file) => readFileSync(join(__dirname, 'sig-assets', file), 'utf8').trim();
 
 const SIGNATURES = [
-  {
-    niche: 'PRODUCT',
-    name: 'Standard / Product',
-    signatureHtml: signatureHtml({
-      brandLine: 'Impression Photography',
-      domain: 'impressionphotography.ca',
-      email: 'moshe@impressionphotography.ca',
-      logoTagline: 'Product Photography',
-    }),
-  },
-  {
-    niche: 'CLOTHING',
-    name: 'Clothing',
-    signatureHtml: signatureHtml({
-      brandLine: 'Impression Clothing Photography',
-      domain: 'clothingphotography.ca',
-      email: 'moshe@clothingphotography.ca',
-      logoTagline: 'Clothing Photography',
-    }),
-  },
-  {
-    niche: 'JEWEL',
-    name: 'Jewellery',
-    signatureHtml: signatureHtml({
-      brandLine: 'Impression Jewellery Photography',
-      domain: 'impressionjewellery.ca',
-      email: 'moshe@impressionjewellery.ca',
-      logoTagline: 'Jewellery Photography',
-    }),
-  },
-  {
-    niche: 'AMAZON',
-    name: 'Amazon',
-    signatureHtml: signatureHtml({
-      brandLine: 'Impression Amazon Photography',
-      domain: 'amazonphoto.ca',
-      email: 'moshe@amazonphoto.ca',
-      logoTagline: 'Amazon Photography',
-    }),
-  },
-  {
-    niche: 'PPM',
-    name: 'Product Photography Montreal',
-    signatureHtml: signatureHtml({
-      brandLine: 'Product Photography Montreal',
-      domain: 'productphotographymontreal.ca',
-      email: 'Lee@productphotographymontreal.ca',
-      logoTagline: 'Product Photography Montreal',
-      signingName: 'Lee',
-      officePhone: '438-815-8781',
-      cellPhone: '',
-      includeBanner: false,
-    }),
-  },
+  { niche: 'PRODUCT',  name: 'Standard / Product',            signatureHtml: sigAsset('product.html')  },
+  { niche: 'CLOTHING', name: 'Clothing',                      signatureHtml: sigAsset('clothing.html') },
+  { niche: 'JEWEL',    name: 'Jewellery',                     signatureHtml: sigAsset('jewel.html')    },
+  { niche: 'AMAZON',   name: 'Amazon',                        signatureHtml: sigAsset('amazon.html')   },
+  { niche: 'PPM',      name: 'Product Photography Montreal', signatureHtml: sigAsset('ppm.html')      },
 ];
 
 async function main() {
@@ -349,8 +290,22 @@ async function main() {
   }
 
   for (const sig of SIGNATURES) {
-    if (existingByNiche[sig.niche]) {
-      console.log(`  SKIP: signature for ${sig.niche} already exists (${existingByNiche[sig.niche].id})`);
+    const existing = existingByNiche[sig.niche];
+    if (existing) {
+      // Update existing row so re-runs pull in the latest HTML from sig-assets/.
+      try {
+        await apiQuery(`
+          mutation U($id: UUID!, $data: EmailSignatureUpdateInput!) {
+            updateEmailSignature(id: $id, data: $data) { id }
+          }
+        `, {
+          id: existing.id,
+          data: { name: sig.name, signatureHtml: sig.signatureHtml },
+        });
+        console.log(`  UPDATE: ${sig.niche} (${sig.name}) → ${existing.id}`);
+      } catch (err) {
+        console.error(`  FAIL update ${sig.niche} → ${err.message}`);
+      }
       continue;
     }
     try {
@@ -372,7 +327,7 @@ async function main() {
       if (!result || !result.createEmailSignature) {
         throw new Error(`Mutation returned no data: ${JSON.stringify(result)}`);
       }
-      console.log(`  OK: Seeded signature ${sig.niche} (${sig.name}) → ${result.createEmailSignature.id}`);
+      console.log(`  CREATE: ${sig.niche} (${sig.name}) → ${result.createEmailSignature.id}`);
     } catch (err) {
       console.error(`  FAIL: ${sig.niche} → ${err.message}`);
     }
