@@ -3,6 +3,8 @@ import { styled } from '@linaria/react';
 import React, { useEffect, useRef, useState } from 'react';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
+import { useApolloCoreClient } from '@/object-metadata/hooks/useApolloCoreClient';
+
 const SEND_NEW_EMAIL = gql`
   mutation SendNewEmail($to: String!, $subject: String!, $body: String!) {
     sendNewEmail(to: $to, subject: $subject, body: $body)
@@ -173,7 +175,13 @@ export const EmailComposerWidget: React.FC<EmailComposerWidgetProps> = ({
   const [isError, setIsError] = useState(false);
   const subjectRef = useRef<HTMLInputElement>(null);
 
-  const [sendNewEmail, { loading }] = useMutation(SEND_NEW_EMAIL);
+  // sendNewEmail is a @CoreResolver mutation, exposed on /graphql (the workspace
+  // schema), not on /metadata where the default Apollo client points. Route it
+  // through the core client explicitly.
+  const apolloCoreClient = useApolloCoreClient();
+  const [sendNewEmail, { loading }] = useMutation(SEND_NEW_EMAIL, {
+    client: apolloCoreClient,
+  });
 
   useEffect(() => {
     subjectRef.current?.focus();
