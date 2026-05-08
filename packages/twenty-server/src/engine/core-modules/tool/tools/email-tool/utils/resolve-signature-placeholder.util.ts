@@ -5,15 +5,42 @@ import { type ObjectLiteral } from 'typeorm';
 import { type GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 
+// Per-niche signatures behave like Outlook signatures: if a signature exists
+// for the recipient's niche, it gets attached to every outbound email
+// automatically. Two opt-outs are supported, mirroring how a power user would
+// expect to take control:
+//   - {{signature}}    -> insert the niche signature exactly where the marker
+//                         is in the body (instead of auto-appending). Useful
+//                         when you want the signature mid-body.
+//   - {{nosignature}}  -> strip the marker and send no signature.
+// Reply detection: if the body contains a quoted thread (blockquote, gmail_quote,
+// Outlook reply markers), the signature is inserted ABOVE the quote rather than
+// after it, so it doesn't end up buried at the bottom of the conversation.
+
 const SIGNATURE_PLACEHOLDER_REGEX = /\{\{\s*signature\s*\}\}/gi;
+const NOSIGNATURE_MARKER_REGEX = /\{\{\s*nosignature\s*\}\}/gi;
 
 export const hasSignaturePlaceholder = (
   value: string | null | undefined,
 ): boolean => {
   if (typeof value !== 'string') return false;
-  // Use a fresh regex literal to avoid /g lastIndex state issues.
   return /\{\{\s*signature\s*\}\}/i.test(value);
 };
+
+export const hasNoSignatureMarker = (
+  value: string | null | undefined,
+): boolean => {
+  if (typeof value !== 'string') return false;
+  return /\{\{\s*nosignature\s*\}\}/i.test(value);
+};
+
+export const replaceSignaturePlaceholder = (
+  source: string,
+  replacement: string,
+): string => source.replace(SIGNATURE_PLACEHOLDER_REGEX, replacement);
+
+export const stripNoSignatureMarker = (source: string): string =>
+  source.replace(NOSIGNATURE_MARKER_REGEX, '');
 
 export const stripSignatureHtml = (html: string): string =>
   html
@@ -29,10 +56,33 @@ export const stripSignatureHtml = (html: string): string =>
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-export const replaceSignaturePlaceholder = (
-  source: string,
-  replacement: string,
-): string => source.replace(SIGNATURE_PLACEHOLDER_REGEX, replacement);
+// Heuristic reply-quote detection. We check several common markers and pick
+// the earliest one — that's where the quoted thread starts, so the signature
+// goes right before it. Returns null if no reply quote is detected.
+const QUOTE_MARKERS: RegExp[] = [
+  /<blockquote\b/i,
+  /<div[^>]*class="[^"]*gmail_quote[^"]*"/i,
+  /<div[^>]*id="appendonsend"/i,
+  /<div[^>]*id="divRplyFwdMsg"/i,
+  /<div[^>]*id="OLK_SRC_BODY_SECTION"/i,
+  /<div[^>]*class="[^"]*OutlookMessageHeader[^"]*"/i,
+  /<div[^>]*class="[^"]*WordSection1[^"]*"/i,
+  /<hr[^>]*id="stopSpelling"/i,
+];
+
+const findQuoteInsertionPoint = (html: string): number | null => {
+  let earliest = -1;
+
+  for (const re of QUOTE_MARKERS) {
+    const m = re.exec(html);
+
+    if (m && (earliest === -1 || m.index < earliest)) {
+      earliest = m.index;
+    }
+  }
+
+  return earliest === -1 ? null : earliest;
+};
 
 type GetSignatureParams = {
   primaryRecipientEmail: string | undefined;
@@ -116,11 +166,17 @@ type ResolveSignatureParams = GetSignatureParams & {
 type ResolveSignatureResult = {
   html: string;
   plainText: string;
+  // True when a signature was actually inserted into the body (auto-append
+  // or {{signature}} replacement landed). False when no signature applied —
+  // recipient unknown, niche unset, no matching row, or {{nosignature}} used.
+  // Callers (e.g. the in-app composer) use this to decide whether to upgrade
+  // a plain-text body to HTML.
+  signatureAttached: boolean;
 };
 
-// Replaces {{signature}} in body with the EmailSignature row matching the
-// primary recipient's `niche`. Backward compatible: if the body has no
-// placeholder, no lookup happens and the body is returned unchanged.
+// Attach the recipient's niche signature to the email body. Auto-appends by
+// default; respects {{signature}} (inline insertion), {{nosignature}} (skip),
+// and inserts above any detected reply quote.
 export const resolveSignaturePlaceholder = async ({
   html,
   plainText,
@@ -129,10 +185,19 @@ export const resolveSignaturePlaceholder = async ({
   globalWorkspaceOrmManager,
   logger,
 }: ResolveSignatureParams): Promise<ResolveSignatureResult> => {
-  if (!hasSignaturePlaceholder(html)) {
-    return { html, plainText };
+  const safePlainText = plainText ?? '';
+
+  // 1) {{nosignature}} wins — strip the marker, attach nothing.
+  if (hasNoSignatureMarker(html) || hasNoSignatureMarker(safePlainText)) {
+    return {
+      html: stripNoSignatureMarker(html),
+      plainText: stripNoSignatureMarker(safePlainText),
+      signatureAttached: false,
+    };
   }
 
+  // 2) Look up the signature for the recipient. Empty string means "no
+  //    signature available" (unknown recipient, no niche, no matching row).
   const signatureHtml = await getSignatureForRecipient({
     primaryRecipientEmail,
     workspaceId,
@@ -140,12 +205,53 @@ export const resolveSignaturePlaceholder = async ({
     logger,
   });
 
-  const replacementText = signatureHtml
-    ? stripSignatureHtml(signatureHtml)
-    : '';
+  if (!signatureHtml) {
+    // Nothing to attach. If the body had a {{signature}} marker we still
+    // strip it so it doesn't appear literally in the sent message.
+    return {
+      html: replaceSignaturePlaceholder(html, ''),
+      plainText: replaceSignaturePlaceholder(safePlainText, ''),
+      signatureAttached: false,
+    };
+  }
 
+  const signatureText = stripSignatureHtml(signatureHtml);
+
+  // 3) {{signature}} → explicit inline insertion (power-user override).
+  if (hasSignaturePlaceholder(html)) {
+    return {
+      html: replaceSignaturePlaceholder(html, signatureHtml),
+      plainText: replaceSignaturePlaceholder(safePlainText, signatureText),
+      signatureAttached: true,
+    };
+  }
+
+  // 4) Reply-aware: insert ABOVE the quoted thread, not after it.
+  const insertIdx = findQuoteInsertionPoint(html);
+
+  if (insertIdx !== null) {
+    return {
+      html:
+        html.slice(0, insertIdx) + signatureHtml + '\n' + html.slice(insertIdx),
+      plainText: appendSignaturePlainText(safePlainText, signatureText),
+      signatureAttached: true,
+    };
+  }
+
+  // 5) Default: append at the end.
   return {
-    html: replaceSignaturePlaceholder(html, signatureHtml),
-    plainText: replaceSignaturePlaceholder(plainText ?? '', replacementText),
+    html: html + signatureHtml,
+    plainText: appendSignaturePlainText(safePlainText, signatureText),
+    signatureAttached: true,
   };
+};
+
+const appendSignaturePlainText = (body: string, signature: string): string => {
+  if (!signature) return body;
+  if (!body) return signature;
+
+  // Two newlines between body and signature for readability.
+  return body.endsWith('\n')
+    ? `${body}\n${signature}`
+    : `${body}\n\n${signature}`;
 };

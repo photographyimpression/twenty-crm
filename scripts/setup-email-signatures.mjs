@@ -135,7 +135,7 @@ async function createObject({ nameSingular, namePlural, labelSingular, labelPlur
 }
 
 const NICHE_OPTIONS = [
-  { label: 'Project / General Photography', value: 'PROJECT', position: 0, color: 'sky' },
+  { label: 'Product / General Photography', value: 'PRODUCT', position: 0, color: 'sky' },
   { label: 'Clothing Photography',           value: 'CLOTHING', position: 1, color: 'pink' },
   { label: 'Jewellery Photography',          value: 'JEWEL', position: 2, color: 'purple' },
   { label: 'Amazon Photography',             value: 'AMAZON', position: 3, color: 'orange' },
@@ -166,8 +166,8 @@ ${cellLine}
 
 const SIGNATURES = [
   {
-    niche: 'PROJECT',
-    name: 'Standard / Project',
+    niche: 'PRODUCT',
+    name: 'Standard / Product',
     signatureHtml: signatureHtml({
       brandLine: 'Impression Photography',
       domain: 'impressionphotography.ca',
@@ -239,9 +239,9 @@ async function main() {
       name: 'niche',
       label: 'Niche',
       type: 'SELECT',
-      description: 'Photography niche — drives auto-selected email signature when {{signature}} placeholder is used.',
+      description: 'Photography niche — drives the auto-attached email signature when the CRM sends mail to this person.',
       options: NICHE_OPTIONS,
-      defaultValue: "'PROJECT'",
+      defaultValue: "'PRODUCT'",
     });
     console.log(`  OK: Created person.niche → ${result.id}`);
   } catch (err) {
@@ -297,7 +297,7 @@ async function main() {
       type: 'SELECT',
       description: 'Which photography niche this signature belongs to.',
       options: NICHE_OPTIONS,
-      defaultValue: "'PROJECT'",
+      defaultValue: "'PRODUCT'",
     },
     {
       name: 'signatureHtml',
