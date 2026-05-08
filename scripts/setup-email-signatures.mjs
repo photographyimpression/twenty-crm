@@ -180,7 +180,7 @@ async function main() {
       name: 'niche',
       label: 'Niche',
       type: 'SELECT',
-      description: 'Photography niche — drives auto-selected email signature when {{signature}} placeholder is used.',
+      description: 'Photography niche — drives the auto-attached email signature when the CRM sends mail to this person.',
       options: NICHE_OPTIONS,
       defaultValue: "'PRODUCT'",
     });
