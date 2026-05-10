@@ -54,6 +54,10 @@ if (!PG_URL) {
   process.exit(1);
 }
 
+if (!OLLAMA_RELAY_TOKEN) {
+  console.error('WARNING: OLLAMA_RELAY_TOKEN env var not set. Workflow will be created but the AI opener step will fail at runtime (continueOnFailure passes through, so emails still send — they just lose the personalized opener).');
+}
+
 const METADATA_URL = `${BASE_URL}/metadata`;
 const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` };
 
@@ -113,6 +117,7 @@ const STEP = {
   filterTag: 'b1000001-0003-4000-8000-000000000003',
   branchYes: 'b1000001-0004-4000-8000-000000000004',
   branchNo: 'b1000001-0005-4000-8000-000000000005',
+  aiOpener: AI_OPENER_STEP_ID,
   touch1: 'b1000001-1001-4000-8000-000000000001',
   touch2: 'b1000001-1002-4000-8000-000000000002',
   touch3: 'b1000001-1003-4000-8000-000000000003',
@@ -136,6 +141,25 @@ const EMAIL = '{{trigger.properties.after.emails.primaryEmail}}';
 const LASTNAME = '{{trigger.properties.after.name.lastName}}';
 const NICHE = '{{trigger.properties.after.niche}}';
 
+// AI-personalized opener generated once per lead via the Ollama relay
+// (HTTP_REQUEST step inserted between the IF_ELSE and Touch 1). The path
+// is {{stepId.response}} — the workflow templater unwraps the HTTP tool's
+// `result` field automatically, so the Ollama JSON shape is at the root.
+// If Ollama is down, continueOnFailure passes through and the placeholder
+// resolves to "undefined" — Touches 4-6 will still send, just without the
+// personalized line.
+const AI_OPENER_STEP_ID = 'b1000001-0006-4000-8000-000000000006';
+const AI_OPENER = `{{${AI_OPENER_STEP_ID}.response}}`;
+// Override via env var; this is the relay set up at /ollama-relay/ on the
+// CRM domain, with bearer-token auth required by the nginx config.
+const OLLAMA_RELAY_URL = process.env.OLLAMA_RELAY_URL || 'https://crm.impressionphotography.ca/ollama-relay/api/generate';
+const OLLAMA_RELAY_TOKEN = process.env.OLLAMA_RELAY_TOKEN || '';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2:3b';
+
+// Cal.com self-hosted booking URL — embedded in Touches 4-9 as a
+// low-friction alternative to "reply with your phone number".
+const CAL_LINK = process.env.CAL_LINK || 'https://crm.impressionphotography.ca/cal/moshe/30min';
+
 // 12 touches, 3-3-3-3 cadence. Single goal: get the phone number.
 // No {{signature}} marker — EmailSendService auto-appends the per-niche
 // signature when the approval is sent.
@@ -146,18 +170,20 @@ const TOUCHES = [
     body: `Hi ${FIRST},\n\nJust following up — what's the best number to reach you? Happy to call at a time that works for you.\n\n(If you prefer, just reply with your number and a good time window.)` },
   { n: 3, days: 3, subject: `Quick check — is now a bad time, ${FIRST}?`,
     body: `Hi ${FIRST},\n\nWanted to check in once more. Pricing for ${COMPANY} is something I want to get right for you, and 5 minutes on the phone makes that much easier than emails back-and-forth.\n\nDrop me your number and I'll keep it brief. Or if now's not a good week, just let me know when to circle back.` },
+  // Touches 4-6 (Prove): AI opener + Cal.com fallback
   { n: 4, days: 7, subject: `Quick before/after from a recent shoot`,
-    body: `Hi ${FIRST},\n\nWhile we figure out a time to chat, you might enjoy this — a recent before/after from a similar shoot:\n\n[BEFORE_AFTER_LINK]\n\nThe right photography typically lifts product-page conversion by 15–30%. Worth 5 minutes on the phone to see if we're a fit?\n\nBest number to reach you?` },
+    body: `Hi ${FIRST},\n\n${AI_OPENER}\n\nWhile we figure out a time to chat, you might enjoy this — a recent before/after from a similar shoot:\n\n[BEFORE_AFTER_LINK]\n\nThe right photography typically lifts product-page conversion by 15–30%. Worth 5 minutes on the phone to see if we're a fit?\n\nBest number to reach you — or grab a 30-min slot directly: ${CAL_LINK}` },
   { n: 5, days: 10, subject: `How a similar brand grew their conversions`,
-    body: `Hi ${FIRST},\n\nQuick story — last quarter we shot for a brand similar to ${COMPANY}. Within 60 days their listing conversion went from 8% to 14%. Same product, just better photography.\n\nI'd love to walk you through what we did and whether it could work for ${COMPANY}. Quick call?` },
+    body: `Hi ${FIRST},\n\n${AI_OPENER}\n\nQuick story — last quarter we shot for a brand similar to ${COMPANY}. Within 60 days their listing conversion went from 8% to 14%. Same product, just better photography.\n\nI'd love to walk you through what we did and whether it could work for ${COMPANY}. Quick call? Either reply with your number or pick a slot here: ${CAL_LINK}` },
   { n: 6, days: 14, subject: `Portfolio piece you might like, ${FIRST}`,
-    body: `Hi ${FIRST},\n\nFresh from this week's shoot — thought this might be relevant for ${COMPANY}:\n\n[PORTFOLIO_LINK]\n\nHappy to talk through the lighting and styling we used. What's a good number to call you at?` },
+    body: `Hi ${FIRST},\n\n${AI_OPENER}\n\nFresh from this week's shoot — thought this might be relevant for ${COMPANY}:\n\n[PORTFOLIO_LINK]\n\nHappy to talk through the lighting and styling we used. What's a good number to call you at — or feel free to book directly: ${CAL_LINK}` },
+  // Touches 7-9 (Offer): Cal.com fallback (no AI — these are direct offers)
   { n: 7, days: 18, subject: `Free test shot for ${COMPANY}?`,
-    body: `Hi ${FIRST},\n\nDifferent angle: I'm doing a shoot for a similar brand next week and I'll have studio time set up. If you can get me one product, I'll shoot it free so you can see the quality before committing to anything.\n\nLocal Montreal pickup or you can ship — whichever works.\n\nReply with your number and I'll set it up.` },
+    body: `Hi ${FIRST},\n\nDifferent angle: I'm doing a shoot for a similar brand next week and I'll have studio time set up. If you can get me one product, I'll shoot it free so you can see the quality before committing to anything.\n\nLocal Montreal pickup or you can ship — whichever works.\n\nReply with your number, or book a 30-min call here: ${CAL_LINK}` },
   { n: 8, days: 22, subject: `Special package for ${COMPANY}`,
-    body: `Hi ${FIRST},\n\nI have a special package this month for businesses like ${COMPANY} — worth around $400 in extras at no charge.\n\nWould love to discuss whether it fits what you're trying to accomplish. Best way to reach you?` },
+    body: `Hi ${FIRST},\n\nI have a special package this month for businesses like ${COMPANY} — worth around $400 in extras at no charge.\n\nWould love to discuss whether it fits what you're trying to accomplish. Best way to reach you — or pick a slot here: ${CAL_LINK}` },
   { n: 9, days: 28, subject: `5 minutes, when works?`,
-    body: `Hi ${FIRST},\n\nLast try at a time-friendly route — what if we did a 5-minute call this week? Just enough for me to understand your project and tell you if we're a fit.\n\nDrop me your number and a window (e.g., "Tuesday afternoon") and I'll work around you.` },
+    body: `Hi ${FIRST},\n\nLast try at a time-friendly route — what if we did a 5-minute call this week? Just enough for me to understand your project and tell you if we're a fit.\n\nDrop me your number and a window (e.g., "Tuesday afternoon") and I'll work around you. Or just grab a slot: ${CAL_LINK}` },
   { n: 10, days: 35, subject: `Still considering photography for ${COMPANY}?`,
     body: `Hi ${FIRST},\n\nI haven't heard back, so I wanted to check — is photography for ${COMPANY} still on your radar this quarter?\n\nIf yes, what's the best way to keep the conversation going?\nIf no, just let me know and I'll stop bugging you.` },
   { n: 11, days: 45, subject: `Closing your file`,
@@ -218,7 +244,7 @@ const ifElseStep = {
         },
       ],
       branches: [
-        { id: STEP.branchYes, filterGroupId: STEP.filterGroup, nextStepIds: [STEP.touch1] },
+        { id: STEP.branchYes, filterGroupId: STEP.filterGroup, nextStepIds: [STEP.aiOpener] },
         { id: STEP.branchNo, nextStepIds: [] },
       ],
     },
@@ -232,8 +258,39 @@ const ifElseStep = {
   nextStepIds: null,
 };
 
+const aiOpenerStep = {
+  id: STEP.aiOpener,
+  name: 'AI: Personalize opener via Ollama',
+  type: 'HTTP_REQUEST',
+  valid: true,
+  settings: {
+    input: {
+      url: OLLAMA_RELAY_URL,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OLLAMA_RELAY_TOKEN}`,
+      },
+      body: {
+        model: OLLAMA_MODEL,
+        prompt: `You are writing the opening sentence of a B2B sales email from a product photographer to ${FIRST} at ${COMPANY}. There is NO prior relationship — this is a cold outreach. The sentence should naturally reference ${COMPANY} (their products, brand, or industry) and explain why ${COMPANY} specifically would benefit from professional product photography. Under 22 words. Conversational tone. Do NOT pretend you've spoken before. Do NOT mention specific products you couldn't actually know about. No greeting, no quotes, no sign-off. Output ONLY the single sentence, nothing else.`,
+        stream: false,
+        options: { num_predict: 80, temperature: 0.7 },
+      },
+    },
+    outputSchema: {},
+    errorHandlingOptions: {
+      retryOnFailure: { value: false },
+      continueOnFailure: { value: true }, // Ollama down → AI_OPENER renders 'undefined' but emails still send
+    },
+  },
+  __typename: 'WorkflowAction',
+  nextStepIds: [STEP.touch1],
+};
+
 const allSteps = [
   ifElseStep,
+  aiOpenerStep,
   ...TOUCHES.map((t, idx) => makeApprovalStep(t, idx < TOUCHES.length - 1 ? stepIdByN(t.n + 1) : null)),
 ];
 
