@@ -158,7 +158,13 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2:3b';
 
 // Cal.com self-hosted booking URL — embedded in Touches 4-9 as a
 // low-friction alternative to "reply with your phone number".
-const CAL_LINK = process.env.CAL_LINK || 'https://crm.impressionphotography.ca/cal/moshe/30min';
+// NOTE: cal.impressionphotography.ca DNS is not yet live (IONOS, manual setup
+// required). Add an A record cal -> 15.204.91.183, then run
+// `certbot --nginx -d cal.impressionphotography.ca` on the OVH box. Until
+// that's done the link in the emails will not resolve. The path-based
+// alternative crm.impressionphotography.ca/cal/ does not work because Cal.com
+// v6 uses absolute URLs for booking embeds.
+const CAL_LINK = process.env.CAL_LINK || 'https://cal.impressionphotography.ca/moshe/30min';
 
 // 12 touches, 3-3-3-3 cadence. Single goal: get the phone number.
 // No {{signature}} marker — EmailSendService auto-appends the per-niche
