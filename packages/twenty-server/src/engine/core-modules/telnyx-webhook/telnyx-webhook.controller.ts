@@ -52,18 +52,20 @@ type TelnyxWebhookBody = {
 // Telnyx echoes whatever base64 client_state we set on a previous action
 // back to us in subsequent events for that call. We use it to tag legs by
 // stage (inbound_answered, sip_ring, cell_ring) so handlers don't trip on
-// outbound calls (WebRTC dialing) that share the same webhook URL.
-const decodeClientStateStage = (
+// outbound calls (WebRTC dialing) that share the same webhook URL. We also
+// stash origFrom so the transfer.failed handler can preserve the caller ID
+// when falling back from SIP to cell.
+type ClientState = { stage?: string; origFrom?: string };
+
+const decodeClientState = (
   clientStateB64: string | undefined,
-): string | undefined => {
+): ClientState | undefined => {
   if (!clientStateB64) return undefined;
 
   try {
-    const decoded = JSON.parse(
+    return JSON.parse(
       Buffer.from(clientStateB64, 'base64').toString('utf-8'),
-    );
-
-    return decoded?.stage;
+    ) as ClientState;
   } catch {
     return undefined;
   }
@@ -233,20 +235,45 @@ export class TelnyxWebhookController {
     // destination and Telnyx emits a `user_busy` hangup on the *inbound*
     // leg without firing transfer.failed, so we MUST pre-check registration
     // before attempting SIP transfer.
-    const answeredStage = decodeClientStateStage(
+    const answeredState = decodeClientState(
       payload?.client_state as string | undefined,
     );
 
     if (
       eventType === 'call.answered' &&
-      answeredStage === 'inbound_answered' &&
+      answeredState?.stage === 'inbound_answered' &&
       callControlId &&
       telnyxApiKey
     ) {
+      // Preserve the original caller's number so the forwarded leg (SIP
+      // dialer or owner cell) shows who's actually calling. Without `from`
+      // on the transfer action, Telnyx defaults to our own DID — so the
+      // cell rings showing the number the caller dialed in to, not the
+      // caller. Requires Caller ID Override to be permitted on the
+      // outbound voice profile; transferToCell falls back gracefully if
+      // Telnyx rejects the override.
+      const originalCallerFrom =
+        typeof payload?.from === 'string' ? payload.from : undefined;
+
       const sipRegistered = await this.isSipRegistered(telnyxApiKey);
 
       if (sipRegistered) {
         try {
+          const sipBody: Record<string, unknown> = {
+            to: SIP_RING_URI,
+            timeout_secs: SIP_RING_TIMEOUT_SECS,
+            client_state: Buffer.from(
+              JSON.stringify({
+                stage: 'sip_ring',
+                origFrom: originalCallerFrom,
+              }),
+            ).toString('base64'),
+          };
+
+          if (originalCallerFrom) {
+            sipBody['from'] = originalCallerFrom;
+          }
+
           const transferResp = await fetch(
             `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`,
             {
@@ -255,19 +282,13 @@ export class TelnyxWebhookController {
                 Authorization: `Bearer ${telnyxApiKey}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
-                to: SIP_RING_URI,
-                timeout_secs: SIP_RING_TIMEOUT_SECS,
-                client_state: Buffer.from(
-                  JSON.stringify({ stage: 'sip_ring' }),
-                ).toString('base64'),
-              }),
+              body: JSON.stringify(sipBody),
             },
           );
 
           if (transferResp.ok) {
             this.logger.log(
-              `SIP client registered — ringing CRM dialer (${SIP_RING_URI}) for ${SIP_RING_TIMEOUT_SECS}s`,
+              `SIP client registered — ringing CRM dialer (${SIP_RING_URI}) for ${SIP_RING_TIMEOUT_SECS}s (caller ID: ${originalCallerFrom ?? 'default'})`,
             );
 
             return;
@@ -287,7 +308,11 @@ export class TelnyxWebhookController {
         );
       }
 
-      await this.transferToCell(callControlId, telnyxApiKey);
+      await this.transferToCell(
+        callControlId,
+        telnyxApiKey,
+        originalCallerFrom,
+      );
 
       return;
     }
@@ -295,18 +320,22 @@ export class TelnyxWebhookController {
     // SIP ring timed out / SIP client offline → transfer to owner cell.
     // Telnyx fires `call.transfer.failed` with the original transfer's metadata.
     if (eventType === 'call.transfer.failed' && callControlId && telnyxApiKey) {
-      const stage = decodeClientStateStage(
+      const failedState = decodeClientState(
         payload?.client_state as string | undefined,
       );
 
-      if (stage === 'sip_ring') {
+      if (failedState?.stage === 'sip_ring') {
         this.logger.log(
           `CRM dialer did not answer — transferring to cell ${OWNER_PHONE_NUMBER}`,
         );
-        await this.transferToCell(callControlId, telnyxApiKey);
+        await this.transferToCell(
+          callControlId,
+          telnyxApiKey,
+          failedState.origFrom,
+        );
       } else {
         this.logger.warn(
-          `Transfer failed at unknown stage (${stage}) — letting call drop`,
+          `Transfer failed at unknown stage (${failedState?.stage}) — letting call drop`,
         );
       }
 
@@ -358,29 +387,85 @@ export class TelnyxWebhookController {
   }
 
   // Fallback: transfer the call to the owner cell. Used when SIP ringing
-  // fails (CRM not open) or times out (nobody picked up in 15s).
+  // fails (CRM not open) or times out (nobody picked up in 15s). Pass
+  // `originalCallerFrom` so the cell rings showing the actual caller —
+  // without it Telnyx defaults to our DID and the cell shows its own
+  // number. If Telnyx rejects the caller-ID override (outbound voice
+  // profile doesn't permit it), we retry without the override so the call
+  // still completes rather than dropping.
   private async transferToCell(
     callControlId: string,
     telnyxApiKey: string,
+    originalCallerFrom?: string,
   ): Promise<void> {
+    const transferUrl = `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`;
+    const headers = {
+      Authorization: `Bearer ${telnyxApiKey}`,
+      'Content-Type': 'application/json',
+    };
+    const clientState = Buffer.from(
+      JSON.stringify({ stage: 'cell_ring' }),
+    ).toString('base64');
+
+    const attempt = async (
+      withCallerId: boolean,
+    ): Promise<{ ok: boolean; status: number; body: string }> => {
+      const body: Record<string, unknown> = {
+        to: OWNER_PHONE_NUMBER,
+        client_state: clientState,
+      };
+
+      if (withCallerId && originalCallerFrom) {
+        body['from'] = originalCallerFrom;
+      }
+
+      const resp = await fetch(transferUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      return {
+        ok: resp.ok,
+        status: resp.status,
+        body: resp.ok ? '' : await resp.text(),
+      };
+    };
+
     try {
-      await fetch(
-        `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${telnyxApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            to: OWNER_PHONE_NUMBER,
-            client_state: Buffer.from(
-              JSON.stringify({ stage: 'cell_ring' }),
-            ).toString('base64'),
-          }),
-        },
+      const first = await attempt(true);
+
+      if (first.ok) {
+        this.logger.log(
+          `Transferred call to cell ${OWNER_PHONE_NUMBER} (caller ID: ${originalCallerFrom ?? 'default DID'})`,
+        );
+
+        return;
+      }
+
+      if (!originalCallerFrom) {
+        this.logger.error(
+          `Cell transfer failed (${first.status}): ${first.body}`,
+        );
+
+        return;
+      }
+
+      this.logger.warn(
+        `Cell transfer with caller-ID override rejected (${first.status}): ${first.body}; retrying without override`,
       );
-      this.logger.log(`Transferred call to cell ${OWNER_PHONE_NUMBER}`);
+
+      const retry = await attempt(false);
+
+      if (retry.ok) {
+        this.logger.log(
+          `Transferred call to cell ${OWNER_PHONE_NUMBER} (without caller-ID override)`,
+        );
+      } else {
+        this.logger.error(
+          `Cell transfer retry also failed (${retry.status}): ${retry.body}`,
+        );
+      }
     } catch (error) {
       this.logger.error(`Failed to transfer to cell: ${error}`);
     }
@@ -482,7 +567,9 @@ export class TelnyxWebhookController {
         return;
       }
 
-      this.logger.log(`Outbound SMS sent from ${resolvedFrom ?? 'profile'} to ${to}`);
+      this.logger.log(
+        `Outbound SMS sent from ${resolvedFrom ?? 'profile'} to ${to}`,
+      );
       this.telnyxWebhookService.storeOutboundSms(to, text, resolvedFrom);
       res.json({ sent: true });
     } catch (error) {
