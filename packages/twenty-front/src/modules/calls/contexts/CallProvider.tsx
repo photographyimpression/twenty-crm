@@ -25,6 +25,13 @@ export type CallContextType = {
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
 
+// ID of the hidden <audio> element used by TelnyxRTC to play remote audio.
+// MUST match the id of the <audio> element rendered by this provider — without
+// `client.remoteElement` pointing at a real element, the SDK creates the call
+// but never attaches the remote MediaStream to a sink, so the user hears
+// silence even though Telnyx reports the call as answered + bridged.
+const REMOTE_AUDIO_ELEMENT_ID = 'telnyx-remote-audio';
+
 export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -84,6 +91,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       if (cancelled) return;
+
+      // Tell TelnyxRTC which DOM element to use for remote audio playback.
+      // Must be set before `client.connect()` so the SDK wires the
+      // RTCPeerConnection's remote track to this <audio> sink on the first
+      // call. Without this the call connects but no sound plays.
+      (client as unknown as { remoteElement: string }).remoteElement =
+        REMOTE_AUDIO_ELEMENT_ID;
 
       client.on('telnyx.ready', () => {
         console.log('TelnyxRTC: connected and ready');
@@ -150,6 +164,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
             const newClient = new TelnyxRTC({
               login_token: tokenData.token,
             });
+
+            // Re-attach the audio sink on the refreshed client. Without this,
+            // calls placed after the 10-min token refresh would go silent.
+            (newClient as unknown as { remoteElement: string }).remoteElement =
+              REMOTE_AUDIO_ELEMENT_ID;
 
             newClient.on('telnyx.ready', () => {
               console.log('TelnyxRTC: reconnected after token refresh');
@@ -233,6 +252,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       const call = clientRef.current.newCall({
         destinationNumber: cleanNumber,
         callerNumber: fromNumber,
+        // Without `audio: true` the SDK won't request mic permission, so the
+        // remote side hears silence. Combined with the audio sink set on the
+        // client, this gives full two-way audio.
+        audio: true,
       });
 
       setActiveCall(call);
@@ -290,6 +313,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         error,
       }}
     >
+      {/*
+        Hidden audio sink for TelnyxRTC remote playback. autoPlay is required
+        so the stream starts playing as soon as the SDK attaches it — without
+        it Chrome's autoplay policy keeps it muted. Kept outside the dialer
+        widget so the element survives even when the widget isn't mounted.
+      */}
+      <audio id={REMOTE_AUDIO_ELEMENT_ID} autoPlay style={{ display: 'none' }} />
       {children}
     </CallContext.Provider>
   );
