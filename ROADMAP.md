@@ -40,6 +40,24 @@ _Last updated: 2026-05-26_
       archive or move it. Redis was choking on disk pressure (band-aided with
       `stop-writes-on-bgsave-error=no`).
 
+## Known limitations / AI personalization (found during 2026-05-26 GUI testing)
+- **Ollama is slow on this box (no GPU).** The AI-opener step runs llama3.2:3b
+  on CPU, competing with the Windows VM (qemu) for cores. A num_predict-80 call
+  timed out at 60s in isolation; in the workflow it completed but made lead
+  *enrollment* take ~2 min. Mitigation applied: dropped the AI step's
+  num_predict 80 → 40 (full sentence, ~half the generation time). The opener
+  still resolves correctly; enrollment is just not instant.
+  - Real fixes (roadmap): (a) **decouple AI from enrollment** — create the 12
+    approvals instantly and have the Command Center backend generate openers
+    for Touches 4-6 lazily/in background (they aren't due for 7-14 days anyway);
+    (b) give Ollama a GPU; (c) pre-warm the model with `keep_alive`.
+- **Harden the opener fallback.** If the AI step ever times out, the template
+  `{{aiStep.response}}` renders the literal word "undefined" in Touches 4-6.
+  It completed fine in testing, but it should degrade to an empty string.
+- NOTE: the canonical workflow builder (`scripts/setup-pre-phone-sequence.mjs`)
+  lives on the PR #27 branch. The num_predict=40 change was applied directly to
+  prod; fold it into that script when PR #27 merges.
+
 ## Scheduling refinements
 - [ ] Timezone-correct date boundaries (America/Toronto) for "due today"
 - [ ] Business-days-only cadence (skip weekends)
