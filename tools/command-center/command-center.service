@@ -1,0 +1,20 @@
+[Unit]
+Description=Daily Command Center (Twenty CRM triage tool)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/command-center
+ExecStart=/usr/bin/node /opt/command-center/server.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PORT=4242
+Environment=TWENTY_GRAPHQL_URL=https://crm.impressionphotography.ca/graphql
+Environment=TWENTY_TOKEN_FILE=/opt/command-center/.token
+Environment=ROADMAP_PATH=/opt/command-center/roadmap.json
+# Token file is chmod 600; run as root (box is single-tenant) but keep token off-process-args.
+User=root
+
+[Install]
+WantedBy=multi-user.target

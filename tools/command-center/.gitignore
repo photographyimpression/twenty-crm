@@ -1,0 +1,8 @@
+# Never commit secrets or installed deps.
+.token
+*.token
+.env
+node_modules/
+
+# roadmap.json is the live editable store on the server; the repo keeps a
+# seed copy but local runtime edits should not be committed.

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Daily Command Center</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>" />
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --panel-2: #1e222b;
+        --border: #2a2f3a;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --accent: #3b82f6;
+        --accent-hover: #2f6fd6;
+        --green: #22c55e;
+        --green-hover: #1ba34d;
+        --red: #ef4444;
+        --amber: #f59e0b;
+        --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        background: radial-gradient(1200px 600px at 50% -10%, #1a2030 0%, var(--bg) 60%);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 24px;
+        max-width: 980px;
+        margin: 0 auto;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+      .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+      .tabs { display: flex; gap: 6px; }
+      .tab {
+        background: transparent; color: var(--muted); border: 1px solid transparent;
+        padding: 8px 14px; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600;
+      }
+      .tab:hover { color: var(--text); }
+      .tab.active { background: var(--panel-2); color: var(--text); border-color: var(--border); }
+      .tab .badge {
+        display: inline-block; min-width: 18px; text-align: center; margin-left: 6px;
+        background: var(--accent); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 6px;
+      }
+      main { max-width: 980px; margin: 0 auto; padding: 8px 24px 60px; }
+      .view { display: none; }
+      .view.active { display: block; }
+
+      /* Triage card */
+      .counter { text-align: center; color: var(--muted); font-size: 14px; margin: 6px 0 16px; }
+      .counter b { color: var(--text); }
+      .card {
+        background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
+        box-shadow: var(--shadow); padding: 28px 30px; position: relative; overflow: hidden;
+      }
+      .card .pill {
+        display: inline-block; background: var(--panel-2); border: 1px solid var(--border);
+        color: var(--muted); border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 600;
+        letter-spacing: .3px;
+      }
+      .lead-name { font-size: 30px; font-weight: 800; margin: 14px 0 2px; line-height: 1.1; }
+      .company { color: var(--muted); font-size: 16px; margin-bottom: 18px; }
+      .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+      .recipient { color: var(--muted); font-size: 13px; }
+      .recipient b { color: var(--text); }
+      .subject {
+        font-size: 20px; font-weight: 700; margin: 18px 0 10px; padding-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .body {
+        white-space: pre-wrap; line-height: 1.6; font-size: 15.5px; color: #d7dce6;
+        max-height: 46vh; overflow: auto; padding-right: 6px;
+      }
+      .actions { display: flex; gap: 12px; margin-top: 26px; }
+      button.btn {
+        border: none; border-radius: 12px; padding: 14px 18px; font-size: 15px; font-weight: 700;
+        cursor: pointer; transition: transform .04s ease, background .15s ease; color: #fff;
+      }
+      /* Anchors styled as buttons (e.g. the tel: Call link) need these to match
+         button rendering: same padding, centered, white text, no underline. */
+      a.btn { display: inline-flex; align-items: center; justify-content: center;
+        text-decoration: none; white-space: nowrap; line-height: 1; color: #fff;
+        padding: 14px 18px; }
+      a.btn:visited { color: #fff; }
+      button.btn:active, a.btn:active { transform: translateY(1px); }
+      button.btn:disabled { opacity: .5; cursor: default; }
+      .btn-send { background: var(--green); flex: 1; font-size: 17px; }
+      .btn-send:hover:not(:disabled) { background: var(--green-hover); }
+      .btn-skip { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+      .btn-skip:hover:not(:disabled) { background: #262b36; }
+      .btn-edit { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+      .btn-edit:hover:not(:disabled) { background: #262b36; }
+      .btn-secondary { background: var(--accent); }
+      .btn-secondary:hover:not(:disabled) { background: var(--accent-hover); }
+
+      /* Edit mode */
+      .edit-field { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 10px; padding: 10px 12px; font-size: 15px; font-family: inherit; margin-bottom: 12px; }
+      textarea.edit-field { min-height: 240px; line-height: 1.55; resize: vertical; }
+
+      /* Empty / loading / error states */
+      .state {
+        text-align: center; padding: 60px 20px; background: var(--panel); border: 1px solid var(--border);
+        border-radius: 18px; box-shadow: var(--shadow);
+      }
+      .state .big { font-size: 44px; margin-bottom: 10px; }
+      .state h2 { margin: 0 0 6px; font-size: 22px; }
+      .state p { color: var(--muted); margin: 0; }
+      .spinner {
+        width: 34px; height: 34px; border: 3px solid var(--border); border-top-color: var(--accent);
+        border-radius: 50%; margin: 0 auto 16px; animation: spin .8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Toast */
+      .toast {
+        position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(20px);
+        background: var(--green); color: #fff; padding: 12px 20px; border-radius: 12px; font-weight: 700;
+        box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: all .25s ease; z-index: 50;
+      }
+      .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .toast.err { background: var(--red); }
+
+      /* Lists (calls + roadmap) */
+      .list { display: flex; flex-direction: column; gap: 10px; }
+      .row {
+        background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+        padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      }
+      .row .row-main { min-width: 0; }
+      .row .row-title { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
+      .row .row-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+      .row .row-sub a { color: var(--accent); text-decoration: none; }
+      .row .row-sub a:hover { text-decoration: underline; }
+      .row .row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+      .call-btn { background: var(--accent); }
+      .done-btn { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+      .row.done { opacity: .45; }
+      .row.done .row-title { text-decoration: line-through; }
+
+      .add-box { display: flex; gap: 10px; margin-bottom: 18px; }
+      .add-box input { flex: 1; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 12px; padding: 12px 14px; font-size: 14px; font-family: inherit; }
+      .roadmap-item { color: #d7dce6; }
+      .section-title { font-size: 14px; color: var(--muted); font-weight: 700; text-transform: uppercase;
+        letter-spacing: .6px; margin: 4px 0 14px; }
+      .footer-note { text-align: center; color: var(--muted); font-size: 12px; margin-top: 30px; }
+      .refresh { background: transparent; border: 1px solid var(--border); color: var(--muted);
+        border-radius: 10px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+      .refresh:hover { color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="dot"></span> Daily Command Center</div>
+      <nav class="tabs">
+        <button class="tab active" data-view="triage">Triage <span class="badge" id="triageBadge">0</span></button>
+        <button class="tab" data-view="calls">Calls <span class="badge" id="callsBadge">0</span></button>
+        <button class="tab" data-view="roadmap">Roadmap</button>
+      </nav>
+    </header>
+
+    <main>
+      <!-- TRIAGE -->
+      <section class="view active" id="view-triage">
+        <div class="counter" id="counter"></div>
+        <div id="triageMount">
+          <div class="state"><div class="spinner"></div><p>Loading your queue…</p></div>
+        </div>
+      </section>
+
+      <!-- CALLS -->
+      <section class="view" id="view-calls">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="section-title">Calls due today</div>
+          <button class="refresh" id="refreshCalls">↻ Refresh</button>
+        </div>
+        <div id="callsMount" class="list">
+          <div class="state"><div class="spinner"></div><p>Loading calls…</p></div>
+        </div>
+      </section>
+
+      <!-- ROADMAP -->
+      <section class="view" id="view-roadmap">
+        <div class="section-title">Future ideas / changelog</div>
+        <div class="add-box">
+          <input type="text" id="ideaInput" placeholder="Add a future idea and press Enter…" />
+          <button class="btn btn-secondary" id="addIdea">Add</button>
+        </div>
+        <div id="roadmapMount" class="list">
+          <div class="state"><div class="spinner"></div><p>Loading roadmap…</p></div>
+        </div>
+      </section>
+
+      <div class="footer-note" id="footerNote"></div>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

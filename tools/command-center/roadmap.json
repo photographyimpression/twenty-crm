@@ -1,0 +1,56 @@
+[
+  {
+    "id": "seed-1",
+    "text": "Cascade scheduling refinements (timezone handling, business-days-only)",
+    "done": false,
+    "createdAt": "2026-05-26T00:00:00.000Z"
+  },
+  {
+    "id": "seed-2",
+    "text": "Multi-from sender / warming-domain rotation (needs extra Outlook mailboxes connected)",
+    "done": false,
+    "createdAt": "2026-05-26T00:00:00.000Z"
+  },
+  {
+    "id": "seed-3",
+    "text": "Auto-pause sequence when a lead replies (needs Microsoft Graph webhook)",
+    "done": false,
+    "createdAt": "2026-05-26T00:00:00.000Z"
+  },
+  {
+    "id": "seed-4",
+    "text": "Cal.com DNS + calendar OAuth (cal.impressionphotography.ca A record at IONOS, then certbot)",
+    "done": false,
+    "createdAt": "2026-05-26T00:00:00.000Z"
+  },
+  {
+    "id": "seed-5",
+    "text": "Elementor pricing-form -> CRM webhook (PPM site is on IONOS, needs WP plugin)",
+    "done": false,
+    "createdAt": "2026-05-26T00:00:00.000Z"
+  },
+  {
+    "id": "seed-6",
+    "text": "Click-to-dial via Telnyx WebRTC inside command center",
+    "done": false,
+    "createdAt": "2026-05-26T00:00:00.000Z"
+  },
+  {
+    "id": "seed-7",
+    "text": "Inline Approve/Reject buttons directly in Twenty's Approvals table",
+    "done": false,
+    "createdAt": "2026-05-26T00:00:00.000Z"
+  },
+  {
+    "id": "seed-8",
+    "text": "Kanban view for approvals (Pending/Approved/Sent/Rejected)",
+    "done": false,
+    "createdAt": "2026-05-26T00:00:00.000Z"
+  },
+  {
+    "id": "seed-9",
+    "text": "\"This Week\" preview of upcoming touches (projected dates)",
+    "done": false,
+    "createdAt": "2026-05-26T00:00:00.000Z"
+  }
+]
