@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppPath, SettingsPath } from 'twenty-shared/types';
 import { getSettingsPath } from 'twenty-shared/utils';
 import {
-  IconChecklist,
   IconHelpCircle,
+  IconListCheck,
   IconMail,
   IconMessage,
   IconSettings,
@@ -79,7 +79,7 @@ export const NavigationDrawerOtherSection = () => {
             in a new tab so the CRM stays put. Re-apply on Twenty upgrades. */}
         <NavigationDrawerItem
           label={t`Command Center`}
-          Icon={IconChecklist}
+          Icon={IconListCheck}
           to="https://crm.impressionphotography.ca/command-center/"
         />
         <NavigationDrawerItem
