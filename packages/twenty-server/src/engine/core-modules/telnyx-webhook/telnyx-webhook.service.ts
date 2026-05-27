@@ -352,8 +352,7 @@ export class TelnyxWebhookService {
       // Fire any "sms.received" workflow first (gives the user a per-run
       // execution log in the Workflows UI). Only fall back to the
       // hardcoded forwarder if no workflow is configured.
-      const workflowsFired =
-        await this.dispatchSmsReceivedWorkflow(smsRecord);
+      const workflowsFired = await this.dispatchSmsReceivedWorkflow(smsRecord);
 
       if (!workflowsFired) {
         await this.forwardSmsToEmail(fromNumber, toNumber, payload.text || '');
