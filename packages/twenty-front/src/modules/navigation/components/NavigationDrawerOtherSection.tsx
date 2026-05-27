@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppPath, SettingsPath } from 'twenty-shared/types';
 import { getSettingsPath } from 'twenty-shared/utils';
 import {
+  IconChecklist,
   IconHelpCircle,
   IconMail,
   IconMessage,
@@ -73,6 +74,14 @@ export const NavigationDrawerOtherSection = () => {
         containAnimation
         initial={false}
       >
+        {/* Custom (Impression fork): external link to the Daily Command Center
+            triage app. External https `to` makes NavigationDrawerItem open it
+            in a new tab so the CRM stays put. Re-apply on Twenty upgrades. */}
+        <NavigationDrawerItem
+          label={t`Command Center`}
+          Icon={IconChecklist}
+          to="https://crm.impressionphotography.ca/command-center/"
+        />
         <NavigationDrawerItem
           label={t`Inbox`}
           Icon={IconMail}
