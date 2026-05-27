@@ -76,9 +76,13 @@ export const NavigationDrawerOtherSection = () => {
       >
         {/* Custom (Impression fork): external link to the Daily Command Center
             triage app. External https `to` makes NavigationDrawerItem open it
-            in a new tab so the CRM stays put. Re-apply on Twenty upgrades. */}
+            in a new tab so the CRM stays put. Re-apply on Twenty upgrades.
+            Plain string (not the t`` macro): "Command Center" isn't in the
+            compiled Lingui catalog, so the macro renders the message id
+            ("Nf5ZtG") instead of the text. */}
+        {/* eslint-disable-next-line lingui/no-unlocalized-strings */}
         <NavigationDrawerItem
-          label={t`Command Center`}
+          label="Command Center"
           Icon={IconListCheck}
           to="https://crm.impressionphotography.ca/command-center/"
         />
