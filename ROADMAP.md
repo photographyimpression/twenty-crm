@@ -4,7 +4,15 @@ Living list of things we've discussed but haven't built yet. The in-app
 version lives in the Daily Command Center (`/command-center/`, "Roadmap" tab)
 and is editable from there. This file is the developer-facing mirror.
 
-_Last updated: 2026-05-26_
+_Last updated: 2026-05-27_
+
+## Bugs to fix
+- **People view filter not working** (reported 2026-05-27). Filtering the People
+  list by Name shows all ~1,129 records instead of narrowing to the match. The
+  filter chip is set but not applied. Likely cause: `name` is a composite field
+  (firstName/lastName), so an exact-match filter on the whole composite doesn't
+  match — needs a sub-field filter (firstName/lastName) or a CONTAINS operand.
+  Verify it's not a stale saved-view issue first.
 
 ## Shipped
 - ✅ Pre-Phone 12-email sequence (tag a Person → 12 approvals created)
