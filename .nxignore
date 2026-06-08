@@ -1,0 +1,5 @@
+# Claude Code session data lives here, including git worktrees under
+# .claude/worktrees/ that are full monorepo checkouts. Without this, Nx
+# scans them and fails with "projects defined in multiple locations".
+# Keep them out of the Nx project graph (this does not affect git tracking).
+.claude
