@@ -2,6 +2,8 @@
 .token
 *.token
 .env
+.auth
+.session-secret
 node_modules/
 
 # roadmap.json is the live editable store on the server; the repo keeps a

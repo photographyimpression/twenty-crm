@@ -44,8 +44,20 @@
     }, isError ? 4500 : 1800);
   }
 
+  // If the session cookie expired, the server returns 401 — bounce to the login
+  // form rather than throwing opaque errors.
+  function redirectToLoginIfUnauthorized(res) {
+    if (res.status === 401) {
+      const dir = window.location.pathname.replace(/[^/]*$/, '');
+      window.location.href = window.location.origin + dir + 'login';
+      return true;
+    }
+    return false;
+  }
+
   async function apiGet(pathName) {
     const res = await fetch(`${API}${pathName}`, { headers: { Accept: 'application/json' } });
+    if (redirectToLoginIfUnauthorized(res)) return new Promise(() => {});
     if (!res.ok) throw new Error(`Request failed (${res.status})`);
     return res.json();
   }
@@ -56,6 +68,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
     });
+    if (redirectToLoginIfUnauthorized(res)) return new Promise(() => {});
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
     return json;

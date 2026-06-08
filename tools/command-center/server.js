@@ -15,6 +15,7 @@
 //   GET  /api/health       -> liveness + CRM reachability
 
 const express = require('express');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -22,6 +23,99 @@ const PORT = process.env.PORT || 4242;
 const GRAPHQL_URL =
   process.env.TWENTY_GRAPHQL_URL || 'https://crm.impressionphotography.ca/graphql';
 const ROADMAP_PATH = process.env.ROADMAP_PATH || path.join(__dirname, 'roadmap.json');
+
+// ---------------------------------------------------------------------------
+// Auth (form login + signed-cookie session)
+//
+// Replaces nginx HTTP Basic Auth. A real HTML login form is what makes Chrome's
+// password manager offer to save + autofill (Basic Auth popups don't get saved
+// reliably). Session is a stateless HMAC-signed cookie, valid 60 days, so the
+// user effectively never re-types once Chrome remembers it.
+// ---------------------------------------------------------------------------
+
+function readSecretFile(p) {
+  try {
+    return fs.readFileSync(p, 'utf8').trim();
+  } catch (_e) {
+    return null;
+  }
+}
+
+const AUTH_RAW = readSecretFile(path.join(__dirname, '.auth')) || '';
+const AUTH_USER =
+  process.env.CC_USERNAME || AUTH_RAW.split(':')[0] || 'moshe';
+const AUTH_PASS =
+  process.env.CC_PASSWORD || AUTH_RAW.split(':').slice(1).join(':') || '';
+// Persisted secret keeps sessions valid across restarts. Ephemeral fallback
+// (random) means a restart logs everyone out — acceptable but not ideal.
+const SESSION_SECRET =
+  process.env.CC_SESSION_SECRET ||
+  readSecretFile(path.join(__dirname, '.session-secret')) ||
+  crypto.randomBytes(48).toString('hex');
+// Public mount path (browser-visible), used for cookie scope + redirects.
+const COOKIE_PATH = process.env.CC_COOKIE_PATH || '/command-center/';
+const COOKIE_NAME = 'cc_session';
+const SESSION_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
+
+function b64url(buf) {
+  return Buffer.from(buf)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function signSession(username, expMs) {
+  const payload = b64url(JSON.stringify({ u: username, exp: expMs }));
+  const sig = b64url(
+    crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest()
+  );
+  return `${payload}.${sig}`;
+}
+
+function verifySession(token) {
+  if (!token || token.indexOf('.') < 0) return null;
+  const [payload, sig] = token.split('.');
+  const expected = b64url(
+    crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest()
+  );
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  let data;
+  try {
+    data = JSON.parse(
+      Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    );
+  } catch (_e) {
+    return null;
+  }
+  if (!data || typeof data.exp !== 'number' || data.exp < Date.now()) return null;
+  return data;
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || '';
+  const out = {};
+  header.split(';').forEach((part) => {
+    const idx = part.indexOf('=');
+    if (idx > -1) {
+      out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+    }
+  });
+  return out;
+}
+
+function constantTimeEqual(a, b) {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+function isAuthed(req) {
+  return !!verifySession(parseCookies(req)[COOKIE_NAME]);
+}
 
 // Token is read from a file (chmod 600) or an env var. Never logged, never
 // sent to the client.
@@ -205,9 +299,47 @@ async function reconcile() {
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
+app.use(express.urlencoded({ extended: false, limit: '64kb' })); // login form posts
 
 // Behind nginx; trust the proxy for correct protocol/IP.
 app.set('trust proxy', true);
+
+// ---- Auth routes (no session required) -------------------------------------
+
+// Login page — a real HTML form so Chrome offers to save + autofill.
+app.get('/login', (req, res) => {
+  if (isAuthed(req)) return res.redirect(COOKIE_PATH);
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// Login submit. On success: set the session cookie + redirect to the app
+// (a successful navigation away from the login page is what triggers Chrome's
+// "Save password?" prompt). On failure: back to the login form with ?e=1.
+app.post('/login', (req, res) => {
+  const u = (req.body.username || '').toString();
+  const p = (req.body.password || '').toString();
+  const ok =
+    AUTH_PASS.length > 0 &&
+    constantTimeEqual(u, AUTH_USER) &&
+    constantTimeEqual(p, AUTH_PASS);
+  if (!ok) {
+    return res.redirect(COOKIE_PATH + 'login?e=1');
+  }
+  const token = signSession(AUTH_USER, Date.now() + SESSION_TTL_MS);
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: COOKIE_PATH,
+    maxAge: SESSION_TTL_MS,
+  });
+  res.redirect(COOKIE_PATH);
+});
+
+app.post('/logout', (req, res) => {
+  res.clearCookie(COOKIE_NAME, { path: COOKIE_PATH });
+  res.redirect(COOKIE_PATH + 'login');
+});
 
 const api = express.Router();
 
@@ -439,7 +571,21 @@ api.post('/roadmap', (req, res) => {
   res.json({ ok: true, item, items });
 });
 
+// API guard: everything under /api needs a valid session, except /health.
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  if (isAuthed(req)) return next();
+  return res.status(401).json({ error: 'auth required' });
+});
 app.use('/api', api);
+
+// Page guard: unauthenticated browser hits get bounced to the login form
+// (so the SPA never loads without a session).
+app.use((req, res, next) => {
+  if (isAuthed(req)) return next();
+  if (req.path === '/login' || req.path.startsWith('/login')) return next();
+  return res.redirect(COOKIE_PATH + 'login');
+});
 
 // Static frontend.
 app.use('/', express.static(path.join(__dirname, 'public')));
