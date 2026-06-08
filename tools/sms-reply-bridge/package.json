@@ -1,0 +1,20 @@
+{
+  "name": "sms-reply-bridge",
+  "version": "1.0.0",
+  "description": "Postfix pipe that turns email replies to sms-reply+<token>@productphotographymontreal.ca into outbound SMS via Telnyx.",
+  "private": true,
+  "main": "src/bridge.js",
+  "bin": {
+    "sms-reply-bridge": "./src/bridge.js"
+  },
+  "scripts": {
+    "start": "node src/bridge.js",
+    "test": "node test/run-tests.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "mailparser": "^3.7.1"
+  }
+}

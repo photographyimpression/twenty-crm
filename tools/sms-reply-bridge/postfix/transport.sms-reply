@@ -1,0 +1,10 @@
+# Postfix transport_maps entry for the SMS reply bridge.
+# Routes anything to sms-reply@productphotographymontreal.ca (and any
+# plus-extension, e.g. sms-reply+TOKEN@...) into the `smsreply` pipe
+# defined in master.cf.extra.
+#
+# Installed by 06-setup-sms-bridge.sh at /etc/postfix/transport-sms-reply
+# and hashed into transport-sms-reply.db. Then chained from main.cf
+# via transport_maps = hash:/etc/postfix/transport-sms-reply.
+
+sms-reply@productphotographymontreal.ca       smsreply:

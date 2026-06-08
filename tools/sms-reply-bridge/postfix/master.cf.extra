@@ -1,0 +1,20 @@
+# Postfix master.cf addition for the SMS reply bridge.
+# Appended to /etc/postfix/master.cf inside the docker-mailserver
+# container by 06-setup-sms-bridge.sh. Idempotent — the installer
+# only writes the block if it's not already present.
+
+# The pipe transport invokes the bridge per-message with the full
+# RFC822 message on stdin.
+#
+# user=smsbridge   — runs as the dedicated unprivileged user we add
+#                    inside the container (the bridge then re-reads
+#                    /opt/sms-reply-bridge/.env which must be readable
+#                    by that user).
+# argv=/usr/bin/node /opt/sms-reply-bridge/src/bridge.js
+#                  — full path to node + bridge.
+# We pass ${original_recipient} via ORIGINAL_RECIPIENT env var so the
+# bridge can decode the plus-extension reliably (the To: header may
+# have been munged by intermediaries).
+
+smsreply  unix  -       n       n       -       1       pipe
+  flags=DRhu user=smsbridge argv=/usr/bin/node /opt/sms-reply-bridge/src/bridge.js ${original_recipient}
