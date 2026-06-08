@@ -1365,16 +1365,26 @@ export class TelnyxWebhookService {
 
     if (!workspaceId) return null;
 
+    const authContext = buildSystemAuthContext(workspaceId);
+
     try {
-      const personRepository =
-        await this.globalWorkspaceOrmManager.getRepository(
-          workspaceId,
-          PersonWorkspaceEntity,
-          { shouldBypassPermissionChecks: true },
+      // Repository access MUST run inside the workspace context (see
+      // findPersonByPhone) — otherwise getRepository throws and the name
+      // silently falls back to the raw phone number.
+      const person =
+        await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+          async () => {
+            const personRepository =
+              await this.globalWorkspaceOrmManager.getRepository(
+                workspaceId,
+                PersonWorkspaceEntity,
+                { shouldBypassPermissionChecks: true },
+              );
+
+            return personRepository.findOne({ where: { id: personId } });
+          },
+          authContext,
         );
-      const person = await personRepository.findOne({
-        where: { id: personId },
-      });
 
       if (!person) return null;
 
@@ -1395,22 +1405,33 @@ export class TelnyxWebhookService {
 
     if (!workspaceId) return null;
 
+    const authContext = buildSystemAuthContext(workspaceId);
+
     try {
-      const personRepository =
-        await this.globalWorkspaceOrmManager.getRepository(
-          workspaceId,
-          PersonWorkspaceEntity,
-          { shouldBypassPermissionChecks: true },
+      // Repository access MUST run inside the workspace context, otherwise
+      // getRepository throws "Workspace context not set". Fetch the rows inside
+      // the context; the (pure-JS) phone matching runs outside it.
+      const people =
+        await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+          async () => {
+            const personRepository =
+              await this.globalWorkspaceOrmManager.getRepository(
+                workspaceId,
+                PersonWorkspaceEntity,
+                { shouldBypassPermissionChecks: true },
+              );
+
+            // Phones composite type stores:
+            // primaryPhoneNumber (local digits, e.g., "5148947978")
+            // primaryPhoneCallingCode (e.g., "+1")
+            // additionalPhones: [{number, countryCode, callingCode}]
+            return personRepository.find();
+          },
+          authContext,
         );
 
       // Strip all non-digit characters for comparison
       const digitsOnly = phoneNumber.replace(/\D/g, '');
-
-      // Phones composite type stores:
-      // primaryPhoneNumber (local digits, e.g., "5148947978")
-      // primaryPhoneCallingCode (e.g., "+1")
-      // additionalPhones: [{number, countryCode, callingCode}]
-      const people = await personRepository.find();
 
       for (const person of people) {
         const phones = person.phones as {
