@@ -95,6 +95,13 @@ const MAX_CALL_RECORDS = 1000;
 const MAX_SMS_RECORDS = 5000;
 const STALE_RECORD_HOURS = 72;
 const MAX_TRANSCRIPTION_RETRIES = 2;
+// Only auto-reply once per inbound number per this many hours, so a chatty
+// lead (or a stuck carrier loopback) can't trigger a flood of auto-replies.
+const AUTO_REPLY_COOLDOWN_HOURS = 12;
+// Look back this many minutes to detect carrier loopback echoes of outbound
+// SMS — some marketing carriers bounce the message body back as an inbound
+// webhook, which would otherwise trigger an auto-reply to our own customer.
+const ECHO_LOOKBACK_MINUTES = 10;
 
 @Injectable()
 export class TelnyxWebhookService {
@@ -102,6 +109,10 @@ export class TelnyxWebhookService {
   private readonly callRecords = new Map<string, CallRecord>();
   private readonly smsRecords: SmsRecord[] = [];
   private readonly processedEvents = new Set<string>();
+  // Tracks last auto-reply timestamp per inbound phone number (digits only)
+  // so we can enforce AUTO_REPLY_COOLDOWN_HOURS. In-memory is fine here:
+  // worst case after a restart we send one extra auto-reply to a sender.
+  private readonly lastAutoReplyAt = new Map<string, number>();
   private readonly dataDir: string;
 
   constructor(
@@ -315,10 +326,31 @@ export class TelnyxWebhookService {
 
   async handleSmsEvent(body: TelnyxWebhookBody): Promise<void> {
     const eventType = body?.data?.event_type;
+    const eventId = body?.data?.id;
     const payload = body?.data?.payload;
 
     if (!eventType || !payload) {
       return;
+    }
+
+    // Idempotency: skip duplicate webhook deliveries. Telnyx retries on any
+    // non-2xx, and was firing auto-replies twice on retries before this.
+    if (eventId && this.processedEvents.has(eventId)) {
+      this.logger.log(`Skipping duplicate SMS event: ${eventId}`);
+
+      return;
+    }
+
+    if (eventId) {
+      this.processedEvents.add(eventId);
+
+      if (this.processedEvents.size > 5000) {
+        const toDelete = Array.from(this.processedEvents).slice(0, 2500);
+
+        for (const id of toDelete) {
+          this.processedEvents.delete(id);
+        }
+      }
     }
 
     const fromNumber = this.extractPhoneNumber(payload.from);
@@ -332,7 +364,7 @@ export class TelnyxWebhookService {
       this.logger.log(`Incoming SMS from ${fromNumber}: ${payload.text}`);
 
       const smsRecord: SmsRecord = {
-        id: body?.data?.id || `sms-${Date.now()}`,
+        id: eventId || `sms-${Date.now()}`,
         from: fromNumber,
         to: toNumber,
         text: payload.text || '',
@@ -358,14 +390,142 @@ export class TelnyxWebhookService {
         await this.forwardSmsToEmail(fromNumber, toNumber, payload.text || '');
       }
 
-      // AI auto-reply
-      await this.sendAutoReply(fromNumber, payload.text || '');
+      // AI auto-reply — guarded against self-echoes, marketing loopbacks,
+      // and floods (see shouldSendAutoReply for the full guard list).
+      if (this.shouldSendAutoReply(fromNumber, payload.text || '')) {
+        await this.sendAutoReply(fromNumber, payload.text || '');
+      }
     }
 
     // Track outbound SMS delivery status
     if (eventType === 'message.sent' || eventType === 'message.finalized') {
       this.logger.log(`Outbound SMS status: ${eventType} to ${toNumber}`);
     }
+  }
+
+  // Decide whether to fire an auto-reply for an inbound SMS. Returns false
+  // (and logs the reason) for any of:
+  //   - the "sender" is our own Telnyx number (self-echo / loopback)
+  //   - the inbound text matches a recently sent outbound SMS body (carrier
+  //     marketing-loopback — see the MJU 2026-06-08 incident)
+  //   - we already auto-replied to this number within the cooldown window
+  //   - the text looks like an opt-out keyword (STOP / unsubscribe)
+  //   - the text looks like marketing content (opt-out trailer + long-form)
+  private shouldSendAutoReply(from: string, text: string): boolean {
+    const ownNumber = process.env['TELNYX_FROM_NUMBER'] || '+15142702784';
+    const fromDigits = from.replace(/\D/g, '');
+    const ownDigits = ownNumber.replace(/\D/g, '');
+
+    // 1. Never auto-reply to ourselves.
+    if (fromDigits && fromDigits === ownDigits) {
+      this.logger.warn(
+        `Skipping auto-reply: inbound from own Telnyx number ${from} (likely carrier loopback)`,
+      );
+
+      return false;
+    }
+
+    // 2. Skip if this exact text was just sent outbound — carriers
+    //    occasionally bounce marketing SMS back to us as an inbound event
+    //    with from/to logically reversed at the application layer, which
+    //    is what triggered the MJU incident on 2026-06-08.
+    if (this.recentOutboundMatches(text)) {
+      this.logger.warn(
+        `Skipping auto-reply to ${from}: inbound text matches a recently sent outbound SMS (loopback)`,
+      );
+
+      return false;
+    }
+
+    // 3. Per-number cooldown — never spam the same sender.
+    const lastAt = this.lastAutoReplyAt.get(fromDigits);
+    const cooldownMs = AUTO_REPLY_COOLDOWN_HOURS * 60 * 60 * 1000;
+
+    if (lastAt && Date.now() - lastAt < cooldownMs) {
+      this.logger.log(
+        `Skipping auto-reply to ${from}: still in ${AUTO_REPLY_COOLDOWN_HOURS}h cooldown`,
+      );
+
+      return false;
+    }
+
+    // 4. Skip obvious opt-out / STOP messages — replying to a "STOP" with
+    //    a chatty AI greeting is the worst case for compliance.
+    const trimmed = text.trim().toLowerCase();
+    const optOutKeywords = ['stop', 'unsubscribe', 'opt out', 'opt-out'];
+
+    if (optOutKeywords.includes(trimmed)) {
+      this.logger.log(
+        `Skipping auto-reply to ${from}: looks like an opt-out (${trimmed})`,
+      );
+
+      return false;
+    }
+
+    // 5. Skip messages that look like marketing/promotional content. The
+    //    2026-06-08 MJU incident: a marketing blast came back through the
+    //    inbound webhook (likely a carrier loopback) and Gemini
+    //    auto-replied to it as if it were a real customer message. The
+    //    test: contains an opt-out trailer ("text STOP to opt-out") AND
+    //    is long-form (marketing SMS is rarely under 80 chars).
+    if (this.looksLikeMarketingContent(text)) {
+      this.logger.warn(
+        `Skipping auto-reply to ${from}: inbound text looks like marketing/promo (opt-out trailer + long-form)`,
+      );
+
+      return false;
+    }
+
+    return true;
+  }
+
+  // Heuristic detector for marketing/promo SMS content. We only need to
+  // catch the obvious cases — a real customer text-back shouldn't have an
+  // opt-out trailer and be 80+ chars. Used as a last-ditch guard against
+  // carrier loopbacks of marketing blasts.
+  private looksLikeMarketingContent(text: string): boolean {
+    if (!text) return false;
+
+    const lower = text.toLowerCase();
+    const hasOptOutTrailer =
+      lower.includes('text stop to opt-out') ||
+      lower.includes('text stop to unsubscribe') ||
+      lower.includes('reply stop to opt out') ||
+      lower.includes('reply stop to unsubscribe');
+
+    return hasOptOutTrailer && text.length > 80;
+  }
+
+  // Return true if the given text matches the body of any outbound SMS sent
+  // in the last ECHO_LOOKBACK_MINUTES. Used to detect carrier loopback.
+  private recentOutboundMatches(text: string): boolean {
+    if (!text) return false;
+
+    const normalized = text.trim();
+
+    if (normalized.length < 10) return false;
+
+    const cutoff = Date.now() - ECHO_LOOKBACK_MINUTES * 60 * 1000;
+
+    for (let i = this.smsRecords.length - 1; i >= 0; i--) {
+      const record = this.smsRecords[i];
+
+      if (record.direction !== 'outbound') continue;
+
+      const ts = new Date(record.timestamp).getTime();
+
+      if (Number.isNaN(ts) || ts < cutoff) {
+        // Records are appended in order, so once we hit an older one we
+        // can stop scanning.
+        break;
+      }
+
+      if ((record.text || '').trim() === normalized) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   // Store an outbound SMS record (called from the controller).
@@ -809,6 +969,14 @@ export class TelnyxWebhookService {
     }
   }
 
+  // Canonical static auto-reply. Used when Gemini is unavailable or returns
+  // a response that looks truncated / malformed. Kept under the 160-char
+  // GSM-7 single-segment limit so we don't pay for multi-segment delivery.
+  private static readonly STATIC_AUTO_REPLY =
+    'Thanks for contacting Impression Photography! ' +
+    "We've got your message and will reply shortly. " +
+    'Urgent? Call +1 (514) 894-7978.';
+
   private async sendAutoReply(
     from: string,
     incomingText: string,
@@ -825,17 +993,20 @@ export class TelnyxWebhookService {
       return;
     }
 
-    // Generate AI reply if Gemini key is available (free tier)
+    // Generate AI reply if Gemini key is available (free tier). Sanitize
+    // the result against truncation — Gemini occasionally hits the token
+    // cap mid-sentence and we used to ship the half-baked text out.
     const geminiKey = process.env['GEMINI_API_KEY'];
     let autoReplyText: string;
 
     if (geminiKey) {
-      autoReplyText = await this.generateAiReply(geminiKey, incomingText);
+      const aiText = await this.generateAiReply(geminiKey, incomingText);
+
+      autoReplyText = this.isReplyTextSane(aiText)
+        ? aiText
+        : TelnyxWebhookService.STATIC_AUTO_REPLY;
     } else {
-      autoReplyText =
-        'Thank you for contacting Impression Photography! ' +
-        'We have received your message and will get back to you shortly. ' +
-        'For immediate assistance, please call us at +1 (514) 894-7978.';
+      autoReplyText = TelnyxWebhookService.STATIC_AUTO_REPLY;
     }
 
     try {
@@ -855,6 +1026,16 @@ export class TelnyxWebhookService {
 
       if (response.ok) {
         this.logger.log(`Auto-reply sent to ${from}`);
+
+        // Record cooldown timestamp so we don't double-reply within the
+        // cooldown window. Recorded on success only — a Telnyx failure
+        // shouldn't lock the sender out of getting a reply on their next
+        // attempt.
+        const fromDigits = from.replace(/\D/g, '');
+
+        if (fromDigits) {
+          this.lastAutoReplyAt.set(fromDigits, Date.now());
+        }
 
         // Store the outbound auto-reply
         this.storeSmsRecord({
@@ -879,6 +1060,26 @@ export class TelnyxWebhookService {
 
       this.logger.error(`Auto-reply error: ${errorMessage}`);
     }
+  }
+
+  // Sanity-check an AI-generated reply. Returns false (=> use static
+  // fallback) if the text looks truncated or empty. Catches the
+  // "Thanks for your message! This is an auto" half-sentence case we
+  // shipped on 2026-06-08.
+  private isReplyTextSane(text: string | null | undefined): boolean {
+    if (!text) return false;
+
+    const trimmed = text.trim();
+
+    if (trimmed.length < 20) return false;
+
+    // Must end with sentence-final punctuation. AI cutoffs almost always
+    // leave a dangling word or a comma.
+    const lastChar = trimmed.charAt(trimmed.length - 1);
+
+    if (!'.!?)'.includes(lastChar)) return false;
+
+    return true;
   }
 
   private async generateAiReply(
@@ -943,12 +1144,10 @@ export class TelnyxWebhookService {
       this.logger.error(`AI auto-reply error: ${errorMessage}`);
     }
 
-    // Fallback to static reply
-    return (
-      'Thank you for contacting Impression Photography! ' +
-      'We have received your message and will get back to you shortly. ' +
-      'For immediate assistance, please call us at +1 (514) 894-7978.'
-    );
+    // Fallback to static reply — single source of truth lives on the
+    // class so we don't drift between the AI-failure path and the
+    // no-Gemini-key path.
+    return TelnyxWebhookService.STATIC_AUTO_REPLY;
   }
 
   private storeSmsRecord(record: SmsRecord): void {
