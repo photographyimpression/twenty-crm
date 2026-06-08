@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Logger,
@@ -578,6 +579,70 @@ export class TelnyxWebhookController {
 
       this.logger.error(`Outbound SMS error: ${errorMessage}`);
       res.status(500).json({ error: errorMessage });
+    }
+  }
+
+  // Log an outbound SMS that was sent OUTSIDE the CRM (via the
+  // sms-reply-bridge on the mailserver). The bridge already invoked
+  // Telnyx; we just record the message in the SMS history so the
+  // conversation thread in the inbox stays complete.
+  //
+  // Auth: shared-secret header (SMS_BRIDGE_AUTH_TOKEN). PublicEndpoint
+  // guard so it doesn't require a user session, but the secret check
+  // means random callers can't pollute the SMS log.
+  @Post('sms/log-outbound')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async logOutboundSms(
+    @Body()
+    body: {
+      to?: string;
+      text?: string;
+      from?: string;
+      telnyxMessageId?: string | null;
+      source?: string;
+    },
+    @Headers('authorization') authHeader: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    const expected = process.env['SMS_BRIDGE_AUTH_TOKEN'];
+
+    if (!expected) {
+      res
+        .status(503)
+        .json({ error: 'SMS_BRIDGE_AUTH_TOKEN not configured on server' });
+
+      return;
+    }
+
+    const provided =
+      authHeader && authHeader.toLowerCase().startsWith('bearer ')
+        ? authHeader.slice(7).trim()
+        : '';
+
+    if (!provided || provided !== expected) {
+      res.status(401).json({ error: 'unauthorized' });
+
+      return;
+    }
+
+    if (!body?.to || !body?.text) {
+      res.status(400).json({ error: 'to and text are required' });
+
+      return;
+    }
+
+    try {
+      this.telnyxWebhookService.storeOutboundSms(body.to, body.text, body.from);
+      this.logger.log(
+        `Logged bridge-sourced outbound SMS to ${body.to} (telnyxId=${body.telnyxMessageId ?? 'n/a'}, source=${body.source ?? 'n/a'})`,
+      );
+      res.json({ ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`logOutboundSms failed: ${message}`);
+      res.status(500).json({ error: message });
     }
   }
 

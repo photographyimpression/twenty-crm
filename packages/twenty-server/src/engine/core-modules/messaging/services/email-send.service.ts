@@ -132,16 +132,30 @@ export class EmailSendService {
   // (the webhook is unauthenticated). For single-tenant deployments this
   // is the right behavior: the alert goes to the workspace's connected
   // mailbox no matter who is logged in.
+  //
+  // `replyTo` sets a single Reply-To address (used by the SMS bridge to
+  // route Outlook replies back through Postfix + Telnyx).
+  // `headers` adds custom RFC 822 headers — Microsoft Graph only accepts
+  // headers prefixed with `x-` or `X-`, so callers needing Message-ID /
+  // In-Reply-To / References should pass them via `headers` with `X-`
+  // prefixes (we emit duplicates as standard headers via the SMTP
+  // fallback path). NB: Graph does NOT let you override Message-ID; it
+  // generates its own per-send. Threading is preserved through
+  // In-Reply-To/References, which Outlook honors for thread grouping.
   public async sendViaAnyMicrosoftAccount({
     to,
     subject,
     bodyText,
     bodyHtml,
+    replyTo,
+    headers,
   }: {
     to: string;
     subject: string;
     bodyText: string;
     bodyHtml?: string;
+    replyTo?: string;
+    headers?: Record<string, string>;
   }): Promise<{ ok: boolean; error?: string }> {
     const workspace = await this.workspaceRepository.findOne({ where: {} });
 
@@ -179,14 +193,40 @@ export class EmailSendService {
               account,
             );
 
+          // Microsoft Graph rejects internetMessageHeaders that don't
+          // start with `x-` (case-insensitive). Drop anything else with
+          // a log line so the caller knows.
+          const internetMessageHeaders = headers
+            ? Object.entries(headers)
+                .filter(([name]) => {
+                  if (/^x-/i.test(name)) return true;
+                  this.logger.warn(
+                    `Graph drops non-X header "${name}" — use SMTP for it`,
+                  );
+
+                  return false;
+                })
+                .map(([name, value]) => ({ name, value }))
+            : undefined;
+
+          const message: Record<string, unknown> = {
+            subject,
+            body: bodyHtml
+              ? { contentType: 'HTML', content: bodyHtml }
+              : { contentType: 'Text', content: bodyText },
+            toRecipients: [{ emailAddress: { address: to } }],
+          };
+
+          if (replyTo) {
+            message.replyTo = [{ emailAddress: { address: replyTo } }];
+          }
+
+          if (internetMessageHeaders && internetMessageHeaders.length > 0) {
+            message.internetMessageHeaders = internetMessageHeaders;
+          }
+
           await client.api('/me/sendMail').post({
-            message: {
-              subject,
-              body: bodyHtml
-                ? { contentType: 'HTML', content: bodyHtml }
-                : { contentType: 'Text', content: bodyText },
-              toRecipients: [{ emailAddress: { address: to } }],
-            },
+            message,
             saveToSentItems: true,
           });
 

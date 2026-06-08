@@ -26,6 +26,11 @@ import {
 import { NoteWorkspaceEntity } from 'src/modules/note/standard-objects/note.workspace-entity';
 import { NoteTargetWorkspaceEntity } from 'src/modules/note/standard-objects/note-target.workspace-entity';
 import { PersonWorkspaceEntity } from 'src/modules/person/standard-objects/person.workspace-entity';
+import { computeDisplayName } from 'src/utils/compute-display-name';
+import {
+  SmsThreadStateStore,
+  buildReplyToAddress,
+} from 'src/engine/core-modules/telnyx-webhook/sms-thread-state.util';
 
 type TelnyxPayload = {
   call_control_id?: string;
@@ -114,6 +119,9 @@ export class TelnyxWebhookService {
   // worst case after a restart we send one extra auto-reply to a sender.
   private readonly lastAutoReplyAt = new Map<string, number>();
   private readonly dataDir: string;
+  // Persists per-contact Message-ID chains so each SMS notification
+  // email threads under the previous one in Outlook.
+  private smsThreadState!: SmsThreadStateStore;
 
   constructor(
     private readonly emailSenderService: EmailSenderService,
@@ -162,6 +170,8 @@ export class TelnyxWebhookService {
     this.loadCallRecords();
     this.loadSmsRecords();
     this.cleanupStaleRecords();
+
+    this.smsThreadState = new SmsThreadStateStore(this.dataDir);
   }
 
   // Try to ensure the preferred dir exists and is writable; fall back to a
@@ -409,8 +419,8 @@ export class TelnyxWebhookService {
   //   - the inbound text matches a recently sent outbound SMS body (carrier
   //     marketing-loopback — see the MJU 2026-06-08 incident)
   //   - we already auto-replied to this number within the cooldown window
-  //   - the text looks like an opt-out keyword (STOP / unsubscribe)
-  //   - the text looks like marketing content (opt-out trailer + long-form)
+  //   - the text looks like marketing/promo (starts with our brand name,
+  //     contains opt-out language, etc.)
   private shouldSendAutoReply(from: string, text: string): boolean {
     const ownNumber = process.env['TELNYX_FROM_NUMBER'] || '+15142702784';
     const fromDigits = from.replace(/\D/g, '');
@@ -449,8 +459,8 @@ export class TelnyxWebhookService {
       return false;
     }
 
-    // 4. Skip obvious opt-out / STOP messages — replying to a "STOP" with
-    //    a chatty AI greeting is the worst case for compliance.
+    // 4. Skip obvious marketing / opt-out / STOP messages — replying to a
+    //    "STOP" with a chatty AI greeting is the worst case for compliance.
     const trimmed = text.trim().toLowerCase();
     const optOutKeywords = ['stop', 'unsubscribe', 'opt out', 'opt-out'];
 
@@ -464,7 +474,7 @@ export class TelnyxWebhookService {
 
     // 5. Skip messages that look like marketing/promotional content. The
     //    2026-06-08 MJU incident: a marketing blast came back through the
-    //    inbound webhook (likely a carrier loopback) and Gemini
+    //    inbound webhook (likely a carrier loopback or echo) and Gemini
     //    auto-replied to it as if it were a real customer message. The
     //    test: contains an opt-out trailer ("text STOP to opt-out") AND
     //    is long-form (marketing SMS is rarely under 80 chars).
@@ -909,26 +919,73 @@ export class TelnyxWebhookService {
     const localTime = new Date().toLocaleString('en-CA', {
       timeZone: 'America/Toronto',
     });
-    const subject = `SMS from ${from}`;
-    const bodyText = `New SMS received:\n\nFrom: ${from}\nTo: ${to}\nTime: ${localTime}\n\nMessage:\n${text}`;
+
+    // Look up the contact's display name so the email reads like a
+    // human conversation instead of a raw phone-number alert.
+    let contactName: string | null = null;
+
+    try {
+      contactName = await this.findPersonNameByPhone(from);
+    } catch (error) {
+      this.logger.warn(`Person lookup failed for ${from}: ${error}`);
+    }
+
+    const senderLabel = contactName ? `${contactName} (${from})` : from;
+    const subject = `SMS from ${senderLabel}`;
+
+    // Threading headers — first email in the conversation generates the
+    // root Message-ID; subsequent emails reference it so Outlook groups
+    // them like iMessage.
+    const threadHeaders = this.smsThreadState.getNextHeaders(from);
+    const replyToAddress = buildReplyToAddress(from);
+
+    // Plain-text body: the SMS content is the centerpiece. Quoting
+    // conventions matter — when Moshe replies, Outlook will append the
+    // quoted block AFTER his reply. Our bridge strips quoted lines, so
+    // the original SMS body sits at the top, followed by a clearly
+    // delimited "—" + metadata block the user can ignore.
+    const bodyText =
+      `${text}\n` +
+      `\n` +
+      `—\n` +
+      `From: ${senderLabel}\n` +
+      `Received: ${localTime}\n` +
+      `To reply, just reply to this email.`;
+
+    const escapeHtml = (s: string): string =>
+      s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
     const bodyHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px;">
-        <h3 style="color: #333; border-bottom: 2px solid #1a73e8; padding-bottom: 8px;">
-          New SMS Received
-        </h3>
-        <table style="margin: 16px 0;">
-          <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">From:</td><td>${from}</td></tr>
-          <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">To:</td><td>${to}</td></tr>
-          <tr><td style="padding: 4px 12px 4px 0; font-weight: bold; color: #666;">Time:</td><td>${localTime}</td></tr>
-        </table>
-        <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin-top: 12px;">
-          <p style="margin: 0; font-size: 16px; line-height: 1.5;">${text}</p>
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 600px;">
+        <div style="background: #f5f5f7; padding: 18px 22px; border-radius: 12px; margin-bottom: 16px;">
+          <p style="margin: 0; font-size: 17px; line-height: 1.45; color: #1d1d1f; white-space: pre-wrap;">${escapeHtml(text)}</p>
         </div>
-        <p style="color: #999; font-size: 12px; margin-top: 16px;">
-          Forwarded by Twenty CRM Telephony System
+        <p style="color: #6e6e73; font-size: 13px; margin: 0;">
+          From <strong>${escapeHtml(senderLabel)}</strong> &middot; ${escapeHtml(localTime)}<br/>
+          Reply to this email to send an SMS back.
         </p>
       </div>
     `;
+
+    // Custom headers for thread grouping in Outlook. Graph only allows
+    // headers prefixed with `x-`; the SMTP fallback drops the prefix
+    // because nodemailer treats arbitrary headers as raw RFC 822 names.
+    const graphHeaders: Record<string, string> = {
+      'X-SMS-Thread-MessageId': threadHeaders.messageId,
+    };
+
+    if (threadHeaders.inReplyTo) {
+      graphHeaders['X-SMS-Thread-InReplyTo'] = threadHeaders.inReplyTo;
+    }
+
+    if (threadHeaders.references) {
+      graphHeaders['X-SMS-Thread-References'] = threadHeaders.references;
+    }
 
     // Prefer the workspace's connected Microsoft 365 account (already
     // authorized via OAuth2 — same path as in-CRM email replies). Falls
@@ -938,10 +995,15 @@ export class TelnyxWebhookService {
       subject,
       bodyText,
       bodyHtml,
+      replyTo: replyToAddress,
+      headers: graphHeaders,
     });
 
     if (graphResult.ok) {
-      this.logger.log(`SMS forwarded to ${forwardEmail} via Microsoft Graph`);
+      this.logger.log(
+        `SMS notification sent to ${forwardEmail} via Microsoft Graph ` +
+          `(thread-mid=${threadHeaders.messageId}, replyTo=${replyToAddress})`,
+      );
 
       return;
     }
@@ -951,6 +1013,14 @@ export class TelnyxWebhookService {
     );
 
     try {
+      // nodemailer supports replyTo, messageId, inReplyTo, references
+      // and arbitrary `headers` directly.
+      const smtpHeaders: Record<string, string> = {};
+
+      if (threadHeaders.references) {
+        smtpHeaders['References'] = threadHeaders.references;
+      }
+
       await this.emailSenderService.send({
         from:
           process.env['EMAIL_FROM_ADDRESS'] || 'crm@impressionphotography.ca',
@@ -958,6 +1028,10 @@ export class TelnyxWebhookService {
         subject,
         text: bodyText,
         html: bodyHtml,
+        replyTo: replyToAddress,
+        messageId: threadHeaders.messageId,
+        inReplyTo: threadHeaders.inReplyTo,
+        headers: smtpHeaders,
       });
 
       this.logger.log(`SMS forwarded to ${forwardEmail} via SMTP`);
@@ -1276,6 +1350,44 @@ export class TelnyxWebhookService {
 
   private normalizePhone(phone: string): string {
     return phone.replace(/[\s\-()]/g, '');
+  }
+
+  // Returns the matching person's display name (or null), without
+  // needing a second DB round-trip. Used by the SMS notification email
+  // builder to put a real human name in the subject/body when Moshe's
+  // contact list has a match for the inbound number.
+  async findPersonNameByPhone(phoneNumber: string): Promise<string | null> {
+    const personId = await this.findPersonByPhone(phoneNumber);
+
+    if (!personId) return null;
+
+    const workspaceId = await this.getWorkspaceId();
+
+    if (!workspaceId) return null;
+
+    try {
+      const personRepository =
+        await this.globalWorkspaceOrmManager.getRepository(
+          workspaceId,
+          PersonWorkspaceEntity,
+          { shouldBypassPermissionChecks: true },
+        );
+      const person = await personRepository.findOne({
+        where: { id: personId },
+      });
+
+      if (!person) return null;
+
+      const display = computeDisplayName(person.name);
+
+      return display.trim() || null;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to load person name for ${phoneNumber}: ${error}`,
+      );
+
+      return null;
+    }
   }
 
   async findPersonByPhone(phoneNumber: string): Promise<string | null> {
