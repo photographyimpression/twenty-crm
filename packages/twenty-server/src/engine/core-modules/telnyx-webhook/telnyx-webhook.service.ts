@@ -1506,48 +1506,65 @@ export class TelnyxWebhookService {
 
     if (!workspaceId) return null;
 
+    const authContext = buildSystemAuthContext(workspaceId);
+
     try {
-      const noteRepository = await this.globalWorkspaceOrmManager.getRepository(
-        workspaceId,
-        NoteWorkspaceEntity,
-        { shouldBypassPermissionChecks: true },
-      );
+      // Repository access MUST run inside the workspace context (see
+      // findPersonByPhone) — otherwise getRepository throws "Workspace context
+      // not set", the catch below swallows it, and the note never attaches to
+      // the person.
+      const noteId =
+        await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+          async () => {
+            const noteRepository =
+              await this.globalWorkspaceOrmManager.getRepository(
+                workspaceId,
+                NoteWorkspaceEntity,
+                { shouldBypassPermissionChecks: true },
+              );
 
-      const noteTargetRepository =
-        await this.globalWorkspaceOrmManager.getRepository(
-          workspaceId,
-          NoteTargetWorkspaceEntity,
-          { shouldBypassPermissionChecks: true },
+            const noteTargetRepository =
+              await this.globalWorkspaceOrmManager.getRepository(
+                workspaceId,
+                NoteTargetWorkspaceEntity,
+                { shouldBypassPermissionChecks: true },
+              );
+
+            // Create the note with rich text body
+            const noteInsert = await noteRepository.insert({
+              title,
+              bodyV2: {
+                type: 'doc',
+                content: [
+                  {
+                    type: 'paragraph',
+                    content: [{ type: 'text', text: body }],
+                  },
+                ],
+              },
+              position: 0,
+            } as any);
+
+            const createdNoteId = noteInsert.identifiers[0]?.id;
+
+            if (!createdNoteId) return null;
+
+            // Link the note to the person
+            await noteTargetRepository.insert({
+              noteId: createdNoteId,
+              targetPersonId: personId,
+            } as any);
+
+            return createdNoteId;
+          },
+          authContext,
         );
-
-      // Create the note with rich text body
-      const noteInsert = await noteRepository.insert({
-        title,
-        bodyV2: {
-          type: 'doc',
-          content: [
-            {
-              type: 'paragraph',
-              content: [{ type: 'text', text: body }],
-            },
-          ],
-        },
-        position: 0,
-      } as any);
-
-      const noteId = noteInsert.identifiers[0]?.id;
 
       if (!noteId) {
         this.logger.error('Failed to create note: no ID returned');
 
         return null;
       }
-
-      // Link the note to the person
-      await noteTargetRepository.insert({
-        noteId,
-        targetPersonId: personId,
-      } as any);
 
       this.logger.log(
         `Created timeline note "${title}" for person ${personId}`,
