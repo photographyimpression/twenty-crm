@@ -435,7 +435,15 @@ async function main() {
       to: decoded.phone,
       length: replyText.length,
     });
-    return EXIT.TEMPFAIL;
+    // Permanent Telnyx errors → DATAERR so Postfix bounces immediately
+    // instead of retrying for days. 4xx is client error (bad number,
+    // bad payload, auth) — retries won't help. 5xx and network errors
+    // fall through to TEMPFAIL so Postfix retries with backoff.
+    const permanent =
+      sendResult.error &&
+      (sendResult.error.startsWith('telnyx-http-4') ||
+        sendResult.error === 'no-telnyx-api-key');
+    return permanent ? EXIT.DATAERR : EXIT.TEMPFAIL;
   }
 
   // 6. Log to CRM (best-effort).
