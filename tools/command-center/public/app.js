@@ -122,7 +122,7 @@
     if (editing) {
       mount.innerHTML = `
         <div class="card">
-          <span class="pill">Touch ${esc(a.touchNumber)} of 12 · editing</span>
+          <span class="pill">${seqLabel(a)} · Touch ${esc(a.touchNumber)} of ${seqTotal(a)} · editing</span>
           <div class="lead-name">${esc(a.leadName) || 'Unknown lead'}</div>
           <div class="company">${esc(a.companyName) || ''}</div>
           <label class="recipient">Subject</label>
@@ -144,7 +144,8 @@
     mount.innerHTML = `
       <div class="card">
         <div class="meta-row">
-          <span class="pill">Touch ${esc(a.touchNumber)} of 12</span>
+          <span class="pill pill-seq">${seqLabel(a)}</span>
+          <span class="pill">Touch ${esc(a.touchNumber)} of ${seqTotal(a)}</span>
           ${a.productType ? `<span class="pill">${esc(a.productType)}</span>` : ''}
           ${dueLabel ? `<span class="pill">due ${esc(dueLabel)}</span>` : ''}
         </div>
@@ -176,9 +177,34 @@
     renderTriage();
   }
 
+  // Sequence display helpers. Server sends sequenceKey + sequenceTotal;
+  // default to the original Pre-Phone sequence for legacy rows.
+  const SEQ_LABELS = {
+    PRE_PHONE_EMAIL: 'Pre-Phone',
+    POST_QUOTE_FOLLOWUP: 'Post-Quote',
+  };
+  function seqLabel(a) {
+    return esc(SEQ_LABELS[a.sequenceKey] || 'Pre-Phone');
+  }
+  function seqTotal(a) {
+    return esc(a.sequenceTotal || 12);
+  }
+
+  // Matches unfilled template placeholders like [PORTFOLIO_LINK].
+  const PLACEHOLDER_RE = /\[[A-Z0-9_]{2,}\]/;
+
   async function onSend() {
     if (busy) return;
     const a = queue[cursor];
+    // Pre-check locally for a nicer flow: jump straight into Edit instead of
+    // a failed request. The server enforces the same rule regardless.
+    const hit = `${a.emailSubject || ''}\n${a.emailBody || ''}`.match(PLACEHOLDER_RE);
+    if (hit) {
+      toast(`Fill in ${hit[0]} before sending — opening editor`, true);
+      editing = true;
+      renderTriage();
+      return;
+    }
     setBusy(true);
     try {
       await apiPost(`/approval/${a.id}/send`, {});

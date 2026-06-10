@@ -127,22 +127,21 @@ function loadToken() {
 
 const API_TOKEN = loadToken();
 
-// Cascade GAP days keyed by the touch number being scheduled. Touch 1 has gap 0
-// (due immediately once nothing has been sent).
-const GAP = {
-  1: 0,
-  2: 1,
-  3: 2,
-  4: 4,
-  5: 3,
-  6: 4,
-  7: 4,
-  8: 4,
-  9: 6,
-  10: 7,
-  11: 10,
-  12: 15,
+// Cascade GAP days keyed by sequence, then by the touch number being
+// scheduled. Touch 1's gap is measured from enrollment (Pre-Phone: due
+// immediately; Post-Quote: day 2 — following up minutes after "I'll think
+// about it" reads desperate). Approvals without a sequenceKey are legacy
+// Pre-Phone rows.
+const DEFAULT_SEQUENCE = 'PRE_PHONE_EMAIL';
+const SEQUENCE_GAPS = {
+  PRE_PHONE_EMAIL: { 1: 0, 2: 1, 3: 2, 4: 4, 5: 3, 6: 4, 7: 4, 8: 4, 9: 6, 10: 7, 11: 10, 12: 15 },
+  POST_QUOTE_FOLLOWUP: { 1: 2, 2: 3, 3: 4, 4: 5, 5: 7, 6: 9, 7: 12 },
 };
+const SEQUENCE_TOTALS = { PRE_PHONE_EMAIL: 12, POST_QUOTE_FOLLOWUP: 7 };
+
+function seqOf(approval) {
+  return approval.sequenceKey || DEFAULT_SEQUENCE;
+}
 
 const TERMINAL_STATUSES = new Set(['COMPLETED', 'REJECTED']);
 
@@ -173,7 +172,7 @@ async function gql(query, variables) {
 
 const APPROVAL_FIELDS = `
   id touchNumber emailSubject emailBody recipientEmail leadName companyName
-  productType actionType approvalStatus scheduledDate createdAt updatedAt
+  productType actionType approvalStatus scheduledDate sequenceKey createdAt updatedAt
 `;
 
 async function fetchAllApprovals() {
@@ -225,17 +224,36 @@ function computeScheduleWrites(approvals) {
     byLead.get(key).push(a);
   }
 
-  const writes = [];
+  const dateWrites = [];
+  const rejections = [];
   for (const [, group] of byLead) {
-    const completed = group.filter((a) => a.approvalStatus === 'COMPLETED');
-    const pending = group
+    const pendingAll = group.filter((a) => a.approvalStatus === 'PENDING');
+    if (pendingAll.length === 0) continue;
+
+    // One active sequence per lead: the sequence of the newest pending
+    // approval wins (= the most recent enrollment). Pending touches left over
+    // from an older sequence are auto-rejected so the lead never receives
+    // interleaved emails from two playbooks.
+    const newestPending = pendingAll.reduce((acc, a) =>
+      new Date(a.createdAt) > new Date(acc.createdAt) ? a : acc
+    );
+    const activeSeq = seqOf(newestPending);
+    for (const stale of pendingAll) {
+      if (seqOf(stale) !== activeSeq) {
+        rejections.push({ id: stale.id, sequence: seqOf(stale) });
+      }
+    }
+
+    const seqGroup = group.filter((a) => seqOf(a) === activeSeq);
+    const completed = seqGroup.filter((a) => a.approvalStatus === 'COMPLETED');
+    const pending = seqGroup
       .filter((a) => a.approvalStatus === 'PENDING')
       .sort((x, y) => x.touchNumber - y.touchNumber);
 
     if (pending.length === 0) continue;
 
-    // Baseline = when the last touch completed, else the lead's earliest
-    // approval createdAt (so a brand-new lead's Touch 1 is due immediately).
+    // Baseline = when this sequence's last touch completed, else the
+    // sequence's earliest approval createdAt (enrollment time).
     let baselineMs;
     if (completed.length > 0) {
       const lastCompleted = completed.reduce((acc, a) =>
@@ -243,28 +261,29 @@ function computeScheduleWrites(approvals) {
       );
       baselineMs = startOfDayUTC(lastCompleted.updatedAt);
     } else {
-      const earliestCreated = group.reduce((acc, a) =>
+      const earliestCreated = seqGroup.reduce((acc, a) =>
         new Date(a.createdAt) < new Date(acc.createdAt) ? a : acc
       );
       baselineMs = startOfDayUTC(earliestCreated.createdAt);
     }
 
+    const gaps = SEQUENCE_GAPS[activeSeq] || SEQUENCE_GAPS[DEFAULT_SEQUENCE];
     const next = pending[0];
-    const gap = GAP[next.touchNumber] ?? 0;
+    const gap = gaps[next.touchNumber] ?? 0;
     const desiredISO = addDaysISO(baselineMs, gap);
 
     // The immediate next pending touch gets a date.
     if (!datesEqual(next.scheduledDate, desiredISO)) {
-      writes.push({ id: next.id, scheduledDate: desiredISO });
+      dateWrites.push({ id: next.id, scheduledDate: desiredISO });
     }
     // All later pending touches must be null.
     for (const later of pending.slice(1)) {
       if (later.scheduledDate !== null) {
-        writes.push({ id: later.id, scheduledDate: null });
+        dateWrites.push({ id: later.id, scheduledDate: null });
       }
     }
   }
-  return writes;
+  return { dateWrites, rejections };
 }
 
 function datesEqual(existing, desiredISO) {
@@ -280,11 +299,15 @@ async function reconcile() {
   if (reconcileInFlight) return reconcileInFlight;
   reconcileInFlight = (async () => {
     const approvals = await fetchAllApprovals();
-    const writes = computeScheduleWrites(approvals);
-    for (const w of writes) {
+    const { dateWrites, rejections } = computeScheduleWrites(approvals);
+    for (const r of rejections) {
+      console.log(`[reconcile] auto-rejecting stale ${r.sequence} approval ${r.id} (superseded by newer sequence)`);
+      await updateApproval(r.id, { approvalStatus: 'REJECTED' });
+    }
+    for (const w of dateWrites) {
       await updateApproval(w.id, { scheduledDate: w.scheduledDate });
     }
-    return { written: writes.length, total: approvals.length };
+    return { written: dateWrites.length, rejected: rejections.length, total: approvals.length };
   })();
   try {
     return await reconcileInFlight;
@@ -379,7 +402,12 @@ api.get('/queue', async (_req, res) => {
         const dy = new Date(y.scheduledDate).getTime();
         if (dx !== dy) return dx - dy;
         return x.touchNumber - y.touchNumber;
-      });
+      })
+      .map((a) => ({
+        ...a,
+        sequenceKey: seqOf(a),
+        sequenceTotal: SEQUENCE_TOTALS[seqOf(a)] || SEQUENCE_TOTALS[DEFAULT_SEQUENCE],
+      }));
 
     res.json({ due, count: due.length, reconcile: reconcileResult });
   } catch (e) {
@@ -387,8 +415,26 @@ api.get('/queue', async (_req, res) => {
   }
 });
 
+// Anything like [PORTFOLIO_LINK] / [BEFORE_AFTER_LINK] left in a template is
+// an unfilled placeholder — block the send until the user edits it out.
+const PLACEHOLDER_RE = /\[[A-Z0-9_]{2,}\]/;
+
 api.post('/approval/:id/send', async (req, res) => {
   try {
+    // Guard: refuse to send an email that still contains an unresolved
+    // [PLACEHOLDER]. Fetch the current record server-side so the check can't
+    // be bypassed by a stale client.
+    const all = await fetchAllApprovals();
+    const current = all.find((a) => a.id === req.params.id);
+    if (!current) return res.status(404).json({ error: 'Approval not found' });
+    const placeholderHit = `${current.emailSubject || ''}\n${current.emailBody || ''}`.match(PLACEHOLDER_RE);
+    if (placeholderHit) {
+      return res.status(422).json({
+        error: `This email still contains ${placeholderHit[0]} — hit Edit and replace it before sending.`,
+        placeholder: placeholderHit[0],
+      });
+    }
+
     // "Send" = set APPROVED; the Twenty workflow does the actual send + flips
     // to COMPLETED.
     const updated = await updateApproval(req.params.id, { approvalStatus: 'APPROVED' });
