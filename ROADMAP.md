@@ -23,6 +23,24 @@ _Last updated: 2026-05-27_
 - ✅ Date-gated approval views: "🔥 Due Today" + "📅 Upcoming"
 - ✅ Cascade scheduler (only the next pending touch per lead is dated)
 - ✅ Daily Command Center: triage send-and-next, calls, roadmap
+- ✅ Post-Quote Follow-Up sequence (2026-06-10): 7 approval-gated emails for
+  quoted-but-undecided leads (day 2→5→9→14→21→30→42, breakup last). Tag a
+  Person with "Post-Quote Follow-Up" → 7 PENDING approvals; every send needs
+  explicit approval; editable first. First real enrollee: Yair Meyers.
+- ✅ Multi-sequence Command Center (2026-06-10): per-sequence cadence via
+  approval.sequenceKey, sequence badge + correct "Touch N of X" on cards,
+  one-active-sequence rule (graduating a lead auto-rejects stale pendings
+  from the old sequence — verified in the graduation E2E test).
+- ✅ Placeholder send-guard (2026-06-10): server refuses (HTTP 422) to send
+  any email still containing an unfilled [PLACEHOLDER]; UI jumps straight
+  into the editor. Protects the Pre-Phone touches with [PORTFOLIO_LINK] etc.
+
+## Minor known quirk (documented, self-healing)
+- Right after "Send", the immediate reconcile may briefly date the next touch
+  from enrollment instead of completion (the send workflow hasn't flipped the
+  approval to COMPLETED yet). The next reconcile (page load / 5-min timer)
+  corrects it — verified. Fix idea: delay the post-send reconcile ~10s or
+  re-run it on a timer once.
 
 ## Next up (high value)
 - [ ] **Multi-from sender / warming-domain rotation.** Pick which mailbox an
@@ -47,6 +65,25 @@ _Last updated: 2026-05-27_
 - [ ] **OVH disk at ~94%.** The 121GB Windows VM at `/opt/win-vm` dominates;
       archive or move it. Redis was choking on disk pressure (band-aided with
       `stop-writes-on-bgsave-error=no`).
+
+## INCIDENT 2026-06-10: Ollama models wiped → Pre-Phone enrollment hard-failed
+- All local Ollama models (incl. `llama3.2:3b`) vanished from the OVH box —
+  likely collateral from a disk cleanup (disk went 96% → 73%). The Pre-Phone
+  workflow's AI-opener HTTP step then failed with "model not found", and the
+  ENTIRE enrollment run failed — zero approvals created. Caught during
+  Post-Quote testing; only a test contact was affected (no real leads; the
+  only failed run on record is the test).
+- **Worse finding:** the step has `continueOnFailure: true` and Twenty's
+  engine did NOT honor it for the HTTP failure — the documented "falls back
+  to undefined" behavior is wrong. The AI step is a hard single point of
+  failure for Pre-Phone enrollment.
+- Mitigation applied: `ollama pull llama3.2:3b` restored; enrollment
+  re-verified. Post-Quote sequence has no AI step → never affected.
+- **Priority fix (was nice-to-have, now important):** decouple AI opener
+  generation from enrollment — create approvals instantly, fill openers in
+  the background (Command Center backend can do it; touches 4-6 aren't due
+  for 7+ days). Also: pin/monitor the Ollama model (health check that flags
+  a missing model before it bites).
 
 ## Known limitations / AI personalization (found during 2026-05-26 GUI testing)
 - **Ollama is slow on this box (no GPU).** The AI-opener step runs llama3.2:3b
