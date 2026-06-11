@@ -8,3 +8,7 @@ node_modules/
 
 # roadmap.json is the live editable store on the server; the repo keeps a
 # seed copy but local runtime edits should not be committed.
+#
+# paused-state.json is the live reply-pause store on the server (same deal):
+# the repo keeps an empty seed; runtime entries live only on the server.
+paused-state.json
