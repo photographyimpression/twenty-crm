@@ -9,6 +9,74 @@ _Last updated: 2026-06-10_
 This mirrors the in-app changelog (Command Center → Roadmap tab). Categories:
 🔧 fix ready · 🐞 open bug · ✨ wanted feature · 🔄 in progress · ⏳ blocked on you.
 
+---
+
+## 🌙 NEXT OVERNIGHT RUN — prioritized, do in this order
+
+> Context for a fresh session: branch `claude/practical-leakey-477d5d`. All work
+> below is committed; the core fixes are built but NOT deployed. Prod CRM deploys
+> by merging to `main` → Docker build (~12 min) → OVH. The Command Center app at
+> `/opt/command-center/` deploys by `scp public/* + systemctl restart` (no build).
+> Admin token: OVH `/opt/command-center/.token`. Mint a CC session cookie from
+> `/opt/command-center/.session-secret` (recipe in git history). Real leads in the
+> live queue: **Stephanie** (txdoorcompany@gmail.com) and **Yair** (4cornerstzitzit@gmail.com)
+> — NEVER use them as test subjects.
+
+**P0 — SAFETY FIRST, before any send-capable testing:**
+- [ ] **Install a dry-run send guard.** Last night an agent clicked Send on the
+  LIVE front card and emailed a real customer (Stephanie t3) during testing. Add
+  a `CC_DRY_RUN` env flag to the Command Center: when set, `POST /api/approval/:id/send`
+  logs + records the intended send but does NOT set APPROVED / does NOT hit
+  Telnyx/Outlook. Any future automated GUI testing MUST run with the guard on and
+  MUST create its own throwaway mailinator contact — never the live queue.
+
+**P0 — finish the deploy that was in flight:**
+- [ ] `npx nx typecheck twenty-front` (expect only the 4 pre-existing
+  `resolveRelativeDate*` errors). Then merge branch → `main`, deploy, confirm the
+  container is fresh + healthz 200.
+- [ ] **GUI-verify the People Name filter fix** specifically with a MULTI-word name
+  (e.g. "Melissa de Repentigny") → must return 1 row, not 1,129.
+- [ ] **GUI-verify the 4 P2 fixes**: (a) no twenty-icons 404s in console, (b) ⌘K
+  opens on /inbox + /sms-inbox, (c) SMS badge reads "N unread", (d) tab title set
+  on Inbox/SMS.
+
+**P1:**
+- [ ] **My own GUI pass on the CC frontend wave-2 features** (agent self-tested +
+  screenshots, but I never verified): undo-on-send 5s grace, "Preview final"
+  signature render, replied-paused + Resume, Dashboard tab, keyboard shortcuts,
+  mobile at 380px.
+- [ ] **Investigate the 2 ACTIVE broken workflows** the linter flagged: "12-Touch
+  Lead Sequence" and "Quick Lead" both have `valid:false` steps. Determine if they
+  actually fail at runtime (like "Execute Approved Touch" did) or if `valid:false`
+  is just a stale builder flag from the seed. Fix or dismiss with proof.
+
+**P2:**
+- [ ] **Decouple AI opener from Pre-Phone enrollment.** The HTTP/Ollama step is a
+  hard single point of failure — if the model is missing, the WHOLE enrollment run
+  fails and zero approvals are created (the engine ignores `continueOnFailure` on
+  HTTP_REQUEST). Create the 12 approvals instantly; generate openers for touches
+  4-6 in the background (they aren't due for 7+ days). Also add an Ollama
+  model-present health check.
+- [ ] **Final honest GUI re-score** with evidence per point.
+
+**⏳ Blocked on you (Moshe) — can't progress without input:**
+- [ ] **Rebrand name** — pick what to call it (e.g. "Impression CRM"); then swap
+  logo/title/favicon/all visible "Twenty" strings.
+- [ ] **Cal.com DNS** — add A record `cal` → 15.204.91.183 at IONOS, then
+  `certbot --nginx -d cal.impressionphotography.ca` (booking links dead until then).
+- [ ] **Elementor pricing-form → CRM webhook** — PPM site is on IONOS; needs a WP
+  plugin / admin access (you do it, or give me WP app-password).
+- [ ] **Stephanie** — her Touch 3 already went out last night (legit email, just
+  unapproved). Decide: leave it (rec) or send a personal follow-up.
+
+**Nice-to-have / low priority:**
+- [ ] Command Center single sign-on (share the CRM session, kill the separate login).
+- [ ] Delete the vestigial "CD deploy main" GH workflow (phantom red ❌ every push).
+- [ ] Post-send reconcile timing (next touch briefly dated from enrollment until the
+  workflow flips COMPLETED — self-heals within 5 min).
+
+---
+
 ## 🔧 Fix ready (deploying this session)
 - **People Name filter** — multi-word names (e.g. "Melissa de Repentigny") returned
   ALL rows because the FULL_NAME filter OR-ed each token across both subfields and
