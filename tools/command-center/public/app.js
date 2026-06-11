@@ -20,6 +20,13 @@
   let cursor = 0;
   let editing = false;
   let busy = false;
+  let paused = [];
+  let previewing = false; // showing the rendered final-email preview for the current card
+  // Undo-on-send grace window state. While active, the card is locked and a
+  // countdown runs; the real /send only fires if it reaches 0 without an Undo.
+  let graceTimer = null;
+  let graceInterval = null;
+  let graceApprovalId = null;
 
   // ---- helpers -------------------------------------------------------------
 
@@ -85,12 +92,25 @@
       el(`view-${view}`).classList.add('active');
       if (view === 'calls') loadCalls();
       if (view === 'roadmap') loadRoadmap();
+      if (view === 'dashboard') loadDashboard();
     });
   });
 
+  function inTriageView() {
+    const v = el('view-triage');
+    return v && v.classList.contains('active');
+  }
+
   // ---- TRIAGE --------------------------------------------------------------
 
+  // Hide the shortcut hint unless there's an actionable card on screen.
+  function setHint(show) {
+    const h = el('shortcutHint');
+    if (h) h.style.display = show ? 'block' : 'none';
+  }
+
   function renderTriage() {
+    renderPaused();
     const mount = el('triageMount');
     const counter = el('counter');
     const remaining = queue.length - cursor;
@@ -98,6 +118,7 @@
 
     if (queue.length === 0) {
       counter.textContent = '';
+      setHint(false);
       mount.innerHTML =
         '<div class="state"><div class="big">🎉</div><h2>Inbox zero</h2>' +
         '<p>Nothing to approve right now. Nicely done.</p>' +
@@ -108,6 +129,7 @@
 
     if (cursor >= queue.length) {
       counter.textContent = '';
+      setHint(false);
       mount.innerHTML =
         '<div class="state"><div class="big">✅</div><h2>All caught up</h2>' +
         '<p>You cleared today\'s queue.</p>' +
@@ -118,6 +140,13 @@
 
     const a = queue[cursor];
     counter.innerHTML = `<b>${remaining}</b> left today`;
+    setHint(true);
+
+    // Final-email preview (rendered HTML incl. signature) replaces the card body.
+    if (previewing) {
+      renderPreview(a);
+      return;
+    }
 
     if (editing) {
       mount.innerHTML = `
@@ -154,6 +183,9 @@
         <div class="recipient">To: <b>${esc(a.recipientEmail)}</b></div>
         <div class="subject">${esc(a.emailSubject) || '(no subject)'}</div>
         <div class="body">${esc(a.emailBody) || '(empty body)'}</div>
+        <div class="card-tools">
+          <button class="btn-preview" id="previewBtn">Preview final ✉</button>
+        </div>
         <div class="actions">
           <button class="btn btn-send" id="sendBtn">Send ✓</button>
           <button class="btn btn-edit" id="editBtn">Edit</button>
@@ -164,6 +196,54 @@
     el('sendBtn').addEventListener('click', onSend);
     el('skipBtn').addEventListener('click', onSkip);
     el('editBtn').addEventListener('click', () => { editing = true; renderTriage(); });
+    el('previewBtn').addEventListener('click', () => { previewing = true; renderTriage(); });
+  }
+
+  // ---- final-email preview (rendered, signature included) ------------------
+
+  function renderPreview(a) {
+    const mount = el('triageMount');
+    mount.innerHTML = `
+      <div class="card">
+        <div class="meta-row">
+          <span class="pill pill-seq">${seqLabel(a)}</span>
+          <span class="pill">Touch ${esc(a.touchNumber)} of ${seqTotal(a)}</span>
+          <span class="pill">final preview</span>
+        </div>
+        <div class="lead-name">${esc(a.leadName) || 'Unknown lead'}</div>
+        <div class="recipient">To: <b>${esc(a.recipientEmail)}</b></div>
+        <div id="previewBody">
+          <div class="state"><div class="spinner"></div><p>Building exact email…</p></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-send" id="sendBtn">Send ✓</button>
+          <button class="btn btn-edit" id="backBtn">← Back to card</button>
+        </div>
+      </div>`;
+    el('sendBtn').addEventListener('click', onSend);
+    el('backBtn').addEventListener('click', () => { previewing = false; renderTriage(); });
+
+    // Fetch the exact final HTML (body + niche signature with its <img>).
+    apiGet(`/approval/${a.id}/preview`)
+      .then((p) => {
+        // Guard against a late response after the user moved on.
+        if (!previewing || queue[cursor] !== a) return;
+        const box = el('previewBody');
+        if (!box) return;
+        const metaBits = [];
+        if (p.signatureName) metaBits.push(`Signature: ${esc(p.signatureName)}`);
+        if (p.niche) metaBits.push(`niche ${esc(p.niche)}`);
+        const meta = metaBits.length ? `<div class="preview-meta">${metaBits.join(' · ')}</div>` : '';
+        // fullPreviewHtml is the exact final email markup; render it directly.
+        box.innerHTML =
+          `<div class="preview-subject">${esc(p.subject) || '(no subject)'}</div>` +
+          meta +
+          `<div class="preview-frame">${p.fullPreviewHtml || ''}</div>`;
+      })
+      .catch((e) => {
+        const box = el('previewBody');
+        if (box) box.innerHTML = `<div class="state"><div class="big">⚠️</div><p>${esc(e.message)}</p></div>`;
+      });
   }
 
   function setBusy(state) {
@@ -174,6 +254,7 @@
   function advance() {
     cursor += 1;
     editing = false;
+    previewing = false;
     renderTriage();
   }
 
@@ -193,31 +274,99 @@
   // Matches unfilled template placeholders like [PORTFOLIO_LINK].
   const PLACEHOLDER_RE = /\[[A-Z0-9_]{2,}\]/;
 
-  async function onSend() {
-    if (busy) return;
+  // Clicking Send does NOT fire the request. It opens a 5-second grace window
+  // with a prominent Undo; only when the countdown reaches 0 do we POST /send.
+  // This makes a misclick fully recoverable — nothing leaves until 0.
+  function onSend() {
+    if (busy || graceTimer) return;
     const a = queue[cursor];
     // Pre-check locally for a nicer flow: jump straight into Edit instead of
     // a failed request. The server enforces the same rule regardless.
     const hit = `${a.emailSubject || ''}\n${a.emailBody || ''}`.match(PLACEHOLDER_RE);
     if (hit) {
       toast(`Fill in ${hit[0]} before sending — opening editor`, true);
+      previewing = false;
       editing = true;
       renderTriage();
       return;
     }
+    startGrace(a);
+  }
+
+  const GRACE_SECONDS = 5;
+
+  function startGrace(a) {
+    graceApprovalId = a.id;
+    // Lock every button on the card so nothing else can be triggered mid-grace.
+    document.querySelectorAll('#triageMount .btn, #triageMount .btn-preview').forEach((b) => {
+      if (b.id !== 'undoBtn') b.disabled = true;
+    });
+    const actions = document.querySelector('#triageMount .actions');
+    if (actions) {
+      const grace = document.createElement('div');
+      grace.className = 'send-grace';
+      grace.id = 'sendGrace';
+      grace.innerHTML =
+        `<div class="grace-text">Sending in <b id="graceNum">${GRACE_SECONDS}</b>…</div>` +
+        '<button class="btn-undo" id="undoBtn">Undo</button>';
+      actions.parentNode.insertBefore(grace, actions.nextSibling);
+      el('undoBtn').addEventListener('click', cancelGrace);
+    }
+    let left = GRACE_SECONDS;
+    graceInterval = setInterval(() => {
+      left -= 1;
+      const n = el('graceNum');
+      if (n) n.textContent = String(Math.max(left, 0));
+    }, 1000);
+    graceTimer = setTimeout(commitSend, GRACE_SECONDS * 1000);
+  }
+
+  function clearGrace() {
+    if (graceTimer) clearTimeout(graceTimer);
+    if (graceInterval) clearInterval(graceInterval);
+    graceTimer = null;
+    graceInterval = null;
+    graceApprovalId = null;
+    const g = el('sendGrace');
+    if (g) g.remove();
+  }
+
+  // Undo: cancel the timer, nothing was sent, restore the card untouched.
+  function cancelGrace() {
+    if (!graceTimer && !graceInterval) return;
+    clearGrace();
+    toast('Cancelled — nothing sent');
+    renderTriage();
+  }
+
+  // Countdown reached 0: now actually approve/send and advance.
+  async function commitSend() {
+    const id = graceApprovalId;
+    clearGrace();
+    if (!id) return;
     setBusy(true);
     try {
-      await apiPost(`/approval/${a.id}/send`, {});
+      await apiPost(`/approval/${id}/send`, {});
       toast('Sent ✓');
       advance();
     } catch (e) {
-      toast('Send failed: ' + e.message, true);
+      // Keep the existing 422-placeholder handling: show the toast + open editor.
+      const msg = e.message || '';
+      if (/\[[A-Z0-9_]{2,}\]/.test(msg) || /placeholder/i.test(msg)) {
+        toast(msg, true);
+        previewing = false;
+        editing = true;
+        busy = false;
+        renderTriage();
+        return;
+      }
+      toast('Send failed: ' + msg, true);
       setBusy(false);
     }
   }
 
   async function onSkip() {
-    if (busy) return;
+    if (busy || graceTimer) return;
     const a = queue[cursor];
     setBusy(true);
     try {
@@ -258,9 +407,12 @@
     try {
       const data = await apiGet('/queue');
       queue = data.due || [];
+      paused = data.paused || [];
       cursor = 0;
       editing = false;
+      previewing = false;
       busy = false;
+      clearGrace();
       renderTriage();
     } catch (e) {
       el('triageMount').innerHTML =
@@ -269,6 +421,174 @@
       el('reloadTri').addEventListener('click', loadQueue);
     }
   }
+
+  // ---- REPLIED / PAUSED ----------------------------------------------------
+  // Visible payoff of auto-pause: leads who replied have their sequence paused.
+  // Show them above the triage card with a Resume button.
+
+  function renderPaused() {
+    const mount = el('pausedMount');
+    if (!mount) return;
+    if (!paused || paused.length === 0) {
+      mount.innerHTML = '';
+      return;
+    }
+    const rows = paused.map((p) => {
+      const when = p.repliedAt ? new Date(p.repliedAt).toLocaleString() : '';
+      const snip = p.snippet ? esc(p.snippet) : '(no preview)';
+      const name = esc(p.leadName) || esc(p.email) || 'Unknown lead';
+      return `
+        <div class="paused-row" data-pkey="${esc(p.email)}|${esc(p.sequenceKey)}">
+          <div class="paused-main">
+            <div class="paused-name">${name} <span style="color:var(--muted);font-weight:600;font-size:12px;">${esc(SEQ_LABELS[p.sequenceKey] || p.sequenceKey)}</span></div>
+            <div class="paused-snip">“${snip}”</div>
+            ${when ? `<div class="paused-when">replied ${esc(when)}</div>` : ''}
+          </div>
+          <button class="btn btn-resume" data-resume-email="${esc(p.email)}" data-resume-seq="${esc(p.sequenceKey)}">Resume</button>
+        </div>`;
+    }).join('');
+    mount.innerHTML =
+      `<div class="paused-banner">📥 ${paused.length} replied — sequence paused</div>` + rows;
+    mount.querySelectorAll('[data-resume-email]').forEach((btn) => {
+      btn.addEventListener('click', () =>
+        onResume(btn.getAttribute('data-resume-email'), btn.getAttribute('data-resume-seq'), btn)
+      );
+    });
+  }
+
+  async function onResume(email, sequenceKey, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      await apiPost('/resume', { email, sequenceKey });
+      toast('Resumed ✓');
+      await loadQueue(); // refresh — the lead may re-enter the due queue
+    } catch (e) {
+      toast('Resume failed: ' + e.message, true);
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // ---- DASHBOARD -----------------------------------------------------------
+
+  function money(n, currency) {
+    if (n == null) return '—';
+    const sym = currency === 'USD' ? '$' : currency === 'CAD' ? 'CA$' : (currency ? currency + ' ' : '$');
+    return sym + Number(n).toLocaleString();
+  }
+
+  function statCard(num, label) {
+    return `<div class="stat"><div class="stat-num">${esc(num)}</div><div class="stat-label">${esc(label)}</div></div>`;
+  }
+
+  async function loadDashboard() {
+    const mount = el('dashboardMount');
+    mount.innerHTML = '<div class="state"><div class="spinner"></div><p>Loading dashboard…</p></div>';
+    // Workflow health is a separate endpoint; fetch both, tolerate either failing.
+    let dash = null;
+    let health = null;
+    try {
+      dash = await apiGet('/dashboard');
+    } catch (e) {
+      mount.innerHTML = `<div class="state"><div class="big">⚠️</div><p>${esc(e.message)}</p></div>`;
+      return;
+    }
+    try {
+      health = await apiGet('/workflow-health');
+    } catch (_e) {
+      health = null; // non-fatal — just skip the health card
+    }
+
+    const o = dash.overall || {};
+    const opp = o.opportunities || {};
+    const overallCards =
+      statCard(o.totalPeople ?? '—', 'People') +
+      statCard(o.totalCompanies ?? '—', 'Companies') +
+      statCard(money(opp.totalAmount, opp.currencyCode), `Opportunities (${opp.count ?? 0})`) +
+      statCard(o.tasksDueToday ?? '—', 'Tasks due today') +
+      statCard(o.callsDueToday ?? '—', 'Calls due today') +
+      statCard(o.repliesPaused ?? 0, 'Replies paused');
+
+    const seq = dash.sequences || {};
+    function seqRow(key) {
+      const s = seq[key] || {};
+      return `
+        <tr>
+          <td class="seq-name">${esc(SEQ_LABELS[key] || key)}</td>
+          <td>${esc(s.enrolled ?? 0)}</td>
+          <td>${esc(s.emailsSent ?? 0)}</td>
+          <td>${esc(s.dueToday ?? 0)}</td>
+          <td>${esc(s.pausedReplied ?? 0)}</td>
+        </tr>`;
+    }
+    const seqTable = `
+      <div class="dash-table-wrap">
+        <table class="dash-table">
+          <thead><tr><th>Sequence</th><th>Enrolled</th><th>Sent</th><th>Due today</th><th>Paused</th></tr></thead>
+          <tbody>${seqRow('PRE_PHONE_EMAIL')}${seqRow('POST_QUOTE_FOLLOWUP')}</tbody>
+        </table>
+      </div>`;
+
+    let healthHtml = '';
+    if (health) {
+      if (health.healthy) {
+        healthHtml =
+          '<div class="health-card ok"><div class="health-head">✓ Workflows healthy</div>' +
+          '<div style="color:var(--muted);font-size:13px;">All active workflows passed the validity check.</div></div>';
+      } else {
+        const wfs = (health.problems || []).map((w) => `
+          <div class="health-wf">
+            <div class="health-wf-name">${esc(w.workflowName)}${w.versionStatus ? ` <span style="color:var(--muted);font-weight:600;">(${esc(w.versionStatus)})</span>` : ''}</div>
+            <ul>${(w.problems || []).map((p) => `<li>${esc(p)}</li>`).join('')}</ul>
+          </div>`).join('');
+        healthHtml =
+          `<div class="health-card"><div class="health-head">⚠ ${health.count} workflow${health.count === 1 ? '' : 's'} need attention</div>${wfs}</div>`;
+      }
+    }
+
+    mount.innerHTML =
+      `<div class="dash-grid">${overallCards}</div>` +
+      '<div class="section-title">By sequence</div>' +
+      seqTable +
+      healthHtml;
+  }
+
+  el('refreshDash').addEventListener('click', loadDashboard);
+
+  // ---- KEYBOARD SHORTCUTS --------------------------------------------------
+  // Only in the triage view, and never while typing in a field. Enter/y = send,
+  // e = edit, s = skip, u = undo (during the grace window).
+  document.addEventListener('keydown', (ev) => {
+    if (!inTriageView()) return;
+    const t = ev.target;
+    const tag = t && t.tagName ? t.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea' || (t && t.isContentEditable)) return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+
+    // During the grace window only Undo is meaningful.
+    if (graceTimer) {
+      if (ev.key === 'u' || ev.key === 'U' || ev.key === 'Escape') {
+        ev.preventDefault();
+        cancelGrace();
+      }
+      return;
+    }
+    if (editing || previewing) return; // let Back/Cancel buttons handle those modes
+    if (busy) return;
+    if (cursor >= queue.length || queue.length === 0) return;
+
+    const k = ev.key;
+    if (k === 'Enter' || k === 'y' || k === 'Y') {
+      ev.preventDefault();
+      onSend();
+    } else if (k === 'e' || k === 'E') {
+      ev.preventDefault();
+      editing = true;
+      renderTriage();
+    } else if (k === 's' || k === 'S') {
+      ev.preventDefault();
+      onSkip();
+    }
+  });
 
   // ---- CALLS ---------------------------------------------------------------
 
