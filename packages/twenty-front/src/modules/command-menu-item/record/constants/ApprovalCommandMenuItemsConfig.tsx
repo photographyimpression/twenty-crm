@@ -6,9 +6,14 @@ import { type CommandMenuItemConfig } from '@/command-menu-item/types/CommandMen
 import { CommandMenuItemScope } from '@/command-menu-item/types/CommandMenuItemScope';
 import { CommandMenuItemType } from '@/command-menu-item/types/CommandMenuItemType';
 import { CommandMenuItemViewType } from 'twenty-shared/types';
-import { msg } from '@lingui/core/macro';
 import { isDefined } from 'twenty-shared/utils';
 import { IconCheck, IconX } from 'twenty-ui/display';
+
+// Plain-string labels (not the msg`` macro): "Approve"/"Reject" aren't in the
+// compiled Lingui catalog, so the macro renders the hash message id ("1t/NnN")
+// in production instead of the text. getCommandMenuItemLabel returns a string
+// label verbatim. This is a single-locale fork; literal labels are intended.
+/* eslint-disable lingui/no-unlocalized-strings */
 
 // Approval is a custom object whose approvalStatus SELECT field drives the
 // email triage queue. These two record-selection commands let the user
@@ -22,8 +27,8 @@ export const APPROVAL_COMMAND_MENU_ITEMS_CONFIG: Record<
     type: CommandMenuItemType.Standard,
     scope: CommandMenuItemScope.RecordSelection,
     key: ApprovalSingleRecordCommandKeys.APPROVE,
-    label: msg`Approve`,
-    shortLabel: msg`Approve`,
+    label: 'Approve',
+    shortLabel: 'Approve',
     position: -2,
     isPinned: true,
     isPrimaryCTA: true,
@@ -45,8 +50,8 @@ export const APPROVAL_COMMAND_MENU_ITEMS_CONFIG: Record<
     type: CommandMenuItemType.Standard,
     scope: CommandMenuItemScope.RecordSelection,
     key: ApprovalSingleRecordCommandKeys.REJECT,
-    label: msg`Reject`,
-    shortLabel: msg`Reject`,
+    label: 'Reject',
+    shortLabel: 'Reject',
     position: -1,
     isPinned: true,
     Icon: IconX,
