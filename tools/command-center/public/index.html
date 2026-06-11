@@ -261,6 +261,34 @@
       .health-card .health-wf ul { margin: 4px 0 0; padding-left: 20px; }
       .health-card .health-wf li { color: var(--muted); font-size: 13px; margin: 2px 0; }
 
+      /* This Week — upcoming touches grouped by day */
+      .week-day-group { margin-bottom: 22px; }
+      .week-day-head {
+        display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px;
+        padding-bottom: 6px; border-bottom: 1px solid var(--border);
+      }
+      .week-day-head .week-day-name { font-size: 15px; font-weight: 800; color: var(--text); }
+      .week-day-head .week-day-date { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+      .week-day-head .week-day-count {
+        margin-left: auto; font-size: 11.5px; color: var(--muted); font-weight: 700;
+        background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px;
+      }
+      .week-row {
+        background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+        padding: 12px 16px; display: flex; align-items: center; gap: 14px; margin-bottom: 8px;
+      }
+      .week-row .week-main { min-width: 0; flex: 1; }
+      .week-row .week-lead { font-weight: 700; font-size: 15px; }
+      .week-row .week-lead .week-company { color: var(--muted); font-weight: 600; font-size: 13px; }
+      .week-row .week-subject { color: #d7dce6; font-size: 13.5px; margin-top: 3px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .week-row .week-to { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .week-row .week-pill {
+        flex-shrink: 0; align-self: flex-start; background: rgba(59,130,246,0.14);
+        border: 1px solid rgba(59,130,246,0.45); color: #9cc1f7; border-radius: 999px;
+        padding: 4px 11px; font-size: 11.5px; font-weight: 700; white-space: nowrap;
+      }
+
       /* Mobile pass (~380px) */
       @media (max-width: 640px) {
         header { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 14px 0; }
@@ -289,6 +317,8 @@
         .add-box { flex-direction: column; }
         .add-box .btn { min-height: 46px; }
         .preview-frame { max-height: 44vh; }
+        .week-row { flex-wrap: wrap; }
+        .week-row .week-pill { order: -1; }
       }
       @media (max-width: 380px) {
         .dash-grid { grid-template-columns: 1fr; }
@@ -301,6 +331,7 @@
       <div class="brand"><span class="dot"></span> Daily Command Center</div>
       <nav class="tabs">
         <button class="tab active" data-view="triage">Triage <span class="badge" id="triageBadge">0</span></button>
+        <button class="tab" data-view="upcoming">This Week <span class="badge" id="upcomingBadge">0</span></button>
         <button class="tab" data-view="dashboard">Dashboard</button>
         <button class="tab" data-view="calls">Calls <span class="badge" id="callsBadge">0</span></button>
         <button class="tab" data-view="roadmap">Roadmap</button>
@@ -317,6 +348,17 @@
         </div>
         <div class="shortcut-hint" id="shortcutHint" style="display:none;">
           <kbd>Enter</kbd>/<kbd>y</kbd> send · <kbd>e</kbd> edit · <kbd>s</kbd> skip · <kbd>u</kbd> undo
+        </div>
+      </section>
+
+      <!-- THIS WEEK (look-ahead) -->
+      <section class="view" id="view-upcoming">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="section-title">Upcoming touches — next 7 days</div>
+          <button class="refresh" id="refreshUpcoming">↻ Refresh</button>
+        </div>
+        <div id="upcomingMount">
+          <div class="state"><div class="spinner"></div><p>Loading this week…</p></div>
         </div>
       </section>
 

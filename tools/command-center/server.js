@@ -129,7 +129,12 @@ function constantTimeEqual(a, b) {
 }
 
 function isAuthed(req) {
-  return !!verifySession(parseCookies(req)[COOKIE_NAME]);
+  // Accept either the CC's own form-login session OR a valid CRM tokenPair
+  // cookie (single sign-on). Checking the cheap cc_session first avoids the
+  // HMAC work on the CRM token for already-CC-authed requests.
+  if (verifySession(parseCookies(req)[COOKIE_NAME])) return true;
+  if (verifyCrmTokenPairCookie(req)) return true;
+  return false;
 }
 
 // Dry-run send guard. When ON, POST /api/approval/:id/send records the intended
@@ -156,6 +161,149 @@ function loadToken() {
 }
 
 const API_TOKEN = loadToken();
+
+// ---------------------------------------------------------------------------
+// Single sign-on with the CRM (read-only verification of the CRM's own cookie)
+//
+// The Command Center is served at crm.impressionphotography.ca/command-center/
+// — the SAME origin as the CRM — so it can read the CRM's cookies. The CRM
+// stores a `tokenPair` cookie (js-cookie URL-encodes a JSON blob:
+//   { accessOrWorkspaceAgnosticToken: { token, expiresAt }, ... } )
+// whose `token` is an HS256 JWT signed by the server with the per-workspace
+// derived secret:  sha256(APP_SECRET + workspaceId + "ACCESS")  (hex digest).
+// (See jwt-wrapper.service.ts generateAppSecret.) If Moshe is logged into the
+// CRM, we accept that JWT here so he isn't prompted for a second login. The
+// existing cc_session form-login stays as a fallback.
+//
+// SECURITY: the JWT secret is NEVER hardcoded in the repo. APP_SECRET is read
+// at startup from the CC_APP_SECRET env var or /opt/twenty/.env. If neither is
+// available the SSO path is simply disabled (cc_session still works).
+// ---------------------------------------------------------------------------
+
+// Read a single KEY=value line out of an env file (handles optional quotes).
+function readEnvValueFromFile(filePath, key) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const re = new RegExp(`^${key}=(.*)$`, 'm');
+    const m = raw.match(re);
+    if (!m) return null;
+    let v = m[1].trim();
+    // Strip a single layer of matching surrounding quotes.
+    if (
+      (v.startsWith('"') && v.endsWith('"')) ||
+      (v.startsWith("'") && v.endsWith("'"))
+    ) {
+      v = v.slice(1, -1);
+    }
+    return v || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+const TWENTY_ENV_PATH = process.env.CC_TWENTY_ENV_PATH || '/opt/twenty/.env';
+
+// APP_SECRET: env var first, then the Twenty .env on disk. Never logged.
+const APP_SECRET =
+  process.env.CC_APP_SECRET ||
+  readEnvValueFromFile(TWENTY_ENV_PATH, 'APP_SECRET') ||
+  null;
+
+// Decode a JWT/base64url payload without verifying — used only to read the
+// workspaceId out of the existing API token at startup. Returns null on any
+// malformation.
+function decodeJwtPayloadUnsafe(token) {
+  try {
+    const part = String(token).split('.')[1];
+    if (!part) return null;
+    const json = Buffer.from(
+      part.replace(/-/g, '+').replace(/_/g, '/'),
+      'base64'
+    ).toString('utf8');
+    return JSON.parse(json);
+  } catch (_e) {
+    return null;
+  }
+}
+
+// workspaceId: env var first, else read from the API token's payload (the CC's
+// own admin token is scoped to exactly this workspace).
+const WORKSPACE_ID =
+  process.env.CC_WORKSPACE_ID ||
+  (decodeJwtPayloadUnsafe(API_TOKEN) || {}).workspaceId ||
+  null;
+
+// The per-workspace derived secret the CRM uses to sign ACCESS tokens.
+// sha256(APP_SECRET + workspaceId + "ACCESS") as a hex string.
+function derivedAccessSecret() {
+  if (!APP_SECRET || !WORKSPACE_ID) return null;
+  return crypto
+    .createHash('sha256')
+    .update(`${APP_SECRET}${WORKSPACE_ID}ACCESS`)
+    .digest('hex');
+}
+const CRM_ACCESS_SECRET = derivedAccessSecret();
+const SSO_ENABLED = !!CRM_ACCESS_SECRET;
+
+// Verify an HS256 JWT against `secret`, checking signature + exp. Returns the
+// decoded payload on success, null otherwise. Self-contained (no jsonwebtoken
+// dependency) so it works against the CC's minimal node_modules.
+function verifyHs256Jwt(token, secret) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+  let header;
+  try {
+    header = JSON.parse(
+      Buffer.from(headerB64.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    );
+  } catch (_e) {
+    return null;
+  }
+  if (!header || header.alg !== 'HS256') return null;
+  const expectedSig = crypto
+    .createHmac('sha256', secret)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  const a = Buffer.from(sigB64);
+  const b = Buffer.from(expectedSig);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  const payload = decodeJwtPayloadUnsafe(token);
+  if (!payload) return null;
+  // exp is in SECONDS (standard JWT). Reject if expired.
+  if (typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now()) {
+    return null;
+  }
+  return payload;
+}
+
+// Pull the CRM access JWT out of the `tokenPair` cookie and verify it with the
+// derived secret. The cookie value is JSON: parseCookies already URL-decoded it.
+function verifyCrmTokenPairCookie(req) {
+  if (!SSO_ENABLED) return null;
+  const raw = parseCookies(req).tokenPair;
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_e) {
+    return null;
+  }
+  const token =
+    parsed &&
+    parsed.accessOrWorkspaceAgnosticToken &&
+    parsed.accessOrWorkspaceAgnosticToken.token;
+  if (!token) return null;
+  const payload = verifyHs256Jwt(token, CRM_ACCESS_SECRET);
+  if (!payload) return null;
+  // Belt-and-suspenders: only accept tokens scoped to OUR workspace.
+  if (payload.workspaceId && payload.workspaceId !== WORKSPACE_ID) return null;
+  return payload;
+}
 
 // Cascade GAP days keyed by sequence, then by the touch number being
 // scheduled. Touch 1's gap is measured from enrollment (Pre-Phone: due
@@ -311,13 +459,112 @@ async function updateApproval(id, patch) {
 // ever sees one email per lead. Idempotent: only writes when the value differs.
 // ---------------------------------------------------------------------------
 
+// Moshe's calendar timezone. "Due today" and weekend-shift decisions are made
+// against THIS zone, not UTC, so a touch scheduled for the evening (Toronto)
+// doesn't read as "tomorrow" because UTC already rolled over.
+const SCHEDULE_TZ = process.env.CC_SCHEDULE_TZ || 'America/Toronto';
+
+// Return the civil Y/M/D, time, and weekday of an instant as seen in
+// SCHEDULE_TZ. Uses Intl so DST is handled correctly without bundling a tz
+// library.
+const TZ_PARTS_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: SCHEDULE_TZ,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+  weekday: 'short',
+});
+function tzParts(dateLike) {
+  const parts = TZ_PARTS_FORMATTER.formatToParts(new Date(dateLike));
+  const out = {};
+  for (const p of parts) out[p.type] = p.value;
+  // Intl can emit '24' for midnight hour in some engines; normalize to 0.
+  const hour = Number(out.hour) % 24;
+  return {
+    year: Number(out.year),
+    month: Number(out.month),
+    day: Number(out.day),
+    hour,
+    minute: Number(out.minute),
+    second: Number(out.second),
+    weekday: out.weekday, // 'Mon'..'Sun'
+  };
+}
+
+// Offset (ms) that SCHEDULE_TZ is ahead of UTC at the given instant
+// (local = utc + offset). Computed by treating the zone's civil wall-clock as
+// if it were UTC and differencing against the real instant. DST-correct.
+function tzOffsetMs(dateLike) {
+  const ms = new Date(dateLike).getTime();
+  const p = tzParts(ms);
+  const asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  // asUTC is the wall-clock read as UTC; subtract the true instant (floored to
+  // the second to match the formatter's resolution) to get the offset.
+  return asUTC - Math.floor(ms / 1000) * 1000;
+}
+
+// The UTC instant corresponding to local-midnight (00:00 in SCHEDULE_TZ) of the
+// civil day that `dateLike` falls on. This is the timezone-aware analogue of the
+// old startOfDayUTC: two instants on the same Toronto calendar day map to the
+// same value, so day-precision comparisons match Moshe's calendar.
+function startOfDayTZ(dateLike) {
+  const { year, month, day } = tzParts(dateLike);
+  // Probe the offset at local noon (well clear of DST transition hours), then
+  // back out the UTC instant of that civil day's local-midnight.
+  const noonUTCguess = Date.UTC(year, month - 1, day, 12, 0, 0);
+  const offsetMs = tzOffsetMs(noonUTCguess); // local - utc, ~ at local noon
+  // local-midnight(UTC) = Date.UTC(civil midnight) - offset
+  return Date.UTC(year, month - 1, day) - offsetMs;
+}
+
+// Backwards-compatible name kept so existing call sites read naturally. Now
+// timezone-aware (Toronto) rather than UTC.
 function startOfDayUTC(dateLike) {
-  const d = new Date(dateLike);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return startOfDayTZ(dateLike);
+}
+
+// Mon..Fri = business day. Saturday/Sunday are not.
+function isWeekendTZ(dateLike) {
+  const wd = tzParts(dateLike).weekday;
+  return wd === 'Sat' || wd === 'Sun';
+}
+
+// If an instant lands on a Sat/Sun (Toronto calendar), push it forward to the
+// following Monday's local-midnight. Idempotent for weekday inputs (returns the
+// same day's local-midnight). Operates at day precision — the cascade only
+// cares about the calendar day a touch is due.
+function shiftWeekendToMondayMs(baseMs) {
+  let ms = startOfDayTZ(baseMs);
+  // Advance one civil day at a time until we land on a weekday. At most 2 hops.
+  let guard = 0;
+  while (isWeekendTZ(ms) && guard < 4) {
+    ms = startOfDayTZ(ms + 36 * 3600 * 1000); // +36h clears DST + lands next day
+    guard += 1;
+  }
+  return ms;
 }
 
 function addDaysISO(baseMs, days) {
-  return new Date(baseMs + days * 86400000).toISOString();
+  // Add whole days at the civil-day level (DST-safe), then push weekends to
+  // Monday so sends only ever land on a business day.
+  const startMs = startOfDayTZ(baseMs);
+  const targetMs = startOfDayTZ(startMs + days * 86400000 + 12 * 3600000);
+  return new Date(shiftWeekendToMondayMs(targetMs)).toISOString();
+}
+
+// Last instant (UTC ms) of the Toronto civil day that `dateLike` falls on:
+// tomorrow's local-midnight minus 1ms. DST-exact (a 23h/25h civil day is
+// measured correctly), unlike a fixed start+86400000-1 offset. Used to decide
+// "due today" so an evening touch counts and tomorrow's never leaks in.
+function endOfDayTZ(dateLike) {
+  const startMs = startOfDayTZ(dateLike);
+  // +36h is always inside the NEXT civil day regardless of DST; floor it.
+  const nextDayStartMs = startOfDayTZ(startMs + 36 * 3600 * 1000);
+  return nextDayStartMs - 1;
 }
 
 // `pausedSet` is a Set of `${lowerEmail}|${sequenceKey}` keys for leads whose
@@ -797,6 +1044,30 @@ async function reconcile() {
   }
 }
 
+// Delay before the post-send "settle" reconcile. The Twenty workflow flips the
+// just-approved touch PENDING->COMPLETED a few seconds after the email sends;
+// ~12s gives it comfortable margin so the next touch dates from the real
+// completion time instead of enrollment.
+const POST_SEND_RECONCILE_DELAY_MS = Number(
+  process.env.CC_POST_SEND_RECONCILE_DELAY_MS || 12000
+);
+// At most one pending delayed reconcile is queued at a time — a burst of sends
+// collapses to a single follow-up run (reconcile() itself also coalesces).
+let delayedReconcileTimer = null;
+function scheduleDelayedReconcile() {
+  if (delayedReconcileTimer) return;
+  delayedReconcileTimer = setTimeout(() => {
+    delayedReconcileTimer = null;
+    reconcile().catch((e) =>
+      console.error('[reconcile] post-send settle failed:', e.message)
+    );
+  }, POST_SEND_RECONCILE_DELAY_MS);
+  // Don't keep the event loop alive solely for this timer.
+  if (delayedReconcileTimer && typeof delayedReconcileTimer.unref === 'function') {
+    delayedReconcileTimer.unref();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Signatures + final-email preview
 //
@@ -1032,7 +1303,7 @@ async function computeDashboard() {
   const approvals = await fetchAllApprovals();
   const pausedList = readPausedState();
   const pausedSet = pausedSetFromState(pausedList);
-  const endOfTodayMs = startOfDayUTC(new Date()) + 86400000 - 1;
+  const endOfTodayMs = endOfDayTZ(new Date());
 
   const SEQUENCES = ['PRE_PHONE_EMAIL', 'POST_QUOTE_FOLLOWUP'];
   const perSequence = {};
@@ -1212,7 +1483,7 @@ api.get('/queue', async (_req, res) => {
     }
 
     const approvals = await fetchAllApprovals();
-    const endOfTodayMs = startOfDayUTC(new Date()) + 86400000 - 1;
+    const endOfTodayMs = endOfDayTZ(new Date());
 
     // Exclude leads whose sequence is paused (they replied). The UI gets them
     // separately in `paused` so it can show "paused — lead replied".
@@ -1293,6 +1564,14 @@ api.post('/approval/:id/send', async (req, res) => {
     } catch (_e) {
       /* non-fatal */
     }
+    // The immediate reconcile above dates the NEXT touch from ENROLLMENT, not
+    // from this send, because the Twenty workflow hasn't flipped this approval
+    // PENDING->COMPLETED yet (it does so a few seconds later, after the email
+    // actually goes out). Schedule a second reconcile shortly after so the next
+    // touch gets re-dated from the real completion time. reconcile() coalesces
+    // via reconcileInFlight and every write is idempotent (computeScheduleWrites
+    // only writes when the value differs), so this never double-sends or churns.
+    scheduleDelayedReconcile();
     res.json({ ok: true, approval: updated });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1332,6 +1611,64 @@ api.post('/reconcile', async (_req, res) => {
   try {
     const result = await reconcile();
     res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ---- "This Week" look-ahead -------------------------------------------------
+//
+// GET /api/upcoming -> read-only preview of every lead's NEXT pending touch
+// whose scheduledDate falls within the next 7 days (Toronto calendar),
+// excluding paused (replied) leads. The cascade only ever dates one pending
+// touch per lead, so this is effectively "one upcoming card per active lead".
+// Sorted ascending by scheduledDate. Each item:
+//   { id, leadName, companyName, sequenceKey, touchNumber, sequenceTotal,
+//     emailSubject, scheduledDate, recipientEmail }
+api.get('/upcoming', async (_req, res) => {
+  try {
+    // Reconcile first so dates reflect reality (mirrors /queue), tolerate fail.
+    try {
+      await reconcile();
+    } catch (_e) {
+      /* non-fatal — serve whatever dates exist */
+    }
+    const approvals = await fetchAllApprovals();
+    const pausedSet = pausedSetFromState(readPausedState());
+
+    // Window: from the start of today through the end of the 7th day ahead,
+    // all in Toronto civil time so "this week" matches Moshe's calendar.
+    const startMs = startOfDayUTC(new Date());
+    const windowEndMs = endOfDayTZ(new Date(startMs + 7 * 86400000));
+
+    const upcoming = approvals
+      .filter(
+        (a) =>
+          a.approvalStatus === 'PENDING' &&
+          a.scheduledDate &&
+          !pausedSet.has(pausedKey(a.recipientEmail, seqOf(a))) &&
+          new Date(a.scheduledDate).getTime() >= startMs &&
+          new Date(a.scheduledDate).getTime() <= windowEndMs
+      )
+      .sort((x, y) => {
+        const dx = new Date(x.scheduledDate).getTime();
+        const dy = new Date(y.scheduledDate).getTime();
+        if (dx !== dy) return dx - dy;
+        return x.touchNumber - y.touchNumber;
+      })
+      .map((a) => ({
+        id: a.id,
+        leadName: a.leadName || null,
+        companyName: a.companyName || null,
+        sequenceKey: seqOf(a),
+        touchNumber: a.touchNumber,
+        sequenceTotal: SEQUENCE_TOTALS[seqOf(a)] || SEQUENCE_TOTALS[DEFAULT_SEQUENCE],
+        emailSubject: a.emailSubject || null,
+        scheduledDate: a.scheduledDate,
+        recipientEmail: a.recipientEmail || null,
+      }));
+
+    res.json({ upcoming, count: upcoming.length, windowDays: 7 });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1505,7 +1842,7 @@ api.get('/calls', async (_req, res) => {
       }`
     );
 
-    const endOfTodayMs = startOfDayUTC(new Date()) + 86400000 - 1;
+    const endOfTodayMs = endOfDayTZ(new Date());
     const calls = data.tasks.edges
       .map((e) => e.node)
       .filter((t) => t.status !== 'DONE' && t.dueAt && new Date(t.dueAt).getTime() <= endOfTodayMs)
@@ -1640,6 +1977,12 @@ setInterval(() => {
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`Command Center backend listening on 127.0.0.1:${PORT}`);
+  // Report SSO status without leaking secrets (just whether it's wired up).
+  console.log(
+    `[sso] CRM single sign-on ${SSO_ENABLED ? 'ENABLED' : 'disabled'}` +
+      (SSO_ENABLED ? ` (workspace ${WORKSPACE_ID})` : ' (APP_SECRET/workspaceId unavailable)')
+  );
+  console.log(`[schedule] cascade timezone: ${SCHEDULE_TZ}, business-days-only sends`);
   // Kick an initial reconcile + roadmap seed on boot.
   reconcile()
     .then((r) => console.log('[reconcile] startup:', JSON.stringify(r)))

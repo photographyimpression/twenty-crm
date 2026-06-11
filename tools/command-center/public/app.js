@@ -93,6 +93,7 @@
       if (view === 'calls') loadCalls();
       if (view === 'roadmap') loadRoadmap();
       if (view === 'dashboard') loadDashboard();
+      if (view === 'upcoming') loadUpcoming();
     });
   });
 
@@ -554,6 +555,102 @@
 
   el('refreshDash').addEventListener('click', loadDashboard);
 
+  // ---- THIS WEEK (look-ahead) ----------------------------------------------
+  // Read-only preview of upcoming touches grouped by day. Dates come back as
+  // Toronto local-midnight ISO instants; we bucket + label them in the same
+  // timezone so "Today/Tomorrow/weekday" matches the server's day boundaries
+  // regardless of the viewer's browser timezone.
+
+  const SCHEDULE_TZ = 'America/Toronto';
+  const TZ_YMD = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SCHEDULE_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+  const TZ_WEEKDAY = new Intl.DateTimeFormat('en-US', { timeZone: SCHEDULE_TZ, weekday: 'long' });
+  const TZ_NICE = new Intl.DateTimeFormat('en-US', {
+    timeZone: SCHEDULE_TZ, month: 'short', day: 'numeric',
+  });
+
+  // Toronto-civil YYYY-MM-DD key for an instant (en-CA gives YYYY-MM-DD).
+  function tzDayKey(dateLike) {
+    return TZ_YMD.format(new Date(dateLike));
+  }
+
+  // Human label for a day key relative to today (Toronto): Today / Tomorrow /
+  // weekday name.
+  function dayLabel(dayKey) {
+    const todayKey = tzDayKey(new Date());
+    const tomorrowKey = tzDayKey(new Date(Date.now() + 86400000));
+    if (dayKey === todayKey) return 'Today';
+    if (dayKey === tomorrowKey) return 'Tomorrow';
+    // Parse the key as a date for weekday formatting. Noon UTC keeps the civil
+    // day stable across the small Toronto offset.
+    const d = new Date(dayKey + 'T12:00:00Z');
+    return TZ_WEEKDAY.format(d);
+  }
+
+  function weekRow(item) {
+    const lead = esc(item.leadName) || esc(item.recipientEmail) || 'Unknown lead';
+    const company = item.companyName ? ` <span class="week-company">· ${esc(item.companyName)}</span>` : '';
+    const subject = item.emailSubject ? esc(item.emailSubject) : '(no subject)';
+    const to = item.recipientEmail ? `To: ${esc(item.recipientEmail)}` : '';
+    const seq = esc(SEQ_LABELS[item.sequenceKey] || item.sequenceKey || 'Pre-Phone');
+    const pill = `${seq} · Touch ${esc(item.touchNumber)} of ${esc(item.sequenceTotal || 12)}`;
+    return `
+      <div class="week-row">
+        <div class="week-main">
+          <div class="week-lead">${lead}${company}</div>
+          <div class="week-subject">${subject}</div>
+          ${to ? `<div class="week-to">${to}</div>` : ''}
+        </div>
+        <span class="week-pill">${pill}</span>
+      </div>`;
+  }
+
+  async function loadUpcoming() {
+    const mount = el('upcomingMount');
+    mount.innerHTML = '<div class="state"><div class="spinner"></div><p>Loading this week…</p></div>';
+    try {
+      const data = await apiGet('/upcoming');
+      const items = data.upcoming || [];
+      el('upcomingBadge').textContent = items.length;
+      if (items.length === 0) {
+        mount.innerHTML =
+          '<div class="state"><div class="big">📅</div><h2>Nothing scheduled</h2>' +
+          '<p>No touches are due in the next 7 days.</p></div>';
+        return;
+      }
+      // Group by Toronto civil day, preserving the server's ascending order.
+      const groups = [];
+      const byKey = new Map();
+      for (const it of items) {
+        const key = tzDayKey(it.scheduledDate);
+        if (!byKey.has(key)) {
+          const g = { key, items: [] };
+          byKey.set(key, g);
+          groups.push(g);
+        }
+        byKey.get(key).items.push(it);
+      }
+      mount.innerHTML = groups.map((g) => {
+        const niceDate = TZ_NICE.format(new Date(g.key + 'T12:00:00Z'));
+        const rows = g.items.map(weekRow).join('');
+        return `
+          <div class="week-day-group">
+            <div class="week-day-head">
+              <span class="week-day-name">${esc(dayLabel(g.key))}</span>
+              <span class="week-day-date">${esc(niceDate)}</span>
+              <span class="week-day-count">${g.items.length}</span>
+            </div>
+            ${rows}
+          </div>`;
+      }).join('');
+    } catch (e) {
+      mount.innerHTML = `<div class="state"><div class="big">⚠️</div><p>${esc(e.message)}</p></div>`;
+    }
+  }
+
+  el('refreshUpcoming').addEventListener('click', loadUpcoming);
+
   // ---- KEYBOARD SHORTCUTS --------------------------------------------------
   // Only in the triage view, and never while typing in a field. Enter/y = send,
   // e = edit, s = skip, u = undo (during the grace window).
@@ -709,6 +806,10 @@
   // Refresh the calls badge in the background so it's populated on first paint.
   apiGet('/calls')
     .then((d) => { el('callsBadge').textContent = (d.calls || []).length; })
+    .catch(() => {});
+  // Same for the "This Week" badge so the upcoming count shows before opening it.
+  apiGet('/upcoming')
+    .then((d) => { el('upcomingBadge').textContent = (d.upcoming || []).length; })
     .catch(() => {});
 
   el('footerNote').textContent =
