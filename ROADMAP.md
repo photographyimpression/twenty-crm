@@ -4,15 +4,47 @@ Living list of things we've discussed but haven't built yet. The in-app
 version lives in the Daily Command Center (`/command-center/`, "Roadmap" tab)
 and is editable from there. This file is the developer-facing mirror.
 
-_Last updated: 2026-05-27_
+_Last updated: 2026-06-10_
 
-## Bugs to fix
-- **People view filter not working** (reported 2026-05-27). Filtering the People
-  list by Name shows all ~1,129 records instead of narrowing to the match. The
-  filter chip is set but not applied. Likely cause: `name` is a composite field
-  (firstName/lastName), so an exact-match filter on the whole composite doesn't
-  match — needs a sub-field filter (firstName/lastName) or a CONTAINS operand.
-  Verify it's not a stale saved-view issue first.
+This mirrors the in-app changelog (Command Center → Roadmap tab). Categories:
+🔧 fix ready · 🐞 open bug · ✨ wanted feature · 🔄 in progress · ⏳ blocked on you.
+
+## 🔧 Fix ready (deploying this session)
+- **People Name filter** — multi-word names (e.g. "Melissa de Repentigny") returned
+  ALL rows because the FULL_NAME filter OR-ed each token across both subfields and
+  the common token "de" matched everyone. Fixed: per-token OR-groups AND-ed together
+  (`generateTokenGroupedILikeFiltersForCompositeFields`). Prod proof: buggy=1129,
+  fixed=1. Committed; pending deploy + GUI re-verify of the multi-word case.
+
+## 🐞 Open bugs (from full GUI audit 2026-06-10 — all minor/cosmetic)
+- twenty-icons.com favicon 404s spam the browser console on list views.
+- ⌘K command palette doesn't open on the SMS/Inbox custom pages (works elsewhere).
+- SMS sidebar badge count disagrees with conversation count (unread vs total, unlabeled).
+- Browser tab title stays "Twenty" on Inbox/SMS pages instead of the page name.
+- 4 pre-existing TS errors in `resolveRelativeDate*.ts` (ship today; cleanup).
+- Vestigial "CD deploy main" workflow fails on every push (false red X; safe to delete).
+- Post-send reconcile briefly dates next touch from enrollment (self-heals < 5 min).
+
+## ✨ Wanted features (not yet built)
+- Rebrand from "Twenty" to the user's own name (awaiting the name).
+- Command Center single sign-on (skip the separate login).
+- **[priority]** Decouple AI opener from Pre-Phone enrollment + harden fallback.
+- Multi-from sender / warming-domain rotation.
+- Click-to-dial via Telnyx WebRTC inside the Command Center.
+- Inline Approve/Reject buttons in the native Approvals table.
+- Kanban view for approvals (Pending/Approved/Sent/Rejected).
+- "This Week" preview of upcoming touches.
+- Cascade scheduling refinements (timezone, business-days-only).
+
+## 🔄 In progress (this session)
+- Reply-detection auto-pause; Command Center dashboard; undo-on-send;
+  true email preview with signature; keyboard shortcuts + mobile pass.
+
+## ⏳ Blocked on you (needs your action)
+- **Cal.com**: add DNS A record `cal` → 15.204.91.183 at IONOS, then certbot.
+- **Elementor pricing-form → CRM webhook**: install a webhook plugin in WP-admin on
+  productphotographymontreal.ca (IONOS-hosted, no API access from here).
+- **Connect warming mailboxes** in Settings → Accounts to enable multi-from sending.
 
 ## Shipped
 - ✅ Pre-Phone 12-email sequence (tag a Person → 12 approvals created)
