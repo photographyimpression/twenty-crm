@@ -693,23 +693,27 @@ function textBodyToHtml(body) {
 // Workflow-validity lint
 //
 // Read-only health check over ACTIVE workflows' published versions. Flags the
-// class of silent-failure bug that once let "Execute Approved Touch" no-op:
-//   - any step with valid === false
+// class of silent-failure bug that once let "Execute Approved Touch" no-op.
+// Detects REAL runtime defects only:
 //   - SEND_EMAIL with empty recipients.to
-//   - UPDATE_RECORD that is a no-op (empty objectRecordId AND empty fieldsToUpdate)
+//   - UPDATE_RECORD no-op (empty objectRecordId AND empty fieldsToUpdate)
+//   - CREATE_RECORD/UPSERT_RECORD with empty objectName or empty objectRecord
 //   - empty/missing steps array on an active workflow
-// Note: an empty connectedAccountId on SEND_EMAIL is intentional (falls back to
-// the first connected account), so it is NOT flagged.
+//   - orphaned/unreachable steps (not reachable from the trigger) — this is
+//     the real defect on the legacy 12-Touch sequence (Touches 3-12 dangle)
+// Deliberately NOT flagged:
+//   - step.valid === false: confirmed (workflow-executor.workspace-service.ts)
+//     to be a builder-UI hint only; never consulted at runtime or activation.
+//     Flagging it produced false positives (e.g. the perfectly-functional
+//     "Quick Lead" workflow).
+//   - empty connectedAccountId on SEND_EMAIL: intentional (falls back to the
+//     first connected account).
 // ---------------------------------------------------------------------------
 
 function stepProblems(step) {
   const problems = [];
   const type = step && step.type;
   const input = (step && step.settings && step.settings.input) || {};
-
-  if (step && step.valid === false) {
-    problems.push(`step "${step.name || type || step.id}" is marked valid:false`);
-  }
 
   if (type === 'SEND_EMAIL') {
     const to = ((input.recipients || {}).to || '').toString().trim();
@@ -726,6 +730,55 @@ function stepProblems(step) {
     }
   }
 
+  if (type === 'CREATE_RECORD' || type === 'UPSERT_RECORD') {
+    const objectName = (input.objectName || '').toString().trim();
+    const record = input.objectRecord;
+    const emptyRecord = !record || (typeof record === 'object' && Object.keys(record).length === 0);
+    if (!objectName || emptyRecord) {
+      problems.push(
+        `${type} step "${step.name || step.id}" is incomplete (missing objectName or objectRecord)`
+      );
+    }
+  }
+
+  return problems;
+}
+
+// A step's successors are its top-level nextStepIds PLUS, for branching steps
+// (IF_ELSE etc.), the nextStepIds nested inside settings.input.branches[].
+// (IF_ELSE stores continuation per-branch, with a null top-level nextStepIds —
+// missing this made every post-IF_ELSE step look orphaned.)
+function successorsOf(step) {
+  const out = [];
+  if (Array.isArray(step.nextStepIds)) out.push(...step.nextStepIds.filter(Boolean));
+  const branches = step && step.settings && step.settings.input && step.settings.input.branches;
+  if (Array.isArray(branches)) {
+    for (const b of branches) {
+      if (Array.isArray(b.nextStepIds)) out.push(...b.nextStepIds.filter(Boolean));
+    }
+  }
+  return out;
+}
+
+// Steps not reachable from the trigger never run. Roots = trigger.nextStepIds;
+// walk successorsOf each step (branch-aware). Anything unvisited is orphaned.
+function orphanedStepProblems(trigger, steps) {
+  const byId = new Map(steps.map((s) => [s.id, s]));
+  const roots = (trigger && Array.isArray(trigger.nextStepIds) ? trigger.nextStepIds : []).filter(Boolean);
+  const visited = new Set();
+  const queue = [...roots];
+  while (queue.length) {
+    const id = queue.shift();
+    if (visited.has(id) || !byId.has(id)) continue;
+    visited.add(id);
+    queue.push(...successorsOf(byId.get(id)));
+  }
+  const problems = [];
+  for (const s of steps) {
+    if (!visited.has(s.id)) {
+      problems.push(`step "${s.name || s.type || s.id}" is unreachable from the trigger (orphaned — will never run)`);
+    }
+  }
   return problems;
 }
 
@@ -735,7 +788,7 @@ async function computeWorkflowHealth() {
       workflows(first: 100) {
         edges { node {
           id name statuses lastPublishedVersionId
-          versions(first: 50) { edges { node { id status steps } } }
+          versions(first: 50) { edges { node { id status steps trigger } } }
         } }
       }
     }`
@@ -765,6 +818,9 @@ async function computeWorkflowHealth() {
       }
       for (const step of steps) {
         for (const p of stepProblems(step)) problems.push(p);
+      }
+      if (steps.length > 0) {
+        for (const p of orphanedStepProblems(published.trigger, steps)) problems.push(p);
       }
     }
 
