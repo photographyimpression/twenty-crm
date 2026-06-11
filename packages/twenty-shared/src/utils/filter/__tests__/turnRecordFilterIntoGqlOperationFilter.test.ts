@@ -690,6 +690,75 @@ describe('turnRecordFilterIntoRecordGqlOperationFilter', () => {
 
       expect(result).toHaveProperty('or');
     });
+
+    // Regression for the "filter returns all rows" bug: a multi-word CONTAINS
+    // must AND the token groups so every word has to appear, instead of OR-ing
+    // every token (which let a common word like "de" match everyone).
+    it('should AND one OR-group per token for a multi-word CONTAINS', () => {
+      const result = turnRecordFilterIntoRecordGqlOperationFilter({
+        filterValueDependencies,
+        recordFilter: makeFilter(
+          'f-fullname',
+          RecordFilterOperand.CONTAINS,
+          'Melissa de Repentigny',
+        ),
+        fieldMetadataItems: fields,
+      });
+
+      expect(result).toEqual({
+        and: [
+          {
+            or: [
+              { fullName: { firstName: { ilike: '%Melissa%' } } },
+              { fullName: { lastName: { ilike: '%Melissa%' } } },
+            ],
+          },
+          {
+            or: [
+              { fullName: { firstName: { ilike: '%de%' } } },
+              { fullName: { lastName: { ilike: '%de%' } } },
+            ],
+          },
+          {
+            or: [
+              { fullName: { firstName: { ilike: '%Repentigny%' } } },
+              { fullName: { lastName: { ilike: '%Repentigny%' } } },
+            ],
+          },
+        ],
+      });
+    });
+
+    it('should negate the whole match for a multi-word DOES_NOT_CONTAIN', () => {
+      const result = turnRecordFilterIntoRecordGqlOperationFilter({
+        filterValueDependencies,
+        recordFilter: makeFilter(
+          'f-fullname',
+          RecordFilterOperand.DOES_NOT_CONTAIN,
+          'John Doe',
+        ),
+        fieldMetadataItems: fields,
+      });
+
+      expect(result).toEqual({
+        not: {
+          and: [
+            {
+              or: [
+                { fullName: { firstName: { ilike: '%John%' } } },
+                { fullName: { lastName: { ilike: '%John%' } } },
+              ],
+            },
+            {
+              or: [
+                { fullName: { firstName: { ilike: '%Doe%' } } },
+                { fullName: { lastName: { ilike: '%Doe%' } } },
+              ],
+            },
+          ],
+        },
+      });
+    });
   });
 
   describe('ADDRESS filter', () => {

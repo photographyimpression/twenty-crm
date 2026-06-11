@@ -31,7 +31,7 @@ import {
   convertGreaterThanOrEqualRatingToArrayOfRatingValues,
   convertLessThanOrEqualRatingToArrayOfRatingValues,
   convertRatingToRatingValue,
-  generateILikeFiltersForCompositeFields,
+  generateTokenGroupedILikeFiltersForCompositeFields,
   getEmptyRecordGqlOperationFilter,
   isExpectedSubFieldName,
 } from '@/utils/filter';
@@ -653,16 +653,28 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
       });
     }
     case 'FULL_NAME': {
-      const fullNameFilters = generateILikeFiltersForCompositeFields(
-        recordFilter.value,
-        correspondingFieldMetadataItem.name,
-        ['firstName', 'lastName'],
-      );
+      // One OR-group per whitespace-separated token. CONTAINS requires every token
+      // to match (AND of the groups), so "Melissa de Repentigny" no longer matches
+      // anyone whose name merely contains the common token "de".
+      const fullNameTokenGroups =
+        generateTokenGroupedILikeFiltersForCompositeFields(
+          recordFilter.value,
+          correspondingFieldMetadataItem.name,
+          ['firstName', 'lastName'],
+        );
       switch (recordFilter.operand) {
         case RecordFilterOperand.CONTAINS:
           if (!isSubFieldFilter) {
+            if (fullNameTokenGroups.length === 0) {
+              return {};
+            }
+
+            if (fullNameTokenGroups.length === 1) {
+              return fullNameTokenGroups[0];
+            }
+
             return {
-              or: fullNameFilters,
+              and: fullNameTokenGroups,
             };
           } else {
             return {
@@ -675,12 +687,18 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
           }
         case RecordFilterOperand.DOES_NOT_CONTAIN:
           if (!isSubFieldFilter) {
+            if (fullNameTokenGroups.length === 0) {
+              return {};
+            }
+
+            // Negate the whole CONTAINS match: exclude records that contain every
+            // token. Negating each token group individually would wrongly exclude
+            // records that match only some tokens.
             return {
-              and: fullNameFilters.map((filter) => {
-                return {
-                  not: filter,
-                };
-              }),
+              not:
+                fullNameTokenGroups.length === 1
+                  ? fullNameTokenGroups[0]
+                  : { and: fullNameTokenGroups },
             };
           } else {
             return {
