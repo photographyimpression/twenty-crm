@@ -98,6 +98,12 @@ export const NavigationDrawerOtherSection = () => {
           to={AppPath.SmsInboxPage}
           active={location.pathname === AppPath.SmsInboxPage}
           count={unreadSmsCount > 0 ? unreadSmsCount : undefined}
+          // The badge counts unread inbound messages, which is a different
+          // metric than the conversation count shown on the SMS page header.
+          // Label it explicitly so "22" can't be mistaken for conversations.
+          countAriaLabel={
+            unreadSmsCount > 0 ? t`${unreadSmsCount} unread` : undefined
+          }
         />
         <NavigationDrawerItem
           label={t`Settings`}

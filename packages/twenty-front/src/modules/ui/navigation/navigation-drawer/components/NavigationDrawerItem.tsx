@@ -55,6 +55,9 @@ export type NavigationDrawerItemProps = {
   soon?: boolean;
   isNew?: boolean;
   count?: number;
+  // Optional accessible description for the count badge (e.g. "22 unread").
+  // The badge is otherwise just a bare number, which is ambiguous on its own.
+  countAriaLabel?: string;
   keyboard?: string[];
   rightOptions?: ReactNode;
   alwaysShowRightOptions?: boolean;
@@ -284,6 +287,7 @@ export const NavigationDrawerItem = ({
   soon,
   isNew,
   count,
+  countAriaLabel,
   keyboard,
   subItemState,
   rightOptions,
@@ -440,7 +444,12 @@ export const NavigationDrawerItem = ({
 
           {!!count && (
             <NavigationDrawerAnimatedCollapseWrapper>
-              <StyledItemCount>{count}</StyledItemCount>
+              <StyledItemCount
+                aria-label={countAriaLabel}
+                title={countAriaLabel}
+              >
+                {count}
+              </StyledItemCount>
             </NavigationDrawerAnimatedCollapseWrapper>
           )}
 

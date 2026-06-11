@@ -104,7 +104,10 @@ export {
   convertRatingToRatingValue,
 } from './filter/utils/fieldRatingConvertors';
 export { filterSelectOptionsOfFieldMetadataItem } from './filter/utils/filterSelectOptionsOfFieldMetadataItem';
-export { generateILikeFiltersForCompositeFields } from './filter/utils/generateILikeFiltersForCompositeFields';
+export {
+  generateILikeFiltersForCompositeFields,
+  generateTokenGroupedILikeFiltersForCompositeFields,
+} from './filter/utils/generateILikeFiltersForCompositeFields';
 export { getEmptyRecordGqlOperationFilter } from './filter/utils/getEmptyRecordGqlOperationFilter';
 export { getFilterTypeFromFieldType } from './filter/utils/getFilterTypeFromFieldType';
 export { isExpectedSubFieldName } from './filter/utils/isExpectedSubFieldName';

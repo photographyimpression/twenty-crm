@@ -3,7 +3,10 @@ import { isNonEmptyString, isNull, isUndefined } from '@sniptt/guards';
 import { useAtom } from 'jotai';
 import { useContext } from 'react';
 
-import { invalidAvatarUrlsAtomV2 } from '@ui/display/avatar/components/states/invalidAvatarUrlsAtomV2';
+import {
+  invalidAvatarUrlsAtomV2,
+  persistInvalidAvatarUrls,
+} from '@ui/display/avatar/components/states/invalidAvatarUrlsAtomV2';
 import { AVATAR_PROPERTIES_BY_SIZE } from '@ui/display/avatar/constants/AvatarPropertiesBySize';
 import { type AvatarSize } from '@ui/display/avatar/types/AvatarSize';
 import { type AvatarType } from '@ui/display/avatar/types/AvatarType';
@@ -107,7 +110,18 @@ export const Avatar = ({
 
   const handleImageError = () => {
     if (isNonEmptyString(avatarImageURI)) {
-      setInvalidAvatarUrls((prev) => [...prev, avatarImageURI]);
+      setInvalidAvatarUrls((prev) => {
+        if (prev.includes(avatarImageURI)) {
+          return prev;
+        }
+
+        const next = [...prev, avatarImageURI];
+        // Remember the miss for the rest of the session (across hard reloads)
+        // so we don't re-request a favicon we already know 404s.
+        persistInvalidAvatarUrls(next);
+
+        return next;
+      });
     }
   };
 

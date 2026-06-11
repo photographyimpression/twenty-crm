@@ -22,9 +22,10 @@ import {
   type InboxFolder,
   useTimelineThreadsForCurrentWorkspaceMember,
 } from '@/activities/emails/hooks/useTimelineThreadsForCurrentWorkspaceMember';
-import { PageBody } from '@/ui/layout/page/components/PageBody';
+import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
+import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
 import { type TimelineThread } from '~/generated/graphql';
 
 const StyledLayout = styled.div`
@@ -212,8 +213,9 @@ export const InboxPage = () => {
 
   return (
     <PageContainer>
+      <PageTitle title={t`Inbox`} />
       <PageHeader title={t`Inbox`} Icon={IconMail} />
-      <PageBody>
+      <MainContainerLayoutWithSidePanel>
         <StyledLayout>
           <StyledList>
             <Section>
@@ -326,7 +328,7 @@ export const InboxPage = () => {
             </StyledDetailColumn>
           )}
         </StyledLayout>
-      </PageBody>
+      </MainContainerLayoutWithSidePanel>
     </PageContainer>
   );
 };

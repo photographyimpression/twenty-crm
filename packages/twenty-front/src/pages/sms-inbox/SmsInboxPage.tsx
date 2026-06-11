@@ -14,10 +14,11 @@ import {
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { ActivityList } from '@/activities/components/ActivityList';
+import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
 import { markSmsAsRead } from '@/sms/hooks/useUnreadSmsCount';
-import { PageBody } from '@/ui/layout/page/components/PageBody';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
+import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
 
 type SmsRecord = {
   id: string;
@@ -502,6 +503,16 @@ const getServerUrl = (): string => {
   return fromEnv || window.location.origin;
 };
 
+// Keep field keystrokes from reaching Twenty's global single-letter hotkeys,
+// but allow modifier combos (⌘K / Ctrl+K) through so the global command menu
+// still opens while a field on this page is focused.
+const stopFieldKeyEventUnlessModifier = (event: React.KeyboardEvent): void => {
+  if (event.metaKey || event.ctrlKey) {
+    return;
+  }
+  event.stopPropagation();
+};
+
 export const SmsInboxPage = () => {
   const { t } = useLingui();
   const [records, setRecords] = useState<SmsRecord[]>([]);
@@ -688,9 +699,10 @@ export const SmsInboxPage = () => {
   };
 
   const handleComposerKeyDown = (event: React.KeyboardEvent) => {
-    // Always stop propagation so single-letter keys don't trigger
-    // Twenty's global hotkeys (c → Companies, p → People, etc.).
-    event.stopPropagation();
+    // Stop single-letter keys from triggering Twenty's global hotkeys
+    // (c → Companies, p → People, etc.), but let modifier combos like
+    // ⌘K / Ctrl+K bubble through so the global command menu still opens.
+    stopFieldKeyEventUnlessModifier(event);
 
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -700,8 +712,9 @@ export const SmsInboxPage = () => {
 
   return (
     <PageContainer>
+      <PageTitle title={t`SMS`} />
       <PageHeader title={t`SMS`} Icon={IconMessage} />
-      <PageBody>
+      <MainContainerLayoutWithSidePanel>
         <StyledLayout>
           <StyledList>
             <Section>
@@ -719,8 +732,8 @@ export const SmsInboxPage = () => {
                     type="text"
                     value={searchInput}
                     onChange={(event) => setSearchInput(event.target.value)}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    onKeyUp={(event) => event.stopPropagation()}
+                    onKeyDown={stopFieldKeyEventUnlessModifier}
+                    onKeyUp={stopFieldKeyEventUnlessModifier}
                     placeholder={t`Search by number or message…`}
                     aria-label={t`Search SMS`}
                   />
@@ -839,9 +852,9 @@ export const SmsInboxPage = () => {
                   value={composerText}
                   onChange={(event) => setComposerText(event.target.value)}
                   onKeyDown={handleComposerKeyDown}
-                  // Stop letter keys (c, p, t, …) from triggering
-                  // Twenty's global goto-page hotkeys.
-                  onKeyUp={(event) => event.stopPropagation()}
+                  // Stop letter keys (c, p, t, …) from triggering Twenty's
+                  // global goto-page hotkeys, but let ⌘K / Ctrl+K through.
+                  onKeyUp={stopFieldKeyEventUnlessModifier}
                   placeholder={t`Type a reply… (Enter to send, Shift+Enter for newline)`}
                   rows={1}
                 />
@@ -856,7 +869,7 @@ export const SmsInboxPage = () => {
             </StyledDetailColumn>
           )}
         </StyledLayout>
-      </PageBody>
+      </MainContainerLayoutWithSidePanel>
     </PageContainer>
   );
 };
