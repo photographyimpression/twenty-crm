@@ -12,3 +12,4 @@ node_modules/
 # paused-state.json is the live reply-pause store on the server (same deal):
 # the repo keeps an empty seed; runtime entries live only on the server.
 paused-state.json
+.dry-run

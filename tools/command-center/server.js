@@ -132,6 +132,21 @@ function isAuthed(req) {
   return !!verifySession(parseCookies(req)[COOKIE_NAME]);
 }
 
+// Dry-run send guard. When ON, POST /api/approval/:id/send records the intended
+// send but does NOT set APPROVED and does NOT trigger the real Outlook/Telnyx
+// send. This exists because an automated test once clicked Send on a live
+// customer card. Any automated GUI testing MUST enable this (and use throwaway
+// contacts). Toggle without restart by creating/removing the .dry-run file, or
+// via the CC_DRY_RUN=1 env var. OFF by default so real approvals work normally.
+function isDryRun() {
+  if (process.env.CC_DRY_RUN === '1') return true;
+  try {
+    return fs.existsSync(path.join(__dirname, '.dry-run'));
+  } catch (_e) {
+    return false;
+  }
+}
+
 // Token is read from a file (chmod 600) or an env var. Never logged, never
 // sent to the client.
 function loadToken() {
@@ -1007,6 +1022,22 @@ api.post('/approval/:id/send', async (req, res) => {
       return res.status(422).json({
         error: `This email still contains ${placeholderHit[0]} — hit Edit and replace it before sending.`,
         placeholder: placeholderHit[0],
+      });
+    }
+
+    // Dry-run guard: never let an automated test fire a real send.
+    if (isDryRun()) {
+      return res.json({
+        ok: true,
+        dryRun: true,
+        message: 'DRY RUN — approval NOT set, no email sent',
+        wouldSend: {
+          id: current.id,
+          to: current.recipientEmail,
+          subject: current.emailSubject,
+          touchNumber: current.touchNumber,
+          sequenceKey: current.sequenceKey,
+        },
       });
     }
 
