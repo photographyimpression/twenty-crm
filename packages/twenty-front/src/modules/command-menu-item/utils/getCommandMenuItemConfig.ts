@@ -1,3 +1,4 @@
+import { APPROVAL_COMMAND_MENU_ITEMS_CONFIG } from '@/command-menu-item/record/constants/ApprovalCommandMenuItemsConfig';
 import { DASHBOARD_COMMAND_MENU_ITEMS_CONFIG } from '@/command-menu-item/record/constants/DashboardCommandMenuItemsConfig';
 import { DEFAULT_RECORD_COMMAND_MENU_ITEMS_CONFIG } from '@/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig';
 import { WORKFLOW_COMMAND_MENU_ITEMS_CONFIG } from '@/command-menu-item/record/constants/WorkflowCommandMenuItemsConfig';
@@ -16,6 +17,12 @@ export const getCommandMenuItemConfig = ({
 }): Record<string, CommandMenuItemConfig> => {
   if (!isDefined(objectMetadataItem)) {
     return {};
+  }
+
+  // Approval is a custom object (not in CoreObjectNameSingular), so it is
+  // matched by its name singular before the core-object switch.
+  if (objectMetadataItem.nameSingular === 'approval') {
+    return APPROVAL_COMMAND_MENU_ITEMS_CONFIG;
   }
 
   switch (objectMetadataItem.nameSingular) {
