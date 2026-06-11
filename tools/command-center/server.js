@@ -163,6 +163,62 @@ const API_TOKEN = loadToken();
 // about it" reads desperate). Approvals without a sequenceKey are legacy
 // Pre-Phone rows.
 const DEFAULT_SEQUENCE = 'PRE_PHONE_EMAIL';
+
+// ---------------------------------------------------------------------------
+// Lazy AI-opener generation (Part 2 of the Ollama-decoupling work)
+//
+// The Pre-Phone workflow used to call Ollama mid-enrollment to write a
+// personalized opener for touches 4-6. Twenty's engine does NOT honour
+// continueOnFailure on HTTP_REQUEST steps, so a wiped/slow model killed the
+// whole enrollment and created ZERO approvals (2026-06-10 incident). The
+// workflow no longer touches Ollama at all — enrollment is pure CREATE_RECORD.
+//
+// Instead we generate the opener here, lazily and best-effort, during
+// reconcile(): for each PENDING Pre-Phone touch 4/5/6 whose body is still the
+// plain template (no opener yet), we ask the relay for a 1-sentence opener and
+// splice it in right after the "Hi <first>," greeting. If Ollama is down or
+// slow we skip gracefully and try again next reconcile. This pass NEVER throws
+// out of reconcile.
+// ---------------------------------------------------------------------------
+
+const OLLAMA_RELAY_URL =
+  process.env.CC_OLLAMA_RELAY_URL ||
+  'https://crm.impressionphotography.ca/ollama-relay/api/generate';
+const OLLAMA_MODEL = process.env.CC_OLLAMA_MODEL || 'llama3.2:3b';
+const OLLAMA_TIMEOUT_MS = Number(process.env.CC_OLLAMA_TIMEOUT_MS || 25000);
+// Relay bearer token: env first, then the on-disk relay-token file (same one
+// the OVH host keeps at /root/.ollama-relay-token), then the local copy that
+// ships next to the app. Read once at startup; never logged.
+const OLLAMA_RELAY_TOKEN =
+  process.env.CC_OLLAMA_RELAY_TOKEN ||
+  readSecretFile('/root/.ollama-relay-token') ||
+  readSecretFile(path.join(__dirname, '.ollama-relay-token')) ||
+  '';
+
+// In-flight real-lead sequences that must NOT be retro-edited by the lazy
+// opener pass. These leads were enrolled before the Ollama decoupling and have
+// hand-reviewed bodies; rewriting them now would change copy already vetted for
+// a live recipient. New enrollments (incl. future real leads and test leads)
+// are unaffected and still get openers. Override/extend via CC_OPENER_SKIP_EMAILS
+// (comma-separated). The feature stays fully functional for everyone else.
+const OPENER_SKIP_EMAILS = new Set(
+  (process.env.CC_OPENER_SKIP_EMAILS ||
+    'txdoorcompany@gmail.com,4cornerstzitzit@gmail.com')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+// Touches that get a personalized opener, with the var-independent prefix of
+// the PLAIN-template first sentence (the text immediately after the greeting).
+// If the post-greeting text still starts with this prefix, no opener has been
+// spliced in yet. This detection is self-healing and needs no external state.
+const PRE_PHONE_OPENER_TOUCHES = {
+  4: 'While we figure out a time to chat',
+  5: 'Quick story — last quarter we shot',
+  6: "Fresh from this week's shoot",
+};
+
 const SEQUENCE_GAPS = {
   PRE_PHONE_EMAIL: { 1: 0, 2: 1, 3: 2, 4: 4, 5: 3, 6: 4, 7: 4, 8: 4, 9: 6, 10: 7, 11: 10, 12: 15 },
   POST_QUOTE_FOLLOWUP: { 1: 2, 2: 3, 3: 4, 4: 5, 5: 7, 6: 9, 7: 12 },
@@ -569,6 +625,125 @@ async function detectReplies(approvals, existingState) {
   return { detected, pausedNow };
 }
 
+// First word of the lead's name → the {{firstName}} the workflow rendered into
+// the greeting. We match the greeting structurally instead (see below), so this
+// is only a hint for the prompt.
+function firstNameOf(approval) {
+  const name = (approval.leadName || '').trim();
+  if (!name) return null;
+  return name.split(/\s+/)[0] || null;
+}
+
+// Split a Pre-Phone body into { greeting, rest } around the first blank line.
+// Bodies look like "Hi <First>,\n\n<rest>". Returns null if it doesn't match.
+function splitGreeting(body) {
+  if (typeof body !== 'string') return null;
+  const idx = body.indexOf('\n\n');
+  if (idx < 0) return null;
+  const greeting = body.slice(0, idx);
+  if (!/^Hi\s+.+,\s*$/.test(greeting)) return null;
+  return { greeting, rest: body.slice(idx + 2) };
+}
+
+// True when this approval still has the PLAIN template body (no opener spliced
+// in yet) and therefore wants one. Detection: the text right after the greeting
+// starts with the touch's known plain-template prefix.
+function needsOpener(approval) {
+  if (seqOf(approval) !== 'PRE_PHONE_EMAIL') return false;
+  if (approval.approvalStatus !== 'PENDING') return false;
+  // Never retro-edit a protected in-flight real lead's reviewed copy.
+  if (OPENER_SKIP_EMAILS.has((approval.recipientEmail || '').toLowerCase())) return false;
+  const prefix = PRE_PHONE_OPENER_TOUCHES[approval.touchNumber];
+  if (!prefix) return false;
+  const split = splitGreeting(approval.emailBody);
+  if (!split) return false;
+  return split.rest.startsWith(prefix);
+}
+
+// Ask the relay for a single-sentence personalized opener. Short timeout,
+// returns null on any failure (down, slow, empty) so the caller skips cleanly.
+async function generateOpener(firstName, companyName) {
+  if (!OLLAMA_RELAY_TOKEN) {
+    console.error('[opener] no relay token configured — skipping generation');
+    return null;
+  }
+  const company = (companyName || '').trim();
+  // Same prompt style as the retired workflow step: reference company + niche,
+  // under 22 words, no greeting/quotes/sign-off.
+  const prompt =
+    `You are writing the opening sentence of a B2B sales email from a product ` +
+    `photographer to ${firstName || 'a prospect'}${company ? ` at ${company}` : ''}. ` +
+    `There is NO prior relationship — this is cold outreach. The sentence should ` +
+    `naturally reference ${company || 'their company'} (their products, brand, or ` +
+    `industry) and explain why ${company || 'they'} specifically would benefit from ` +
+    `professional product photography. Under 22 words. Conversational tone. Do NOT ` +
+    `pretend you've spoken before. Do NOT mention specific products you couldn't ` +
+    `actually know about. No greeting, no quotes, no sign-off. Output ONLY the single ` +
+    `sentence, nothing else.`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+  try {
+    const res = await fetch(OLLAMA_RELAY_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OLLAMA_RELAY_TOKEN}`,
+      },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt,
+        stream: false,
+        options: { num_predict: 40, temperature: 0.7 },
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      console.error(`[opener] relay HTTP ${res.status} — skipping`);
+      return null;
+    }
+    const json = await res.json();
+    let text = (json && json.response ? String(json.response) : '').trim();
+    // Tidy: collapse whitespace, strip wrapping quotes, take the first sentence.
+    text = text.replace(/\s+/g, ' ').replace(/^["'`]+|["'`]+$/g, '').trim();
+    if (!text) return null;
+    return text;
+  } catch (e) {
+    console.error(`[opener] generation failed (skipping): ${e.message}`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Best-effort pass invoked by reconcile(). Finds PENDING Pre-Phone touch 4/5/6
+// approvals with a plain template body, generates an opener, and patches it in
+// after the greeting. Idempotent (needsOpener() guards against re-doing) and
+// fully isolated — it logs and continues on any per-row failure, and the caller
+// wraps it so it can never break reconcile.
+async function generatePendingOpeners(approvals) {
+  const targets = (approvals || []).filter(needsOpener);
+  let patched = 0;
+  for (const a of targets) {
+    try {
+      const split = splitGreeting(a.emailBody);
+      if (!split) continue; // body changed under us — skip
+      const opener = await generateOpener(firstNameOf(a), a.companyName);
+      if (!opener) continue; // Ollama down/slow — leave plain, retry next run
+      // Splice: greeting, blank line, opener, blank line, original rest.
+      const newBody = `${split.greeting}\n\n${opener}\n\n${split.rest}`;
+      await updateApproval(a.id, { emailBody: newBody });
+      patched += 1;
+      console.log(
+        `[opener] inserted opener for touch ${a.touchNumber} of ${a.recipientEmail}`
+      );
+    } catch (e) {
+      console.error(`[opener] patch failed for approval ${a.id} (continuing): ${e.message}`);
+    }
+  }
+  return patched;
+}
+
 let reconcileInFlight = null;
 
 async function reconcile() {
@@ -595,12 +770,24 @@ async function reconcile() {
     for (const w of dateWrites) {
       await updateApproval(w.id, { scheduledDate: w.scheduledDate });
     }
+
+    // Lazy, best-effort AI-opener fill for Pre-Phone touches 4-6. Fully
+    // isolated: any failure here must never break scheduling/queue. Uses the
+    // post-scheduling approvals snapshot (fine — needsOpener only reads body).
+    let openersPatched = 0;
+    try {
+      openersPatched = await generatePendingOpeners(approvals);
+    } catch (e) {
+      console.error('[opener] pass failed (continuing):', e.message);
+    }
+
     return {
       written: dateWrites.length,
       rejected: rejections.length,
       total: approvals.length,
       paused: pausedSet.size,
       newlyPaused: replyResult.pausedNow.length,
+      openersPatched,
     };
   })();
   try {
