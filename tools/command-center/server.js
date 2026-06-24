@@ -1501,6 +1501,50 @@ app.use(express.urlencoded({ extended: false, limit: '64kb' })); // login form p
 // Behind nginx; trust the proxy for correct protocol/IP.
 app.set('trust proxy', true);
 
+// ---- Public campaign click-tracker (NO auth) -------------------------------
+// Email CTAs point at /go/:approvalId. We log the click (who + when) and 302 to
+// the Stripe checkout. Kept dead-simple + synchronous so the redirect is
+// instant — the board joins these clicks to approvals on read, not here.
+const CLICKS_PATH =
+  process.env.CC_CLICKS_PATH || path.join(__dirname, 'campaign-clicks.json');
+// The Stripe Payment Link is public (it ships in the emails); store it in a
+// file for configurability, env override wins.
+const STRIPE_BUY_URL =
+  process.env.CC_STRIPE_BUY_URL ||
+  readSecretFile(path.join(__dirname, '.stripe-link')) ||
+  'https://impressionphotography.ca';
+
+function logCampaignClick(approvalId) {
+  let clicks = {};
+  try {
+    clicks = JSON.parse(fs.readFileSync(CLICKS_PATH, 'utf8'));
+  } catch (_e) {
+    clicks = {};
+  }
+  const now = new Date().toISOString();
+  if (!clicks[approvalId]) clicks[approvalId] = { firstClickedAt: now, count: 0 };
+  clicks[approvalId].count += 1;
+  clicks[approvalId].lastClickedAt = now;
+  fs.writeFileSync(CLICKS_PATH, JSON.stringify(clicks, null, 2));
+}
+
+app.get('/go/:approvalId', (req, res) => {
+  try {
+    logCampaignClick(req.params.approvalId);
+  } catch (_e) {
+    /* never block the redirect on a logging failure */
+  }
+  return res.redirect(302, STRIPE_BUY_URL);
+});
+
+function readCampaignClicks() {
+  try {
+    return JSON.parse(fs.readFileSync(CLICKS_PATH, 'utf8'));
+  } catch (_e) {
+    return {};
+  }
+}
+
 // ---- Auth routes (no session required) -------------------------------------
 
 // Login page — a real HTML form so Chrome offers to save + autofill.
@@ -1704,6 +1748,44 @@ api.post('/reconcile', async (_req, res) => {
 // Sorted ascending by scheduledDate. Each item:
 //   { id, leadName, companyName, sequenceKey, touchNumber, sequenceTotal,
 //     emailSubject, scheduledDate, recipientEmail }
+// Campaign board: for a given sequence (default CASH_FLOW_CAMPAIGN), each
+// recipient's funnel status — sent (COMPLETED), clicked (from the click log),
+// and the touch/subject. "Bought" comes later via a Stripe webhook.
+api.get('/campaign-board', async (req, res) => {
+  try {
+    const seq = (req.query.sequence || 'CASH_FLOW_CAMPAIGN').toString();
+    const approvals = await fetchAllApprovals();
+    const clicks = readCampaignClicks();
+    const rows = approvals
+      .filter((a) => (a.sequenceKey || '') === seq)
+      .map((a) => {
+        const click = clicks[a.id];
+        return {
+          id: a.id,
+          leadName: a.leadName,
+          companyName: a.companyName,
+          recipientEmail: a.recipientEmail,
+          touchNumber: a.touchNumber,
+          status: a.approvalStatus, // PENDING / APPROVED / COMPLETED / REJECTED
+          sent: a.approvalStatus === 'COMPLETED',
+          scheduledDate: a.scheduledDate,
+          clicked: Boolean(click),
+          clickedAt: click ? click.firstClickedAt : null,
+          clickCount: click ? click.count : 0,
+        };
+      })
+      .sort((x, y) => Number(y.clicked) - Number(x.clicked) || Number(y.sent) - Number(x.sent));
+    const summary = {
+      total: rows.length,
+      sent: rows.filter((r) => r.sent).length,
+      clicked: rows.filter((r) => r.clicked).length,
+    };
+    res.json({ sequence: seq, summary, rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 api.get('/upcoming', async (_req, res) => {
   try {
     // Reconcile first so dates reflect reality (mirrors /queue), tolerate fail.
