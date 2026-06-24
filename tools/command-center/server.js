@@ -812,6 +812,51 @@ async function fetchLatestInboundFromLead(email) {
   }
 }
 
+// Batch: fetch recent INCOMING messages ONCE and build handle -> latest reply.
+// Replaces a per-lead query (which made one API call per pending lead and blew
+// the 100-req/min limit once a campaign pushed active leads past ~100).
+async function fetchRecentInboundMap() {
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const map = new Map(); // handle(lowercased) -> { receivedAt, subject, text }
+  let after = null;
+  for (let page = 0; page < 15; page++) {
+    let data;
+    try {
+      data = await gql(
+        `query($after: String, $cutoff: DateTime) {
+          messages(first: 200, orderBy: { receivedAt: DescNullsLast },
+                   filter: { receivedAt: { gte: $cutoff } }, after: $after) {
+            edges { node { direction subject text receivedAt
+              messageParticipants { edges { node { handle role } } } } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }`,
+        { after, cutoff },
+      );
+    } catch (e) {
+      console.error(`[replies] batch inbound fetch failed: ${e.message}`);
+      break;
+    }
+    const edges = data?.messages?.edges || [];
+    for (const e of edges) {
+      const m = e.node;
+      if (!m || m.direction !== 'INCOMING' || !m.receivedAt) continue;
+      const fromP = (m.messageParticipants?.edges || []).find(
+        (p) => p.node?.role === 'FROM',
+      );
+      const handle = (fromP?.node?.handle || '').toLowerCase();
+      if (!handle || handle === USER_EMAIL) continue;
+      const prev = map.get(handle);
+      if (!prev || new Date(m.receivedAt) > new Date(prev.receivedAt)) {
+        map.set(handle, { receivedAt: m.receivedAt, subject: m.subject, text: m.text });
+      }
+    }
+    if (!data?.messages?.pageInfo?.hasNextPage) break;
+    after = data.messages.pageInfo.endCursor;
+  }
+  return map;
+}
+
 // For each lead with PENDING approvals, compute the active sequence + baseline
 // (mirrors computeScheduleWrites), then check for an inbound reply after the
 // baseline. Returns { pausedNow: [entry...], detected: [entry...] } where
@@ -835,6 +880,9 @@ async function detectReplies(approvals, existingState) {
   const detectedKeys = new Set(existingSet);
   const pausedNow = [];
 
+  // One batched fetch of recent inbound, reused for every lead (was per-lead).
+  const inboundMap = await fetchRecentInboundMap();
+
   for (const [, group] of byLead) {
     const pendingAll = group.filter((a) => a.approvalStatus === 'PENDING');
     if (pendingAll.length === 0) continue;
@@ -851,6 +899,9 @@ async function detectReplies(approvals, existingState) {
 
     const seqGroup = group.filter((a) => seqOf(a) === activeSeq);
     const completed = seqGroup.filter((a) => a.approvalStatus === 'COMPLETED');
+    // Nothing sent to this lead yet → there is no campaign reply to detect.
+    // (Also keeps brand-new bulk campaigns from being checked at all.)
+    if (completed.length === 0) continue;
     let baselineMs;
     if (completed.length > 0) {
       const lastCompleted = completed.reduce((acc, a) =>
@@ -872,7 +923,7 @@ async function detectReplies(approvals, existingState) {
       baselineMs = Math.max(baselineMs, new Date(resumedThrough).getTime());
     }
 
-    const latest = await fetchLatestInboundFromLead(email);
+    const latest = inboundMap.get(email) || null;
     if (!latest) continue;
     if (new Date(latest.receivedAt).getTime() <= baselineMs) continue;
 
