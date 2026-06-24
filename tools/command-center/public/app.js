@@ -183,6 +183,7 @@
         <div class="lead-name">${esc(a.leadName) || 'Unknown lead'}</div>
         <div class="company">${esc(a.companyName) || ''}</div>
         <div class="recipient">To: <b>${esc(a.recipientEmail)}</b></div>
+        <div class="recipient">From: <b>${esc(a.fromEmail || '')}</b>${a.bcc ? ` &middot; Bcc: <b>${esc(a.bcc)}</b>` : ''}</div>
         <div class="subject">${esc(a.emailSubject) || '(no subject)'}</div>
         <div class="body">${esc(a.emailBody) || '(empty body)'}</div>
         <div class="card-tools">
@@ -214,6 +215,7 @@
         </div>
         <div class="lead-name">${esc(a.leadName) || 'Unknown lead'}</div>
         <div class="recipient">To: <b>${esc(a.recipientEmail)}</b></div>
+        <div class="recipient">From: <b>${esc(a.fromEmail || '')}</b>${a.bcc ? ` &middot; Bcc: <b>${esc(a.bcc)}</b>` : ''}</div>
         <div id="previewBody">
           <div class="state"><div class="spinner"></div><p>Building exact email…</p></div>
         </div>

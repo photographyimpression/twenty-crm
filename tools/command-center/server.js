@@ -430,8 +430,21 @@ async function gql(query, variables) {
 
 const APPROVAL_FIELDS = `
   id touchNumber emailSubject emailBody recipientEmail leadName companyName
-  productType actionType approvalStatus scheduledDate sequenceKey createdAt updatedAt
+  productType actionType approvalStatus scheduledDate sequenceKey
+  sendFromAccountId bccEmail createdAt updatedAt
 `;
+
+// Connected-account id -> from-address, so the triage card can show which
+// mailbox a send goes out from (campaign = marketing, else default Outlook).
+const ACCOUNT_HANDLES = {
+  '382ab8d9-46e4-4471-81fb-f5723681191c': 'moshe@ph.impressionphotograph1.ca',
+  'fd6150df-d8c7-4980-a656-d9ec181133d3': 'moshe@impressionphotography.ca',
+};
+const DEFAULT_FROM_EMAIL =
+  process.env.CC_DEFAULT_FROM_EMAIL || 'moshe@impressionphotography.ca';
+function resolveFromEmail(sendFromAccountId) {
+  return ACCOUNT_HANDLES[sendFromAccountId] || DEFAULT_FROM_EMAIL;
+}
 
 async function fetchAllApprovals() {
   // Paginate through ALL approvals — a single 200 page silently dropped records
@@ -1631,6 +1644,8 @@ api.get('/queue', async (_req, res) => {
         ...a,
         sequenceKey: seqOf(a),
         sequenceTotal: SEQUENCE_TOTALS[seqOf(a)] || SEQUENCE_TOTALS[DEFAULT_SEQUENCE],
+        fromEmail: resolveFromEmail(a.sendFromAccountId),
+        bcc: a.bccEmail || null,
       }));
 
     // `paused` mirrors the paused-state entries (email, sequenceKey, leadName,
