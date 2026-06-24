@@ -370,8 +370,11 @@ const PRE_PHONE_OPENER_TOUCHES = {
 const SEQUENCE_GAPS = {
   PRE_PHONE_EMAIL: { 1: 0, 2: 1, 3: 2, 4: 4, 5: 3, 6: 4, 7: 4, 8: 4, 9: 6, 10: 7, 11: 10, 12: 15 },
   POST_QUOTE_FOLLOWUP: { 1: 2, 2: 3, 3: 4, 4: 5, 5: 7, 6: 9, 7: 12 },
+  // One-week cash push: touch 1 due immediately, touch 2 a few days later
+  // (the Thursday "deadline" nudge before the Friday cutoff).
+  CASH_FLOW_CAMPAIGN: { 1: 0, 2: 3 },
 };
-const SEQUENCE_TOTALS = { PRE_PHONE_EMAIL: 12, POST_QUOTE_FOLLOWUP: 7 };
+const SEQUENCE_TOTALS = { PRE_PHONE_EMAIL: 12, POST_QUOTE_FOLLOWUP: 7, CASH_FLOW_CAMPAIGN: 2 };
 
 function seqOf(approval) {
   return approval.sequenceKey || DEFAULT_SEQUENCE;
