@@ -431,15 +431,26 @@ const APPROVAL_FIELDS = `
 `;
 
 async function fetchAllApprovals() {
-  // Small dataset (tens of records); a single page of 200 is plenty.
-  const data = await gql(
-    `query {
-      approvals(first: 200, orderBy: { createdAt: AscNullsLast }) {
-        edges { node { ${APPROVAL_FIELDS} } }
-      }
-    }`
-  );
-  return data.approvals.edges.map((e) => e.node);
+  // Paginate through ALL approvals — a single 200 page silently dropped records
+  // once a bulk campaign pushed the total past 200 (the cascade + queue went
+  // blind to the newest approvals). Cursor-paginate, hard-capped for safety.
+  const all = [];
+  let after = null;
+  for (let page = 0; page < 100; page++) {
+    const data = await gql(
+      `query($after: String) {
+        approvals(first: 200, orderBy: { createdAt: AscNullsLast }, after: $after) {
+          edges { node { ${APPROVAL_FIELDS} } }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`,
+      { after },
+    );
+    all.push(...data.approvals.edges.map((e) => e.node));
+    if (!data.approvals.pageInfo?.hasNextPage) break;
+    after = data.approvals.pageInfo.endCursor;
+  }
+  return all;
 }
 
 async function updateApproval(id, patch) {
