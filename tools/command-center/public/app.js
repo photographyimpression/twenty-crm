@@ -93,6 +93,7 @@
       if (view === 'calls') loadCalls();
       if (view === 'roadmap') loadRoadmap();
       if (view === 'dashboard') loadDashboard();
+      if (view === 'board') loadBoard();
       if (view === 'upcoming') loadUpcoming();
     });
   });
@@ -554,6 +555,45 @@
   }
 
   el('refreshDash').addEventListener('click', loadDashboard);
+
+  // ---- CAMPAIGN BOARD ------------------------------------------------------
+  async function loadBoard() {
+    const mount = el('boardMount');
+    mount.innerHTML = '<div class="state"><div class="spinner"></div><p>Loading campaign…</p></div>';
+    let data;
+    try {
+      data = await apiGet('/campaign-board');
+    } catch (e) {
+      mount.innerHTML = `<div class="state"><div class="big">⚠️</div><p>${esc(e.message)}</p></div>`;
+      return;
+    }
+    const s = data.summary || {};
+    const cards =
+      statCard(s.total ?? 0, 'In campaign') +
+      statCard(s.sent ?? 0, 'Sent') +
+      statCard(s.clicked ?? 0, 'Clicked the buy link');
+    const rows = (data.rows || [])
+      .map(
+        (r) => `
+        <tr>
+          <td>${esc(r.leadName || '—')}</td>
+          <td>${esc(r.companyName || '')}</td>
+          <td>${r.sent ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
+          <td>${r.clicked ? `🔥 ${esc(r.clickCount)}` : '<span style="color:var(--muted)">—</span>'}</td>
+          <td>${esc(r.status)}</td>
+        </tr>`,
+      )
+      .join('');
+    mount.innerHTML =
+      `<div class="dash-grid">${cards}</div>` +
+      '<div class="section-title">Recipients (clicked first)</div>' +
+      `<div class="dash-table-wrap"><table class="dash-table">
+        <thead><tr><th>Lead</th><th>Company</th><th>Sent</th><th>Clicked</th><th>Status</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" style="color:var(--muted)">No campaign recipients yet.</td></tr>'}</tbody>
+      </table></div>`;
+  }
+
+  el('refreshBoard').addEventListener('click', loadBoard);
 
   // ---- THIS WEEK (look-ahead) ----------------------------------------------
   // Read-only preview of upcoming touches grouped by day. Dates come back as

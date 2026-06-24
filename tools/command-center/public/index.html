@@ -333,6 +333,7 @@
         <button class="tab active" data-view="triage">Triage <span class="badge" id="triageBadge">0</span></button>
         <button class="tab" data-view="upcoming">This Week <span class="badge" id="upcomingBadge">0</span></button>
         <button class="tab" data-view="dashboard">Dashboard</button>
+        <button class="tab" data-view="board">Campaign</button>
         <button class="tab" data-view="calls">Calls <span class="badge" id="callsBadge">0</span></button>
         <button class="tab" data-view="roadmap">Roadmap</button>
       </nav>
@@ -370,6 +371,17 @@
         </div>
         <div id="dashboardMount">
           <div class="state"><div class="spinner"></div><p>Loading dashboard…</p></div>
+        </div>
+      </section>
+
+      <!-- CAMPAIGN BOARD -->
+      <section class="view" id="view-board">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="section-title">Cash Flow Campaign — who got it, who clicked</div>
+          <button class="refresh" id="refreshBoard">↻ Refresh</button>
+        </div>
+        <div id="boardMount">
+          <div class="state"><div class="spinner"></div><p>Loading campaign…</p></div>
         </div>
       </section>
 
