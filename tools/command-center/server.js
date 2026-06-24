@@ -375,6 +375,9 @@ const SEQUENCE_GAPS = {
   CASH_FLOW_CAMPAIGN: { 1: 0, 2: 3 },
 };
 const SEQUENCE_TOTALS = { PRE_PHONE_EMAIL: 12, POST_QUOTE_FOLLOWUP: 7, CASH_FLOW_CAMPAIGN: 2 };
+// Sequences whose first-touch dates are managed externally (a drip stagger),
+// so the cascade must not recompute/collapse them back to enrollment day.
+const FIXED_SCHEDULE_SEQUENCES = new Set(['CASH_FLOW_CAMPAIGN']);
 
 function seqOf(approval) {
   return approval.sequenceKey || DEFAULT_SEQUENCE;
@@ -654,12 +657,23 @@ function computeScheduleWrites(approvals, pausedSet) {
 
     const gaps = SEQUENCE_GAPS[activeSeq] || SEQUENCE_GAPS[DEFAULT_SEQUENCE];
     const next = pending[0];
-    const gap = gaps[next.touchNumber] ?? 0;
-    const desiredISO = addDaysISO(baselineMs, gap);
 
-    // The immediate next pending touch gets a date.
-    if (!datesEqual(next.scheduledDate, desiredISO)) {
-      dateWrites.push({ id: next.id, scheduledDate: desiredISO });
+    // Drip campaigns (e.g. CASH_FLOW_CAMPAIGN) have their first touch's date
+    // set EXTERNALLY — staggered across days so a daily slice goes out instead
+    // of all at once (deliverability). Preserve that date; don't collapse it
+    // back to "enrollment + gap". Later touches still cascade normally below.
+    const isDripFirstTouch =
+      FIXED_SCHEDULE_SEQUENCES.has(activeSeq) &&
+      next.scheduledDate &&
+      completed.length === 0;
+
+    if (!isDripFirstTouch) {
+      const gap = gaps[next.touchNumber] ?? 0;
+      const desiredISO = addDaysISO(baselineMs, gap);
+      // The immediate next pending touch gets a date.
+      if (!datesEqual(next.scheduledDate, desiredISO)) {
+        dateWrites.push({ id: next.id, scheduledDate: desiredISO });
+      }
     }
     // All later pending touches must be null.
     for (const later of pending.slice(1)) {
