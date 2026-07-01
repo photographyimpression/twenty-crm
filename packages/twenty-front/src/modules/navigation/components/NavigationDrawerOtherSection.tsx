@@ -3,12 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppPath, SettingsPath } from 'twenty-shared/types';
 import { getSettingsPath } from 'twenty-shared/utils';
 import {
-  IconBulb,
   IconHelpCircle,
   IconListCheck,
   IconMail,
   IconMessage,
   IconSettings,
+  IconSparkles,
 } from 'twenty-ui/display';
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
@@ -93,7 +93,7 @@ export const NavigationDrawerOtherSection = () => {
         {/* eslint-disable-next-line lingui/no-unlocalized-strings */}
         <NavigationDrawerItem
           label="Feedback"
-          Icon={IconBulb}
+          Icon={IconSparkles}
           to="https://crm.impressionphotography.ca/board-480d724fe05b0c3f74bc75dff25f9301/"
         />
         <NavigationDrawerItem
