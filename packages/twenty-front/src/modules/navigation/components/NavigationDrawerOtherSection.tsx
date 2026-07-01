@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppPath, SettingsPath } from 'twenty-shared/types';
 import { getSettingsPath } from 'twenty-shared/utils';
 import {
+  IconBulb,
   IconHelpCircle,
   IconListCheck,
   IconMail,
@@ -85,6 +86,15 @@ export const NavigationDrawerOtherSection = () => {
           label="Command Center"
           Icon={IconListCheck}
           to="https://crm.impressionphotography.ca/command-center/"
+        />
+        {/* Custom (Impression fork): Feedback Board — request features / report
+            bugs. Unguessable no-login URL; opens in a new tab. Plain string
+            label (not the t`` macro) since it isn't in the Lingui catalog. */}
+        {/* eslint-disable-next-line lingui/no-unlocalized-strings */}
+        <NavigationDrawerItem
+          label="Feedback"
+          Icon={IconBulb}
+          to="https://crm.impressionphotography.ca/board-480d724fe05b0c3f74bc75dff25f9301/"
         />
         <NavigationDrawerItem
           label={t`Inbox`}
