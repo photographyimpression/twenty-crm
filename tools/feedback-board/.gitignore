@@ -1,0 +1,15 @@
+# Installed deps — reinstalled on the server with npm install.
+node_modules/
+
+# board.json is the LIVE editable store on the server (Claude's work queue).
+# The repo keeps a seed copy so a fresh deploy has a valid empty board, but
+# runtime edits should not be committed.
+board.json
+
+# Uploaded screenshots live only on the server.
+uploads/
+
+# Atomic-write temp files.
+board.json.tmp-*
+
+.env

@@ -1,0 +1,19 @@
+[Unit]
+Description=Feedback Board (private Kanban — Moshe files, Claude builds)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/feedback-board
+ExecStart=/usr/bin/node /opt/feedback-board/server.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PORT=4243
+Environment=FB_BOARD_PATH=/opt/feedback-board/board.json
+Environment=FB_UPLOAD_DIR=/opt/feedback-board/uploads
+# Single-tenant box; run as root like the sibling command-center service.
+User=root
+
+[Install]
+WantedBy=multi-user.target

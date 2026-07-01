@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Feedback Board</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>" />
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --panel-2: #1e222b;
+        --border: #2a2f3a;
+        --text: #e6e9ef;
+        --muted: #9aa3b2;
+        --accent: #3b82f6;
+        --accent-hover: #2f6fd6;
+        --green: #22c55e;
+        --green-hover: #1ba34d;
+        --red: #ef4444;
+        --red-hover: #d13a3a;
+        --amber: #f59e0b;
+        --purple: #a855f7;
+        --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        background: radial-gradient(1200px 600px at 50% -10%, #1a2030 0%, var(--bg) 60%);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+      }
+      header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 18px 24px; max-width: 1400px; margin: 0 auto; gap: 14px; flex-wrap: wrap;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+      .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+      .header-actions { display: flex; gap: 10px; align-items: center; }
+      main { max-width: 1400px; margin: 0 auto; padding: 8px 20px 60px; }
+
+      /* Buttons */
+      button.btn, a.btn {
+        border: none; border-radius: 10px; padding: 9px 14px; font-size: 14px; font-weight: 700;
+        cursor: pointer; transition: transform .04s ease, background .15s ease; color: #fff;
+        font-family: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+      }
+      button.btn:active, a.btn:active { transform: translateY(1px); }
+      button.btn:disabled { opacity: .5; cursor: default; }
+      .btn-accent { background: var(--accent); }
+      .btn-accent:hover:not(:disabled) { background: var(--accent-hover); }
+      .btn-green { background: var(--green); }
+      .btn-green:hover:not(:disabled) { background: var(--green-hover); }
+      .btn-red { background: var(--red); }
+      .btn-red:hover:not(:disabled) { background: var(--red-hover); }
+      .btn-ghost { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+      .btn-ghost:hover:not(:disabled) { background: #262b36; }
+      .btn-sm { padding: 6px 10px; font-size: 12.5px; border-radius: 8px; }
+
+      /* Board layout — 4 columns */
+      .board {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; align-items: start;
+      }
+      @media (max-width: 1080px) { .board { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 620px) { .board { grid-template-columns: 1fr; } }
+      .col {
+        background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+        padding: 14px; min-height: 120px; box-shadow: var(--shadow);
+      }
+      .col-head {
+        display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px;
+      }
+      .col-title { font-weight: 800; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+      .col-title .count {
+        background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+        border-radius: 999px; font-size: 11px; padding: 1px 8px; font-weight: 700;
+      }
+      .col-accent-inbox { border-top: 3px solid var(--accent); }
+      .col-accent-discussion { border-top: 3px solid var(--purple); }
+      .col-accent-tobuild { border-top: 3px solid var(--amber); }
+      .col-accent-delivered { border-top: 3px solid var(--green); }
+      .col-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 24px 8px; }
+
+      /* Cards */
+      .kcard {
+        background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+        padding: 12px 13px; margin-bottom: 12px;
+      }
+      .kcard:last-child { margin-bottom: 0; }
+      .kcard-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+      .pill {
+        display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 700;
+        letter-spacing: .3px; text-transform: uppercase;
+      }
+      .pill-feature { background: rgba(59,130,246,.16); border: 1px solid rgba(59,130,246,.45); color: #9cc1f7; }
+      .pill-bug { background: rgba(239,68,68,.16); border: 1px solid rgba(239,68,68,.45); color: #f7a1a1; }
+      .kcard-title { font-weight: 700; font-size: 15px; line-height: 1.3; margin: 2px 0 6px; }
+      .kcard-field { font-size: 13px; color: #cfd5e0; margin: 6px 0; line-height: 1.45; }
+      .kcard-field .lbl { color: var(--muted); font-weight: 700; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 2px; }
+      .kcard-meta { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
+      .shots { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+      .shots img { width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
+
+      /* Claude's note (prominent in Discussion) */
+      .claude-note {
+        background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.45); border-radius: 10px;
+        padding: 10px 12px; margin: 8px 0; font-size: 13.5px; line-height: 1.5; color: #e2d3f7;
+      }
+      .claude-note .lbl { color: var(--purple); font-weight: 800; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 4px; }
+      .delivered-note {
+        background: rgba(34,197,94,.10); border: 1px solid rgba(34,197,94,.4); border-radius: 10px;
+        padding: 9px 11px; margin: 8px 0; font-size: 13px; line-height: 1.5; color: #cbeecf;
+      }
+      .delivered-note .lbl { color: var(--green); font-weight: 800; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 3px; }
+
+      /* Comment thread */
+      .thread { margin: 8px 0 4px; display: flex; flex-direction: column; gap: 6px; }
+      .cmt { font-size: 12.5px; line-height: 1.4; padding: 6px 9px; border-radius: 9px; background: var(--panel); border: 1px solid var(--border); }
+      .cmt .who { font-weight: 800; font-size: 11px; text-transform: uppercase; }
+      .cmt.moshe .who { color: var(--accent); }
+      .cmt.claude .who { color: var(--purple); }
+      .cmt .when { color: var(--muted); font-size: 10.5px; margin-left: 6px; }
+      .cmt-add { display: flex; gap: 6px; margin-top: 8px; }
+      .cmt-add input { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+        border-radius: 8px; padding: 7px 9px; font-size: 12.5px; font-family: inherit; }
+
+      .kcard-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+      /* Inbox form (modal) */
+      .modal-backdrop {
+        position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: flex-start;
+        justify-content: center; z-index: 40; padding: 40px 16px; overflow-y: auto;
+      }
+      .modal-backdrop.show { display: flex; }
+      .modal {
+        background: var(--panel); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow);
+        width: 100%; max-width: 560px; padding: 24px 26px;
+      }
+      .modal h2 { margin: 0 0 4px; font-size: 20px; }
+      .modal .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+      .field { margin-bottom: 14px; }
+      .field label { display: block; font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+      .field input[type="text"], .field textarea {
+        width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 10px; padding: 11px 13px; font-size: 14.5px; font-family: inherit;
+      }
+      .field textarea { min-height: 80px; line-height: 1.5; resize: vertical; }
+      .type-toggle { display: flex; gap: 8px; }
+      .type-toggle button {
+        flex: 1; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+        padding: 10px; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 14px; font-family: inherit;
+      }
+      .type-toggle button.active[data-type="feature"] { background: rgba(59,130,246,.18); border-color: var(--accent); color: #9cc1f7; }
+      .type-toggle button.active[data-type="bug"] { background: rgba(239,68,68,.18); border-color: var(--red); color: #f7a1a1; }
+      .field input[type="file"] { font-size: 13px; color: var(--muted); }
+      .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+      .form-err { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+      /* States */
+      .state { text-align: center; padding: 60px 20px; color: var(--muted); }
+      .spinner {
+        width: 34px; height: 34px; border: 3px solid var(--border); border-top-color: var(--accent);
+        border-radius: 50%; margin: 0 auto 16px; animation: spin .8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Toast */
+      .toast {
+        position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(20px);
+        background: var(--green); color: #fff; padding: 12px 20px; border-radius: 12px; font-weight: 700;
+        box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: all .25s ease; z-index: 60;
+      }
+      .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .toast.err { background: var(--red); }
+
+      /* Lightbox */
+      .lightbox {
+        position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none; align-items: center;
+        justify-content: center; z-index: 70; padding: 30px; cursor: zoom-out;
+      }
+      .lightbox.show { display: flex; }
+      .lightbox img { max-width: 100%; max-height: 100%; border-radius: 10px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="dot"></span> Feedback Board</div>
+      <div class="header-actions">
+        <button class="btn btn-ghost btn-sm" id="sendAllBtn" title="Send every Inbox card to Discussion">↦ Send all to review</button>
+        <button class="btn btn-accent" id="newCardBtn">+ New card</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="root" class="board">
+        <div class="state"><div class="spinner"></div>Loading board…</div>
+      </div>
+    </main>
+
+    <!-- New-card modal -->
+    <div class="modal-backdrop" id="modalBackdrop">
+      <div class="modal">
+        <h2>New card</h2>
+        <div class="sub">Describe a feature you want or a bug you hit. Title is required, plus at least one of goal / idea / screenshot.</div>
+        <form id="cardForm">
+          <div class="field">
+            <label>Type</label>
+            <div class="type-toggle" id="typeToggle">
+              <button type="button" data-type="feature" class="active">✨ Feature</button>
+              <button type="button" data-type="bug">🐞 Bug</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Title <span style="color:var(--red)">*</span></label>
+            <input type="text" name="title" id="titleInput" placeholder="Short summary" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>What do you want to achieve? (goal)</label>
+            <textarea name="goal" placeholder="The outcome you're after…"></textarea>
+          </div>
+          <div class="field">
+            <label>How you think it could be done (idea)</label>
+            <textarea name="idea" placeholder="Optional — your rough approach…"></textarea>
+          </div>
+          <div class="field">
+            <label>Screenshots (images, optional)</label>
+            <input type="file" name="screenshots" id="fileInput" accept="image/*" multiple />
+          </div>
+          <div class="form-err" id="formErr"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" id="cancelBtn">Cancel</button>
+            <button type="submit" class="btn btn-green" id="submitBtn" style="flex:1">Add to Inbox</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+    <div class="lightbox" id="lightbox"><img id="lightboxImg" alt="" /></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
