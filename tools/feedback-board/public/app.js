@@ -298,13 +298,40 @@ lightbox.addEventListener('click', () => lightbox.classList.remove('show'));
 const backdrop = document.getElementById('modalBackdrop');
 const form = document.getElementById('cardForm');
 const formErr = document.getElementById('formErr');
+const fileInput = document.getElementById('fileInput');
+const shotPreview = document.getElementById('shotPreview');
 let selectedType = 'feature';
+// Images from paste + the file picker, unified so pasting alone is enough.
+let pendingFiles = [];
+
+function renderShotPreview() {
+  shotPreview.innerHTML = pendingFiles.map((f, i) =>
+    '<span class="shot-thumb"><img src="' + f.url + '" alt="screenshot" />' +
+    '<button type="button" class="shot-remove" data-shot-remove="' + i + '" aria-label="Remove">×</button></span>'
+  ).join('');
+}
+
+function addPendingFiles(fileList) {
+  for (const file of fileList) {
+    if (file && file.type && file.type.startsWith('image/')) {
+      pendingFiles.push({ file, url: URL.createObjectURL(file) });
+    }
+  }
+  renderShotPreview();
+}
+
+function clearPendingFiles() {
+  pendingFiles.forEach((f) => URL.revokeObjectURL(f.url));
+  pendingFiles = [];
+  renderShotPreview();
+}
 
 function openModal() {
   form.reset();
   formErr.textContent = '';
   selectedType = 'feature';
   syncTypeToggle();
+  clearPendingFiles();
   backdrop.classList.add('show');
   document.getElementById('titleInput').focus();
 }
@@ -326,6 +353,31 @@ document.getElementById('typeToggle').addEventListener('click', (e) => {
   syncTypeToggle();
 });
 
+// File picker → pending files (clear the native input so it isn't double-counted).
+fileInput.addEventListener('change', () => {
+  addPendingFiles(fileInput.files);
+  fileInput.value = '';
+});
+
+// Remove a pending thumbnail.
+shotPreview.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-shot-remove]');
+  if (!btn) return;
+  const removed = pendingFiles.splice(Number(btn.getAttribute('data-shot-remove')), 1)[0];
+  if (removed) URL.revokeObjectURL(removed.url);
+  renderShotPreview();
+});
+
+// Paste screenshots anywhere while the modal is open (images only; text paste untouched).
+document.addEventListener('paste', (e) => {
+  if (!backdrop.classList.contains('show')) return;
+  const images = Array.from(e.clipboardData ? e.clipboardData.items : [])
+    .filter((it) => it.type && it.type.startsWith('image/'))
+    .map((it) => it.getAsFile())
+    .filter(Boolean);
+  if (images.length) { e.preventDefault(); addPendingFiles(images); }
+});
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   formErr.textContent = '';
@@ -333,25 +385,24 @@ form.addEventListener('submit', async (e) => {
   const title = document.getElementById('titleInput').value.trim();
   const goal = form.goal.value.trim();
   const idea = form.idea.value.trim();
-  const files = document.getElementById('fileInput').files;
 
-  if (!title) { formErr.textContent = 'Title is required.'; return; }
-  if (!goal && !idea && files.length === 0) {
-    formErr.textContent = 'Add at least one of: goal, idea, or a screenshot.';
+  if (!title && !goal && !idea && pendingFiles.length === 0) {
+    formErr.textContent = 'Add something — a title, goal, idea, or a screenshot.';
     return;
   }
 
   const fd = new FormData();
   fd.append('type', selectedType);
-  fd.append('title', title);
+  if (title) fd.append('title', title); // blank → server derives a title from goal/idea
   fd.append('goal', goal);
   fd.append('idea', idea);
-  for (const f of files) fd.append('screenshots', f);
+  pendingFiles.forEach((f) => fd.append('screenshots', f.file));
 
   const submitBtn = document.getElementById('submitBtn');
   submitBtn.disabled = true;
   try {
     await api('/cards', { method: 'POST', body: fd });
+    clearPendingFiles();
     closeModal();
     toast('Card added to Inbox');
     await load();

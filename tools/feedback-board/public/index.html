@@ -8,26 +8,26 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>" />
     <style>
       :root {
-        --bg: #0f1115;
-        --panel: #171a21;
-        --panel-2: #1e222b;
-        --border: #2a2f3a;
-        --text: #e6e9ef;
-        --muted: #9aa3b2;
+        --bg: #f4f6f9;
+        --panel: #ffffff;
+        --panel-2: #f7f9fc;
+        --border: #e2e6ec;
+        --text: #1a2230;
+        --muted: #6b7482;
         --accent: #3b82f6;
         --accent-hover: #2f6fd6;
-        --green: #22c55e;
-        --green-hover: #1ba34d;
+        --green: #16a34a;
+        --green-hover: #12873d;
         --red: #ef4444;
         --red-hover: #d13a3a;
         --amber: #f59e0b;
         --purple: #a855f7;
-        --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        --shadow: 0 6px 20px rgba(20, 30, 50, 0.07);
       }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
       body {
-        background: radial-gradient(1200px 600px at 50% -10%, #1a2030 0%, var(--bg) 60%);
+        background: radial-gradient(1200px 600px at 50% -10%, #ffffff 0%, var(--bg) 60%);
         color: var(--text);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         min-height: 100vh;
@@ -56,8 +56,11 @@
       .btn-green:hover:not(:disabled) { background: var(--green-hover); }
       .btn-red { background: var(--red); }
       .btn-red:hover:not(:disabled) { background: var(--red-hover); }
-      .btn-ghost { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
-      .btn-ghost:hover:not(:disabled) { background: #262b36; }
+      /* Specific selector so the ghost color beats `button.btn { color:#fff }`
+         (which has higher specificity) — otherwise ghost text is white and
+         invisible on the light theme. */
+      button.btn-ghost, a.btn-ghost { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+      .btn-ghost:hover:not(:disabled) { background: #eef1f5; }
       .btn-sm { padding: 6px 10px; font-size: 12.5px; border-radius: 8px; }
 
       /* Board layout — 4 columns */
@@ -95,24 +98,30 @@
         display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 11px; font-weight: 700;
         letter-spacing: .3px; text-transform: uppercase;
       }
-      .pill-feature { background: rgba(59,130,246,.16); border: 1px solid rgba(59,130,246,.45); color: #9cc1f7; }
-      .pill-bug { background: rgba(239,68,68,.16); border: 1px solid rgba(239,68,68,.45); color: #f7a1a1; }
+      .pill-feature { background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.45); color: #1d4ed8; }
+      .pill-bug { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.45); color: #dc2626; }
       .kcard-title { font-weight: 700; font-size: 15px; line-height: 1.3; margin: 2px 0 6px; }
-      .kcard-field { font-size: 13px; color: #cfd5e0; margin: 6px 0; line-height: 1.45; }
+      .kcard-field { font-size: 13px; color: #37414f; margin: 6px 0; line-height: 1.45; }
       .kcard-field .lbl { color: var(--muted); font-weight: 700; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 2px; }
       .kcard-meta { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
       .shots { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
       .shots img { width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
+      .shot-thumb { position: relative; display: inline-flex; }
+      .shot-remove {
+        position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%;
+        border: 2px solid var(--panel); background: var(--red); color: #fff; font-size: 12px; line-height: 1;
+        cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+      }
 
       /* Claude's note (prominent in Discussion) */
       .claude-note {
         background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.45); border-radius: 10px;
-        padding: 10px 12px; margin: 8px 0; font-size: 13.5px; line-height: 1.5; color: #e2d3f7;
+        padding: 10px 12px; margin: 8px 0; font-size: 13.5px; line-height: 1.5; color: #6d28d9;
       }
       .claude-note .lbl { color: var(--purple); font-weight: 800; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 4px; }
       .delivered-note {
         background: rgba(34,197,94,.10); border: 1px solid rgba(34,197,94,.4); border-radius: 10px;
-        padding: 9px 11px; margin: 8px 0; font-size: 13px; line-height: 1.5; color: #cbeecf;
+        padding: 9px 11px; margin: 8px 0; font-size: 13px; line-height: 1.5; color: #15803d;
       }
       .delivered-note .lbl { color: var(--green); font-weight: 800; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 3px; }
 
@@ -153,8 +162,8 @@
         flex: 1; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
         padding: 10px; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 14px; font-family: inherit;
       }
-      .type-toggle button.active[data-type="feature"] { background: rgba(59,130,246,.18); border-color: var(--accent); color: #9cc1f7; }
-      .type-toggle button.active[data-type="bug"] { background: rgba(239,68,68,.18); border-color: var(--red); color: #f7a1a1; }
+      .type-toggle button.active[data-type="feature"] { background: rgba(59,130,246,.12); border-color: var(--accent); color: #1d4ed8; }
+      .type-toggle button.active[data-type="bug"] { background: rgba(239,68,68,.12); border-color: var(--red); color: #dc2626; }
       .field input[type="file"] { font-size: 13px; color: var(--muted); }
       .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
       .form-err { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 18px; }
@@ -204,7 +213,7 @@
     <div class="modal-backdrop" id="modalBackdrop">
       <div class="modal">
         <h2>New card</h2>
-        <div class="sub">Describe a feature you want or a bug you hit. Title is required, plus at least one of goal / idea / screenshot.</div>
+        <div class="sub">Request a feature or report a bug. Everything's optional — a title, a goal, an idea, or just paste a screenshot. Anything is enough.</div>
         <form id="cardForm">
           <div class="field">
             <label>Type</label>
@@ -214,8 +223,8 @@
             </div>
           </div>
           <div class="field">
-            <label>Title <span style="color:var(--red)">*</span></label>
-            <input type="text" name="title" id="titleInput" placeholder="Short summary" autocomplete="off" />
+            <label>Title (optional)</label>
+            <input type="text" name="title" id="titleInput" placeholder="Short summary — leave blank to auto-title from the goal" autocomplete="off" />
           </div>
           <div class="field">
             <label>What do you want to achieve? (goal)</label>
@@ -226,8 +235,9 @@
             <textarea name="idea" placeholder="Optional — your rough approach…"></textarea>
           </div>
           <div class="field">
-            <label>Screenshots (images, optional)</label>
+            <label>Screenshots — paste anywhere in this popup, or pick files</label>
             <input type="file" name="screenshots" id="fileInput" accept="image/*" multiple />
+            <div class="shots" id="shotPreview"></div>
           </div>
           <div class="form-err" id="formErr"></div>
           <div class="modal-actions">
