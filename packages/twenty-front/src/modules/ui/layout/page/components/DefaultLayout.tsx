@@ -2,6 +2,7 @@ import { AuthModal } from '@/auth/components/AuthModal';
 import { AppErrorBoundary } from '@/error-handler/components/AppErrorBoundary';
 import { AppFullScreenErrorFallback } from '@/error-handler/components/AppFullScreenErrorFallback';
 import { AppPageErrorFallback } from '@/error-handler/components/AppPageErrorFallback';
+import { FeedbackRequestModal } from '@/feedback/components/FeedbackRequestModal';
 import { FileUploadProvider } from '@/file-upload/components/FileUploadProvider';
 import { InformationBannerIsImpersonating } from '@/information-banner/components/impersonate/InformationBannerIsImpersonating';
 import { KeyboardShortcutMenu } from '@/keyboard-shortcut-menu/components/KeyboardShortcutMenu';
@@ -93,6 +94,7 @@ export const DefaultLayout = () => {
             >
               <PageDragDropProvider>
                 {!showAuthModal && <KeyboardShortcutMenu />}
+                {!showAuthModal && <FeedbackRequestModal />}
                 {showAuthModal ? (
                   <StyledNavigationDrawerWrapper>
                     <SignInAppNavigationDrawerMock />

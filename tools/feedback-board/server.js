@@ -152,25 +152,33 @@ api.get('/cards', (req, res) => {
 });
 
 // Create a card. Multipart so screenshots can ride along.
-// Validation: title required + at least one of goal / idea / screenshot.
+// A card needs SOMETHING to describe it: an explicit title, a goal, an idea,
+// or a screenshot. The in-app Quick-request popup (like the Zrizes app) omits
+// the title field, so when title is blank we derive one from goal/idea/type.
 api.post('/cards', upload.array('screenshots', 8), (req, res) => {
   const files = req.files || [];
   const cleanupUploads = () => deleteScreenshots(files.map((f) => f.filename));
 
   const type = VALID_TYPES.includes(req.body.type) ? req.body.type : 'feature';
-  const title = (req.body.title || '').trim();
+  let title = (req.body.title || '').trim();
   const goal = (req.body.goal || '').trim();
   const idea = (req.body.idea || '').trim();
 
-  if (!title) {
+  if (!title && !goal && !idea && files.length === 0) {
     cleanupUploads();
-    return res.status(400).json({ error: 'title is required' });
+    return res.status(400).json({
+      error: 'provide at least one of: title, goal, idea, or a screenshot',
+    });
   }
-  if (!goal && !idea && files.length === 0) {
-    cleanupUploads();
-    return res
-      .status(400)
-      .json({ error: 'provide at least one of: goal, idea, or a screenshot' });
+  if (!title) {
+    const firstLine = (goal || idea || '').split('\n')[0].trim();
+    title = firstLine
+      ? firstLine.length > 80
+        ? firstLine.slice(0, 79) + '…'
+        : firstLine
+      : type === 'bug'
+        ? 'Bug report'
+        : 'Feature request';
   }
 
   const cards = readBoard();

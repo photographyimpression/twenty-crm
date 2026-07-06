@@ -13,6 +13,7 @@ import {
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
+import { isFeedbackRequestModalOpenState } from '@/feedback/states/isFeedbackRequestModalOpenState';
 import { useUnreadSmsCount } from '@/sms/hooks/useUnreadSmsCount';
 import { getDocumentationUrl } from '@/support/utils/getDocumentationUrl';
 import { isNavigationDrawerExpandedState } from '@/ui/navigation/states/isNavigationDrawerExpanded';
@@ -42,6 +43,9 @@ export const NavigationDrawerOtherSection = () => {
   );
   const setNavigationMemorizedUrl = useSetAtomState(
     navigationMemorizedUrlState,
+  );
+  const setIsFeedbackRequestModalOpen = useSetAtomState(
+    isFeedbackRequestModalOpenState,
   );
 
   const unreadSmsCount = useUnreadSmsCount();
@@ -87,14 +91,16 @@ export const NavigationDrawerOtherSection = () => {
           Icon={IconListCheck}
           to="https://crm.impressionphotography.ca/command-center/"
         />
-        {/* Custom (Impression fork): Feedback Board — request features / report
-            bugs. Unguessable no-login URL; opens in a new tab. Plain string
-            label (not the t`` macro) since it isn't in the Lingui catalog. */}
+        {/* Custom (Impression fork): opens the in-app "Quick request" popup
+            (FeedbackRequestModal, mounted in DefaultLayout) instead of
+            navigating away — file a feature/bug without leaving the CRM. Plain
+            string label (not the t`` macro) since it isn't in the Lingui
+            catalog. */}
         {/* eslint-disable-next-line lingui/no-unlocalized-strings */}
         <NavigationDrawerItem
           label="Feedback"
           Icon={IconSparkles}
-          to="https://crm.impressionphotography.ca/board-480d724fe05b0c3f74bc75dff25f9301/"
+          onClick={() => setIsFeedbackRequestModalOpen(true)}
         />
         <NavigationDrawerItem
           label={t`Inbox`}

@@ -777,7 +777,9 @@ export const SmsInboxPage = () => {
               {visibleThreads.length > 0 && (
                 <ActivityList>
                   {visibleThreads.map((thread) => {
-                    const isUnread = unreadDigits.has(thread.counterpartyDigits);
+                    const isUnread = unreadDigits.has(
+                      thread.counterpartyDigits,
+                    );
 
                     return (
                       <StyledThreadRow

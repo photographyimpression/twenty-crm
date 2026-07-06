@@ -220,7 +220,11 @@ export const InboxPage = () => {
           <StyledList>
             <Section>
               <StyledTitleRow>
-                {folder === 'inbox' ? <Trans>Inbox</Trans> : <Trans>Sent</Trans>}
+                {folder === 'inbox' ? (
+                  <Trans>Inbox</Trans>
+                ) : (
+                  <Trans>Sent</Trans>
+                )}
                 <StyledCount>{totalNumberOfThreads}</StyledCount>
               </StyledTitleRow>
               <StyledControlsRow>
