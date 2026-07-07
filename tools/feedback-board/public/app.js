@@ -333,7 +333,7 @@ function openModal() {
   syncTypeToggle();
   clearPendingFiles();
   backdrop.classList.add('show');
-  document.getElementById('titleInput').focus();
+  form.goal.focus();
 }
 function closeModal() { backdrop.classList.remove('show'); }
 
@@ -382,18 +382,17 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   formErr.textContent = '';
 
-  const title = document.getElementById('titleInput').value.trim();
   const goal = form.goal.value.trim();
   const idea = form.idea.value.trim();
 
-  if (!title && !goal && !idea && pendingFiles.length === 0) {
-    formErr.textContent = 'Add something — a title, goal, idea, or a screenshot.';
+  if (!goal && !idea && pendingFiles.length === 0) {
+    formErr.textContent = 'Add something — a goal, an idea, or a screenshot.';
     return;
   }
 
+  // No title field: the server derives the card title from the goal/idea.
   const fd = new FormData();
   fd.append('type', selectedType);
-  if (title) fd.append('title', title); // blank → server derives a title from goal/idea
   fd.append('goal', goal);
   fd.append('idea', idea);
   pendingFiles.forEach((f) => fd.append('screenshots', f.file));
