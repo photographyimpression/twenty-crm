@@ -122,7 +122,8 @@ function cardHtml(card) {
   } else if (col === 'discussion') {
     actions =
       '<button class="btn btn-green btn-sm" data-act="approve" data-id="' + card.id + '">✓ Approve → To Build</button>' +
-      '<button class="btn btn-ghost btn-sm" data-act="counter" data-id="' + card.id + '">↩ Counter → Inbox</button>';
+      '<button class="btn btn-ghost btn-sm" data-act="counter" data-id="' + card.id + '">↩ Counter → Inbox</button>' +
+      '<button class="btn btn-red btn-sm" data-act="delete" data-id="' + card.id + '">Delete</button>';
   } else if (col === 'tobuild') {
     actions =
       '<button class="btn btn-ghost btn-sm" data-act="move" data-to="discussion" data-id="' + card.id + '">← Discussion</button>' +
@@ -352,6 +353,9 @@ document.getElementById('typeToggle').addEventListener('click', (e) => {
   selectedType = b.getAttribute('data-type');
   syncTypeToggle();
 });
+
+// Clean paste-zone opens the hidden picker on click (no "Choose Files" button).
+document.getElementById('pasteZone').addEventListener('click', () => fileInput.click());
 
 // File picker → pending files (clear the native input so it isn't double-counted).
 fileInput.addEventListener('change', () => {

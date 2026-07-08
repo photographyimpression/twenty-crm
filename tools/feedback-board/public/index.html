@@ -112,6 +112,12 @@
         border: 2px solid var(--panel); background: var(--red); color: #fff; font-size: 12px; line-height: 1;
         cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
       }
+      .paste-zone {
+        border: 1.5px dashed var(--border); border-radius: 10px; padding: 14px 12px; text-align: center;
+        color: var(--muted); font-size: 13px; cursor: pointer; transition: border-color .15s ease, background .15s ease;
+      }
+      .paste-zone:hover, .paste-zone:focus { border-color: var(--accent); background: var(--panel-2); outline: none; }
+      .paste-zone .pz-sub { color: var(--muted); opacity: .7; }
 
       /* Claude's note (prominent in Discussion) */
       .claude-note {
@@ -231,8 +237,9 @@
             <textarea name="idea" placeholder="Optional — your rough approach…"></textarea>
           </div>
           <div class="field">
-            <label>Screenshots — paste anywhere in this popup, or pick files</label>
-            <input type="file" name="screenshots" id="fileInput" accept="image/*" multiple />
+            <label>Screenshot (optional)</label>
+            <div class="paste-zone" id="pasteZone" tabindex="0">📎 Paste a screenshot anywhere in this popup <span class="pz-sub">(or click to add)</span></div>
+            <input type="file" id="fileInput" accept="image/*" multiple hidden />
             <div class="shots" id="shotPreview"></div>
           </div>
           <div class="form-err" id="formErr"></div>

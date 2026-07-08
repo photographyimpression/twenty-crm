@@ -30,11 +30,87 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const nodemailer = require('nodemailer');
 
 const PORT = process.env.PORT || 4243;
 const DATA_DIR = process.env.FB_DATA_DIR || __dirname;
 const BOARD_PATH = process.env.FB_BOARD_PATH || path.join(DATA_DIR, 'board.json');
 const UPLOAD_DIR = process.env.FB_UPLOAD_DIR || path.join(DATA_DIR, 'uploads');
+
+// ---------------------------------------------------------------------------
+// Email-on-delivery — notify Moshe when a card is delivered (like his other
+// app). Enabled only when the SMTP env vars are set (server-only EnvironmentFile,
+// never committed). Reuses the OVH mailserver + the Cal.com sender identity
+// (impressionjewelry.ca's SPF/DKIM authorize this IP, so it reaches Gmail;
+// note @impressionphotography.ca is blocked by Microsoft, so send to Gmail).
+// ---------------------------------------------------------------------------
+const MAIL = {
+  host: process.env.FB_SMTP_HOST,
+  port: Number(process.env.FB_SMTP_PORT || 587),
+  user: process.env.FB_SMTP_USER,
+  pass: process.env.FB_SMTP_PASS,
+  from: process.env.FB_MAIL_FROM || process.env.FB_SMTP_USER,
+  to: process.env.FB_MAIL_TO,
+  boardUrl: process.env.FB_BOARD_URL || '',
+};
+const MAIL_ENABLED = Boolean(MAIL.host && MAIL.user && MAIL.pass && MAIL.to);
+let mailTransporter = null;
+function getMailTransporter() {
+  if (!mailTransporter) {
+    mailTransporter = nodemailer.createTransport({
+      host: MAIL.host,
+      port: MAIL.port,
+      secure: false, // STARTTLS on 587
+      auth: { user: MAIL.user, pass: MAIL.pass },
+      tls: { rejectUnauthorized: false }, // tolerate the box's self-signed cert
+    });
+  }
+  return mailTransporter;
+}
+
+function htmlEscape(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Fire-and-forget: never blocks or fails the HTTP response.
+function sendDeliveredEmail(card) {
+  if (!MAIL_ENABLED) return;
+  const title = card.title || 'Your request';
+  const textParts = ['Delivered ✅', '', title, ''];
+  if (card.goal) textParts.push('Goal: ' + card.goal);
+  if (card.idea) textParts.push('Idea: ' + card.idea);
+  if (card.deliveredNote) textParts.push('', 'What shipped:', card.deliveredNote);
+  if (MAIL.boardUrl) textParts.push('', 'Board: ' + MAIL.boardUrl);
+
+  const html =
+    '<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;color:#111">' +
+    '<p style="font-size:12px;letter-spacing:.4px;color:#16a34a;font-weight:700;margin:0 0 6px">DELIVERED ✅</p>' +
+    '<h2 style="margin:0 0 12px;font-size:18px">' + htmlEscape(title) + '</h2>' +
+    (card.goal ? '<p style="margin:6px 0;color:#333"><b>Goal:</b> ' + htmlEscape(card.goal) + '</p>' : '') +
+    (card.idea ? '<p style="margin:6px 0;color:#333"><b>Idea:</b> ' + htmlEscape(card.idea) + '</p>' : '') +
+    (card.deliveredNote
+      ? '<div style="margin:12px 0;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#14532d"><b>What shipped:</b><br/>' +
+        htmlEscape(card.deliveredNote) + '</div>'
+      : '') +
+    (MAIL.boardUrl
+      ? '<p style="margin:16px 0 0"><a href="' + MAIL.boardUrl + '" style="color:#3b82f6;text-decoration:none">Open the Feedback Board →</a></p>'
+      : '') +
+    '</div>';
+
+  getMailTransporter()
+    .sendMail({
+      from: MAIL.from,
+      to: MAIL.to,
+      subject: '✅ Delivered: ' + title,
+      text: textParts.join('\n'),
+      html,
+    })
+    .then((info) => console.log('[mail] delivered-email sent:', info.messageId, '->', MAIL.to))
+    .catch((err) => console.error('[mail] delivered-email failed:', err.message));
+}
 
 const VALID_COLUMNS = ['inbox', 'discussion', 'tobuild', 'delivered'];
 const VALID_TYPES = ['feature', 'bug'];
@@ -225,6 +301,7 @@ api.post('/cards/:id/move', (req, res) => {
     if (typeof req.body.deliveredNote === 'string' && req.body.deliveredNote.trim()) {
       card.deliveredNote = req.body.deliveredNote.trim();
     }
+    sendDeliveredEmail(card); // notify Moshe (no-op unless SMTP env is set)
   }
 
   writeBoard(cards);
