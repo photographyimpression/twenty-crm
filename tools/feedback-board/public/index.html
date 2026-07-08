@@ -86,6 +86,12 @@
       .col-accent-tobuild { border-top: 3px solid var(--amber); }
       .col-accent-delivered { border-top: 3px solid var(--green); }
       .col-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 24px 8px; }
+      .col-add {
+        width: 100%; margin-top: 8px; background: transparent; border: 1px dashed var(--border);
+        border-radius: 10px; padding: 9px; color: var(--muted); font-size: 13px; font-weight: 600;
+        font-family: inherit; cursor: pointer; transition: border-color .15s ease, background .15s ease, color .15s ease;
+      }
+      .col-add:hover { border-color: var(--accent); color: var(--accent); background: var(--panel-2); }
 
       /* Cards */
       .kcard {

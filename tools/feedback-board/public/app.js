@@ -170,11 +170,17 @@ function render() {
     const body = list.length
       ? list.map(cardHtml).join('')
       : '<div class="col-empty">No cards</div>';
+    // Inbox gets an inline "+ Add a card" so you can add straight from the
+    // first column (like the other app), not only the top-right button.
+    const inlineAdd = c.key === 'inbox'
+      ? '<button class="col-add" data-act="newcard">+ Add a card</button>'
+      : '';
     return '<section class="col col-accent-' + c.key + '">' +
       '<div class="col-head">' +
         '<div class="col-title">' + c.icon + ' ' + c.label + ' <span class="count">' + list.length + '</span></div>' +
       '</div>' +
       body +
+      inlineAdd +
     '</section>';
   }).join('');
 }
@@ -261,8 +267,9 @@ root.addEventListener('click', (e) => {
 
   const btn = e.target.closest('[data-act]');
   if (!btn) return;
-  const id = btn.getAttribute('data-id');
   const act = btn.getAttribute('data-act');
+  if (act === 'newcard') { openModal(); return; } // inline "+ Add a card"
+  const id = btn.getAttribute('data-id');
   btn.disabled = true;
   const done = () => { btn.disabled = false; };
   const fail = (err) => { btn.disabled = false; toast(err.message || 'failed', true); };
