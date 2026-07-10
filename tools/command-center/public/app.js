@@ -824,14 +824,28 @@
   async function loadRoadmap() {
     const mount = el('roadmapMount');
     mount.innerHTML = '<div class="state"><div class="spinner"></div><p>Loading roadmap…</p></div>';
+    // Version banner: the app is always the latest deployed build (PWA — no
+    // download); show WHEN that build went live so Moshe can confirm it.
+    let versionLine = '';
+    try {
+      const v = await apiGet('/version');
+      if (v.deployedAt) {
+        const d = new Date(v.deployedAt);
+        versionLine =
+          '<div class="version-banner">✅ You\'re on the latest version — CRM last updated ' +
+          esc(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })) +
+          ' ' + esc(d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })) +
+          ' (updates automatically on every deploy)</div>';
+      }
+    } catch (_e) { /* banner is optional */ }
     try {
       const data = await apiGet('/roadmap');
       const items = data.items || [];
       if (items.length === 0) {
-        mount.innerHTML = '<div class="state"><p>No ideas yet. Add one above.</p></div>';
+        mount.innerHTML = versionLine + '<div class="state"><p>No ideas yet. Add one above.</p></div>';
         return;
       }
-      mount.innerHTML = items
+      mount.innerHTML = versionLine + items
         .map(
           (it) => `
         <div class="row">

@@ -23,6 +23,7 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 
 const PORT = process.env.PORT || 4242;
 const GRAPHQL_URL =
@@ -2067,6 +2068,21 @@ api.post('/task/:id/done', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// App version: when the CRM container was last (re)created = last deploy.
+// Shown on the Roadmap tab so Moshe can see he's always on the latest build
+// (the PWA/web app has no separate download — it IS the deployed version).
+api.get('/version', (req, res) => {
+  execFile(
+    'docker',
+    ['inspect', '--format', '{{.Created}}', 'twenty-server-1'],
+    { timeout: 5000 },
+    (err, stdout) => {
+      if (err) return res.json({ deployedAt: null });
+      res.json({ deployedAt: stdout.trim() });
+    }
+  );
 });
 
 // Click-to-dial: proxy to the CRM's /telnyx/dial with the shared secret
