@@ -747,6 +747,9 @@
       mount.querySelectorAll('[data-done]').forEach((btn) => {
         btn.addEventListener('click', () => markCallDone(btn.getAttribute('data-done'), btn));
       });
+      mount.querySelectorAll('[data-dial]').forEach((btn) => {
+        btn.addEventListener('click', () => dialLead(btn.getAttribute('data-dial'), btn));
+      });
     } catch (e) {
       mount.innerHTML =
         `<div class="state"><div class="big">⚠️</div><p>${esc(e.message)}</p></div>`;
@@ -762,8 +765,10 @@
       sub += `${c.personName ? ' · ' : ''}<a href="tel:${esc(tel)}">${esc(c.phone)}</a>`;
     }
     if (due) sub += `${sub ? ' · ' : ''}due ${esc(due)}`;
+    // Click-to-dial: POST /api/call — the CRM rings Moshe's cell first, then
+    // bridges the lead. tel: link on the number stays as a manual fallback.
     const callBtn = c.phone
-      ? `<a class="btn call-btn" href="tel:${esc(c.phone.replace(/[^\d+]/g, ''))}">Call</a>`
+      ? `<button class="btn call-btn" data-dial="${esc(c.phone.replace(/[^\d+]/g, ''))}">📞 Call</button>`
       : '';
     return `
       <div class="row" data-row="${esc(c.id)}">
@@ -776,6 +781,25 @@
           <button class="btn done-btn" data-done="${esc(c.id)}">Done</button>
         </div>
       </div>`;
+  }
+
+  async function dialLead(phone, btn) {
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Calling…';
+    try {
+      await apiPost('/call', { phone });
+      btn.textContent = '📱 Answer your cell';
+      toast('Ringing your cell — answer and I’ll connect the lead.');
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.disabled = false;
+      }, 12000);
+    } catch (e) {
+      btn.textContent = original;
+      btn.disabled = false;
+      toast('Call failed: ' + e.message, true);
+    }
   }
 
   async function markCallDone(id, btn) {

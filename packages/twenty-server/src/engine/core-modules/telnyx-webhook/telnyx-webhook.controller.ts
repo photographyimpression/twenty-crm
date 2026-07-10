@@ -52,11 +52,12 @@ type TelnyxWebhookBody = {
 
 // Telnyx echoes whatever base64 client_state we set on a previous action
 // back to us in subsequent events for that call. We use it to tag legs by
-// stage (inbound_answered, sip_ring, cell_ring) so handlers don't trip on
-// outbound calls (WebRTC dialing) that share the same webhook URL. We also
-// stash origFrom so the transfer.failed handler can preserve the caller ID
-// when falling back from SIP to cell.
-type ClientState = { stage?: string; origFrom?: string };
+// stage (inbound_answered, sip_ring, cell_ring, c2d_owner) so handlers don't
+// trip on outbound calls (WebRTC dialing) that share the same webhook URL.
+// We also stash origFrom so the transfer.failed handler can preserve the
+// caller ID when falling back from SIP to cell, and target for click-to-dial
+// (the lead's number to bridge once the owner answers).
+type ClientState = { stage?: string; origFrom?: string; target?: string };
 
 const decodeClientState = (
   clientStateB64: string | undefined,
@@ -125,6 +126,111 @@ export class TelnyxWebhookController {
 
       this.logger.error(`WebRTC token error: ${errorMessage}`);
       res.json({ token: null });
+    }
+  }
+
+  // Click-to-dial: originate a call to the OWNER's cell; when he answers,
+  // the voice webhook (c2d_owner branch) transfers the leg to `to`, so
+  // Telnyx dials the lead and bridges the two. Guarded by a shared secret
+  // (TELNYX_DIAL_SECRET) so only our own tools (Command Center) can place
+  // calls — unlike the webhook endpoints, this one has side effects an
+  // outsider could abuse.
+  @Post('dial')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async clickToDial(
+    @Body() body: { to?: string },
+    @Headers('x-dial-secret') dialSecret: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const configuredSecret = process.env['TELNYX_DIAL_SECRET'];
+
+    if (!configuredSecret) {
+      res.status(503).json({ error: 'TELNYX_DIAL_SECRET not configured' });
+
+      return;
+    }
+
+    if (dialSecret !== configuredSecret) {
+      res.status(401).json({ error: 'unauthorized' });
+
+      return;
+    }
+
+    const telnyxApiKey = process.env['TELNYX_API_KEY'];
+    const connectionId =
+      process.env['TELNYX_CALL_CONTROL_APP_ID'] || '2949703198123755053';
+    const fromNumber = process.env['TELNYX_FROM_NUMBER'] || '+15142702784';
+
+    if (!telnyxApiKey) {
+      res
+        .status(503)
+        .json({ error: 'Telnyx credentials not configured on server' });
+
+      return;
+    }
+
+    // Normalize to E.164. Numbers from the CRM come as +<cc><number>; be
+    // tolerant of bare North-American 10/11-digit strings.
+    let target = (body?.to || '').replace(/[^\d+]/g, '');
+
+    if (!target.startsWith('+')) {
+      if (/^1\d{10}$/.test(target)) {
+        target = `+${target}`;
+      } else if (/^\d{10}$/.test(target)) {
+        target = `+1${target}`;
+      }
+    }
+
+    if (!/^\+\d{8,15}$/.test(target)) {
+      res.status(400).json({ error: 'invalid destination number' });
+
+      return;
+    }
+
+    try {
+      const response = await fetch('https://api.telnyx.com/v2/calls', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${telnyxApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          connection_id: connectionId,
+          to: OWNER_PHONE_NUMBER,
+          from: fromNumber,
+          timeout_secs: 30,
+          client_state: Buffer.from(
+            JSON.stringify({ stage: 'c2d_owner', target }),
+          ).toString('base64'),
+        }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        data?: { call_control_id?: string };
+        errors?: unknown;
+      };
+
+      if (!response.ok) {
+        this.logger.error(
+          `Click-to-dial originate failed (${response.status}): ${JSON.stringify(data.errors ?? data)}`,
+        );
+        res.status(502).json({ error: 'Telnyx originate failed' });
+
+        return;
+      }
+
+      const originatedCallId = data.data?.call_control_id;
+
+      this.logger.log(
+        `Click-to-dial: ringing owner cell ${OWNER_PHONE_NUMBER}, will bridge to ${target} (call ${originatedCallId})`,
+      );
+      res.json({ ok: true, callControlId: originatedCallId });
+    } catch (err) {
+      this.logger.error(
+        `Click-to-dial error: ${err instanceof Error ? err.message : err}`,
+      );
+      res.status(500).json({ error: 'dial failed' });
     }
   }
 
@@ -239,6 +345,59 @@ export class TelnyxWebhookController {
     const answeredState = decodeClientState(
       payload?.client_state as string | undefined,
     );
+
+    // Click-to-dial (triggered from the Command Center): we originated a leg
+    // to the owner's cell tagged stage=c2d_owner with the lead's number in
+    // target. When the owner answers, transfer the leg to the lead — Telnyx
+    // dials the lead and bridges the two calls.
+    if (
+      eventType === 'call.answered' &&
+      answeredState?.stage === 'c2d_owner' &&
+      answeredState.target &&
+      callControlId &&
+      telnyxApiKey
+    ) {
+      try {
+        const transferResp = await fetch(
+          `https://api.telnyx.com/v2/calls/${callControlId}/actions/transfer`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${telnyxApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: answeredState.target,
+              from: process.env['TELNYX_FROM_NUMBER'] || '+15142702784',
+              client_state: Buffer.from(
+                JSON.stringify({
+                  stage: 'c2d_lead',
+                  target: answeredState.target,
+                }),
+              ).toString('base64'),
+            }),
+          },
+        );
+
+        if (transferResp.ok) {
+          this.logger.log(
+            `Click-to-dial: owner answered ${callControlId}, bridging to ${answeredState.target}`,
+          );
+        } else {
+          const errBody = await transferResp.text();
+
+          this.logger.error(
+            `Click-to-dial bridge failed (${transferResp.status}): ${errBody}`,
+          );
+        }
+      } catch (err) {
+        this.logger.error(
+          `Click-to-dial bridge error: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+
+      return;
+    }
 
     if (
       eventType === 'call.answered' &&

@@ -2069,6 +2069,44 @@ api.post('/task/:id/done', async (req, res) => {
   }
 });
 
+// Click-to-dial: proxy to the CRM's /telnyx/dial with the shared secret
+// (read from the Twenty .env like APP_SECRET — never exposed to the browser).
+// The CRM rings Moshe's cell first; when he answers, Telnyx bridges the lead.
+const DIAL_SECRET =
+  process.env.CC_DIAL_SECRET ||
+  readEnvValueFromFile(TWENTY_ENV_PATH, 'TELNYX_DIAL_SECRET') ||
+  null;
+const CRM_BASE_URL = GRAPHQL_URL.replace(/\/graphql\/?$/, '');
+
+api.post('/call', async (req, res) => {
+  const phone = String((req.body && req.body.phone) || '').trim();
+  if (!phone) return res.status(400).json({ error: 'phone is required' });
+  if (!DIAL_SECRET) {
+    return res
+      .status(503)
+      .json({ error: 'dialing not configured (TELNYX_DIAL_SECRET missing)' });
+  }
+  try {
+    const r = await fetch(`${CRM_BASE_URL}/telnyx/dial`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-dial-secret': DIAL_SECRET,
+      },
+      body: JSON.stringify({ to: phone }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      return res
+        .status(502)
+        .json({ error: data.error || `dial failed (${r.status})` });
+    }
+    res.json({ ok: true, callControlId: data.callControlId });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ---- Roadmap store ----------------------------------------------------------
 
 const SEED_ROADMAP = [
