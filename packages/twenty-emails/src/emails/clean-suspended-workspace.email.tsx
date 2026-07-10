@@ -42,7 +42,7 @@ export const CleanSuspendedWorkspaceEmail = ({
         <Trans id="All data in this workspace has been permanently deleted." />
         <br />
         <br />
-        <Trans id="If you wish to use Twenty again, you can create a new workspace." />
+        <Trans id="If you wish to use BSD again, you can create a new workspace." />
       </MainText>
       <br />
       <CallToAction

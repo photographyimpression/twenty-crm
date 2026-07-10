@@ -180,7 +180,7 @@ export const Authorize = () => {
         <StyledAppsContainer>
           <img
             src="/images/integrations/twenty-logo.svg"
-            alt="twenty-icon"
+            alt="bsd-icon"
             height={40}
             width={40}
           />

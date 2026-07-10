@@ -1,20 +1,30 @@
 // Feedback Board frontend — vanilla JS, no framework.
 //
-// The API lives under the same mount path this page is served from, so we build
-// relative URLs (the nginx prefix, e.g. /board-<TOKEN>/, is stripped upstream
-// so the app itself sees /api and /uploads at the root — relative paths just work).
+// Layout modeled on Moshe's Zrizes "Requests & bugs" board (his reference
+// screenshot): numbered columns with subtitles, an always-visible request
+// form in column 1, pale-yellow review cards with a green Approve + outline
+// Counter, icon-only delete, and compact one-line Delivered rows that expand
+// on click.
+//
+// The API lives under the same mount path this page is served from, so
+// relative URLs work (nginx strips the /board-<TOKEN>/ prefix upstream).
 
 const COLUMNS = [
-  { key: 'inbox', label: 'Inbox', icon: '📥' },
-  { key: 'discussion', label: 'Discussion', icon: '💬' },
-  { key: 'tobuild', label: 'To Build', icon: '🛠️' },
-  { key: 'delivered', label: 'Delivered', icon: '✅' },
+  { key: 'inbox', num: '1', label: 'Requests', sub: 'Drop what you want or a bug here' },
+  { key: 'discussion', num: '2', label: 'Discussion', sub: 'Claude has a question or a better idea — approve or counter' },
+  { key: 'tobuild', num: '3', label: 'To Build', sub: 'Agreed — on Claude’s list' },
+  { key: 'delivered', num: '4', label: 'Delivered', sub: 'Shipped (you get an email)' },
 ];
 
 const root = document.getElementById('root');
 const toastEl = document.getElementById('toast');
 
 let cards = [];
+// Images pasted or picked for the inline request form.
+let pendingFiles = [];
+let selectedType = 'feature';
+// Delivered rows the user has expanded (survive re-renders).
+const openRows = new Set();
 
 // --- helpers ---------------------------------------------------------------
 
@@ -48,6 +58,11 @@ function fmtDate(iso) {
     ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
+function fmtDay(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 // --- data ------------------------------------------------------------------
 
 async function load() {
@@ -63,7 +78,6 @@ async function load() {
 function cardsFor(col) {
   const list = cards.filter((c) => (c.column || 'inbox') === col);
   if (col === 'delivered') {
-    // Newest first by deliveredAt (fallback updatedAt).
     list.sort((a, b) => new Date(b.deliveredAt || b.updatedAt || 0) - new Date(a.deliveredAt || a.updatedAt || 0));
   } else {
     list.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
@@ -72,6 +86,12 @@ function cardsFor(col) {
 }
 
 // --- rendering -------------------------------------------------------------
+
+function pillHtml(card) {
+  return card.type === 'bug'
+    ? '<span class="pill pill-bug">🐞 Bug</span>'
+    : '<span class="pill pill-feature">✨ Feature</span>';
+}
 
 function shotsHtml(card) {
   if (!card.screenshots || !card.screenshots.length) return '';
@@ -92,11 +112,16 @@ function threadHtml(card) {
   ).join('') + '</div>';
 }
 
+function commentBoxHtml(card) {
+  return threadHtml(card) +
+    '<div class="cmt-add">' +
+      '<input type="text" placeholder="Add a comment…" data-cmt-input="' + card.id + '" />' +
+      '<button class="btn btn-sm" data-act="comment" data-id="' + card.id + '">Add</button>' +
+    '</div>';
+}
+
 function cardHtml(card) {
   const col = card.column || 'inbox';
-  const typePill = card.type === 'bug'
-    ? '<span class="pill pill-bug">Bug</span>'
-    : '<span class="pill pill-feature">Feature</span>';
 
   let fields = '';
   if (card.goal) fields += '<div class="kcard-field"><span class="lbl">Goal</span>' + esc(card.goal) + '</div>';
@@ -104,215 +129,119 @@ function cardHtml(card) {
 
   let claudeNote = '';
   if (col === 'discussion' && card.claudeNote) {
-    claudeNote = '<div class="claude-note"><span class="lbl">🤖 Claude proposes</span>' + esc(card.claudeNote) + '</div>';
+    claudeNote = '<div class="claude-note"><span class="lbl">💬 Claude’s suggestion</span>' + esc(card.claudeNote) + '</div>';
   }
 
-  let deliveredNote = '';
-  if (col === 'delivered' && card.deliveredNote) {
-    deliveredNote = '<div class="delivered-note"><span class="lbl">Delivered</span>' + esc(card.deliveredNote) + '</div>';
-  }
+  // Top row: pill + (trash icon where delete makes sense).
+  const trash = (col === 'inbox' || col === 'discussion')
+    ? '<button class="icon-btn" title="Delete card" data-act="delete" data-id="' + card.id + '">🗑</button>'
+    : '';
 
-  // Per-column action buttons.
   let actions = '';
   if (col === 'inbox') {
     actions =
-      '<button class="btn btn-accent btn-sm" data-act="move" data-to="discussion" data-id="' + card.id + '">→ Send to review</button>' +
-      '<button class="btn btn-ghost btn-sm" data-act="move" data-to="tobuild" data-id="' + card.id + '">→ To Build</button>' +
-      '<button class="btn btn-red btn-sm" data-act="delete" data-id="' + card.id + '">Delete</button>';
+      '<button class="btn btn-sm" data-act="move" data-to="discussion" data-id="' + card.id + '">→ Review</button>' +
+      '<button class="btn btn-sm" data-act="move" data-to="tobuild" data-id="' + card.id + '">→ To Build</button>';
   } else if (col === 'discussion') {
     actions =
-      '<button class="btn btn-green btn-sm" data-act="approve" data-id="' + card.id + '">✓ Approve → To Build</button>' +
-      '<button class="btn btn-ghost btn-sm" data-act="counter" data-id="' + card.id + '">↩ Counter → Inbox</button>' +
-      '<button class="btn btn-red btn-sm" data-act="delete" data-id="' + card.id + '">Delete</button>';
+      '<button class="btn btn-green btn-sm" data-act="approve" data-id="' + card.id + '">👍 Approve → build</button>' +
+      '<button class="btn btn-sm" data-act="counter" data-id="' + card.id + '">💬 Counter</button>';
   } else if (col === 'tobuild') {
     actions =
-      '<button class="btn btn-ghost btn-sm" data-act="move" data-to="discussion" data-id="' + card.id + '">← Discussion</button>' +
-      '<button class="btn btn-green btn-sm" data-act="deliver" data-id="' + card.id + '">✓ Mark delivered</button>';
-  } else if (col === 'delivered') {
-    actions =
-      '<button class="btn btn-ghost btn-sm" data-act="move" data-to="tobuild" data-id="' + card.id + '">↺ Reopen</button>' +
-      '<button class="btn btn-red btn-sm" data-act="delete" data-id="' + card.id + '">Delete</button>';
+      '<button class="btn btn-green btn-sm" data-act="deliver" data-id="' + card.id + '">✓ Mark delivered</button>' +
+      '<button class="btn btn-sm" data-act="move" data-to="discussion" data-id="' + card.id + '">← Discussion</button>';
   }
 
-  // Comment thread + add box — available on inbox/discussion/tobuild.
-  let commentBox = '';
-  if (col !== 'delivered') {
-    commentBox =
-      threadHtml(card) +
-      '<div class="cmt-add">' +
-        '<input type="text" placeholder="Add a comment…" data-cmt-input="' + card.id + '" />' +
-        '<button class="btn btn-ghost btn-sm" data-act="comment" data-id="' + card.id + '">Add</button>' +
-      '</div>';
-  } else {
-    commentBox = threadHtml(card);
-  }
-
-  const deliveredMeta = col === 'delivered' && card.deliveredAt
-    ? 'Delivered ' + fmtDate(card.deliveredAt)
-    : 'Created ' + fmtDate(card.createdAt);
-
-  return '<div class="kcard" data-card="' + card.id + '">' +
-    '<div class="kcard-top">' + typePill + '</div>' +
+  return '<div class="kcard' + (col === 'discussion' ? ' review' : '') + '" data-card="' + card.id + '">' +
+    '<div class="kcard-top">' + pillHtml(card) + '<span class="spacer"></span>' + trash + '</div>' +
     '<div class="kcard-title">' + esc(card.title) + '</div>' +
     fields +
     claudeNote +
-    deliveredNote +
     shotsHtml(card) +
-    commentBox +
+    commentBoxHtml(card) +
     '<div class="kcard-actions">' + actions + '</div>' +
-    '<div class="kcard-meta">' + deliveredMeta + '</div>' +
+    '<div class="kcard-meta">Created ' + fmtDate(card.createdAt) + '</div>' +
+  '</div>';
+}
+
+// Delivered: compact one-line row, click to expand full detail.
+function deliveredRowHtml(card) {
+  const open = openRows.has(card.id) ? ' open' : '';
+  let detail = '';
+  if (card.goal) detail += '<div class="kcard-field"><span class="lbl">Goal</span>' + esc(card.goal) + '</div>';
+  if (card.idea) detail += '<div class="kcard-field"><span class="lbl">Idea</span>' + esc(card.idea) + '</div>';
+  if (card.deliveredNote) {
+    detail += '<div class="delivered-note"><span class="lbl">What shipped</span>' + esc(card.deliveredNote) + '</div>';
+  }
+  detail += threadHtml(card);
+  detail +=
+    '<div class="kcard-actions">' +
+      '<button class="btn btn-sm" data-act="move" data-to="tobuild" data-id="' + card.id + '">↺ Reopen</button>' +
+      '<button class="icon-btn" title="Delete card" data-act="delete" data-id="' + card.id + '">🗑</button>' +
+    '</div>';
+
+  return '<div class="drow' + open + '" data-drow="' + card.id + '">' +
+    '<div class="drow-line">' + pillHtml(card) +
+      '<span class="drow-title">' + esc(card.title) + '</span>' +
+      '<span class="drow-date">shipped ' + esc(fmtDay(card.deliveredAt || card.updatedAt)) + '</span>' +
+    '</div>' +
+    '<div class="drow-detail">' + detail + '</div>' +
+  '</div>';
+}
+
+function inlineFormHtml() {
+  return '<div class="inline-form" id="inlineForm">' +
+    '<div class="field type-toggle" id="typeToggle">' +
+      '<button type="button" data-type="feature" class="' + (selectedType === 'feature' ? 'active' : '') + '">✨ Feature</button>' +
+      '<button type="button" data-type="bug" class="' + (selectedType === 'bug' ? 'active' : '') + '">🐞 Bug</button>' +
+    '</div>' +
+    '<div class="field">' +
+      '<label>Goal — what you want to achieve <span class="opt">(optional)</span></label>' +
+      '<textarea id="goalInput" placeholder="e.g. clients should confirm their shoot time themselves"></textarea>' +
+    '</div>' +
+    '<div class="field">' +
+      '<label>Idea — how it could work <span class="opt">(optional)</span></label>' +
+      '<textarea id="ideaInput" placeholder="e.g. a link in the reminder email…"></textarea>' +
+    '</div>' +
+    '<div class="shots" id="shotPreview"></div>' +
+    '<input type="file" id="fileInput" accept="image/*" multiple hidden />' +
+    '<button class="btn btn-primary" id="addRequestBtn" style="width:100%;justify-content:center">🚀 Add request</button>' +
+    '<div class="form-err" id="formErr"></div>' +
+    '<div class="form-hint">Paste screenshots anywhere on this page — they attach when you add it.</div>' +
   '</div>';
 }
 
 function render() {
   root.innerHTML = COLUMNS.map((c) => {
     const list = cardsFor(c.key);
-    const body = list.length
-      ? list.map(cardHtml).join('')
-      : '<div class="col-empty">No cards</div>';
-    // Inbox gets an inline "+ Add a card" so you can add straight from the
-    // first column (like the other app), not only the top-right button.
-    const inlineAdd = c.key === 'inbox'
-      ? '<button class="col-add" data-act="newcard">+ Add a card</button>'
-      : '';
-    return '<section class="col col-accent-' + c.key + '">' +
+    let body;
+    if (c.key === 'delivered') {
+      body = list.length ? list.map(deliveredRowHtml).join('') : '<div class="col-empty">Nothing shipped yet.</div>';
+    } else {
+      body = list.length ? list.map(cardHtml).join('') : '<div class="col-empty">Nothing here.</div>';
+    }
+    const form = c.key === 'inbox' ? inlineFormHtml() : '';
+    return '<section class="col">' +
       '<div class="col-head">' +
-        '<div class="col-title">' + c.icon + ' ' + c.label + ' <span class="count">' + list.length + '</span></div>' +
+        '<div class="col-title-row">' +
+          '<div class="col-title"><span class="num">' + c.num + ' ·</span> ' + c.label + '</div>' +
+          '<div class="col-count">' + list.length + '</div>' +
+        '</div>' +
+        '<div class="col-sub">' + c.sub + '</div>' +
       '</div>' +
+      form +
       body +
-      inlineAdd +
     '</section>';
   }).join('');
+  wireInlineForm();
+  renderShotPreview();
 }
 
-// --- actions ---------------------------------------------------------------
-
-async function doMove(id, to) {
-  await api('/cards/' + id + '/move', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ column: to }),
-  });
-  toast('Moved to ' + to);
-  await load();
-}
-
-async function doDeliver(id) {
-  const note = prompt('Delivered note (optional) — what shipped?') || '';
-  await api('/cards/' + id + '/move', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ column: 'delivered', deliveredNote: note }),
-  });
-  toast('Delivered ✅');
-  await load();
-}
-
-async function doApprove(id) {
-  await api('/cards/' + id + '/approve', { method: 'POST' });
-  toast('Approved → To Build');
-  await load();
-}
-
-async function doCounter(id) {
-  const text = prompt('Your counter-comment (sends the card back to Inbox):');
-  if (!text || !text.trim()) return;
-  await api('/cards/' + id + '/counter', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: text.trim() }),
-  });
-  toast('Countered → Inbox');
-  await load();
-}
-
-async function doComment(id) {
-  const input = document.querySelector('[data-cmt-input="' + id + '"]');
-  const text = input && input.value.trim();
-  if (!text) return;
-  await api('/cards/' + id + '/comment', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ author: 'moshe', text }),
-  });
-  await load();
-}
-
-async function doDelete(id) {
-  if (!confirm('Delete this card permanently?')) return;
-  await api('/cards/' + id, { method: 'DELETE' });
-  toast('Deleted');
-  await load();
-}
-
-async function sendAllToReview() {
-  const inbox = cardsFor('inbox');
-  if (!inbox.length) { toast('Inbox is empty'); return; }
-  if (!confirm('Send all ' + inbox.length + ' Inbox card(s) to Discussion?')) return;
-  for (const c of inbox) {
-    await api('/cards/' + c.id + '/move', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ column: 'discussion' }),
-    });
-  }
-  toast('Sent ' + inbox.length + ' to review');
-  await load();
-}
-
-// Event delegation for all card buttons.
-root.addEventListener('click', (e) => {
-  const shot = e.target.closest('[data-shot]');
-  if (shot) { openLightbox(shot.getAttribute('data-shot')); return; }
-
-  const btn = e.target.closest('[data-act]');
-  if (!btn) return;
-  const act = btn.getAttribute('data-act');
-  if (act === 'newcard') { openModal(); return; } // inline "+ Add a card"
-  const id = btn.getAttribute('data-id');
-  btn.disabled = true;
-  const done = () => { btn.disabled = false; };
-  const fail = (err) => { btn.disabled = false; toast(err.message || 'failed', true); };
-
-  if (act === 'move') doMove(id, btn.getAttribute('data-to')).catch(fail).finally(done);
-  else if (act === 'deliver') doDeliver(id).catch(fail).finally(done);
-  else if (act === 'approve') doApprove(id).catch(fail).finally(done);
-  else if (act === 'counter') doCounter(id).catch(fail).finally(done);
-  else if (act === 'comment') doComment(id).catch(fail).finally(done);
-  else if (act === 'delete') doDelete(id).catch(fail).finally(done);
-});
-
-// Enter-to-submit in a comment input.
-root.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.target.matches('[data-cmt-input]')) {
-    e.preventDefault();
-    doComment(e.target.getAttribute('data-cmt-input')).catch((err) => toast(err.message, true));
-  }
-});
-
-document.getElementById('sendAllBtn').addEventListener('click', () => {
-  sendAllToReview().catch((e) => toast(e.message, true));
-});
-
-// --- lightbox --------------------------------------------------------------
-
-const lightbox = document.getElementById('lightbox');
-const lightboxImg = document.getElementById('lightboxImg');
-function openLightbox(src) { lightboxImg.src = src; lightbox.classList.add('show'); }
-lightbox.addEventListener('click', () => lightbox.classList.remove('show'));
-
-// --- new-card modal --------------------------------------------------------
-
-const backdrop = document.getElementById('modalBackdrop');
-const form = document.getElementById('cardForm');
-const formErr = document.getElementById('formErr');
-const fileInput = document.getElementById('fileInput');
-const shotPreview = document.getElementById('shotPreview');
-let selectedType = 'feature';
-// Images from paste + the file picker, unified so pasting alone is enough.
-let pendingFiles = [];
+// --- inline request form -----------------------------------------------------
 
 function renderShotPreview() {
+  const shotPreview = document.getElementById('shotPreview');
+  if (!shotPreview) return;
   shotPreview.innerHTML = pendingFiles.map((f, i) =>
     '<span class="shot-thumb"><img src="' + f.url + '" alt="screenshot" />' +
     '<button type="button" class="shot-remove" data-shot-remove="' + i + '" aria-label="Remove">×</button></span>'
@@ -334,70 +263,14 @@ function clearPendingFiles() {
   renderShotPreview();
 }
 
-function openModal() {
-  form.reset();
+async function submitInlineForm() {
+  const formErr = document.getElementById('formErr');
+  const goal = document.getElementById('goalInput').value.trim();
+  const idea = document.getElementById('ideaInput').value.trim();
   formErr.textContent = '';
-  selectedType = 'feature';
-  syncTypeToggle();
-  clearPendingFiles();
-  backdrop.classList.add('show');
-  form.goal.focus();
-}
-function closeModal() { backdrop.classList.remove('show'); }
-
-function syncTypeToggle() {
-  document.querySelectorAll('#typeToggle button').forEach((b) => {
-    b.classList.toggle('active', b.getAttribute('data-type') === selectedType);
-  });
-}
-
-document.getElementById('newCardBtn').addEventListener('click', openModal);
-document.getElementById('cancelBtn').addEventListener('click', closeModal);
-backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
-document.getElementById('typeToggle').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-type]');
-  if (!b) return;
-  selectedType = b.getAttribute('data-type');
-  syncTypeToggle();
-});
-
-// Clean paste-zone opens the hidden picker on click (no "Choose Files" button).
-document.getElementById('pasteZone').addEventListener('click', () => fileInput.click());
-
-// File picker → pending files (clear the native input so it isn't double-counted).
-fileInput.addEventListener('change', () => {
-  addPendingFiles(fileInput.files);
-  fileInput.value = '';
-});
-
-// Remove a pending thumbnail.
-shotPreview.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-shot-remove]');
-  if (!btn) return;
-  const removed = pendingFiles.splice(Number(btn.getAttribute('data-shot-remove')), 1)[0];
-  if (removed) URL.revokeObjectURL(removed.url);
-  renderShotPreview();
-});
-
-// Paste screenshots anywhere while the modal is open (images only; text paste untouched).
-document.addEventListener('paste', (e) => {
-  if (!backdrop.classList.contains('show')) return;
-  const images = Array.from(e.clipboardData ? e.clipboardData.items : [])
-    .filter((it) => it.type && it.type.startsWith('image/'))
-    .map((it) => it.getAsFile())
-    .filter(Boolean);
-  if (images.length) { e.preventDefault(); addPendingFiles(images); }
-});
-
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  formErr.textContent = '';
-
-  const goal = form.goal.value.trim();
-  const idea = form.idea.value.trim();
 
   if (!goal && !idea && pendingFiles.length === 0) {
-    formErr.textContent = 'Add something — a goal, an idea, or a screenshot.';
+    formErr.textContent = 'Add something — a goal, an idea, or paste a screenshot.';
     return;
   }
 
@@ -408,22 +281,158 @@ form.addEventListener('submit', async (e) => {
   fd.append('idea', idea);
   pendingFiles.forEach((f) => fd.append('screenshots', f.file));
 
-  const submitBtn = document.getElementById('submitBtn');
-  submitBtn.disabled = true;
+  const btn = document.getElementById('addRequestBtn');
+  btn.disabled = true;
   try {
     await api('/cards', { method: 'POST', body: fd });
     clearPendingFiles();
-    closeModal();
-    toast('Card added to Inbox');
+    toast('Added to Requests');
     await load();
   } catch (err) {
     formErr.textContent = err.message || 'Failed to create card.';
-  } finally {
-    submitBtn.disabled = false;
+    btn.disabled = false;
+  }
+}
+
+function wireInlineForm() {
+  const toggle = document.getElementById('typeToggle');
+  if (!toggle) return;
+  toggle.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-type]');
+    if (!b) return;
+    selectedType = b.getAttribute('data-type');
+    toggle.querySelectorAll('button').forEach((x) =>
+      x.classList.toggle('active', x.getAttribute('data-type') === selectedType));
+  });
+  document.getElementById('addRequestBtn').addEventListener('click', submitInlineForm);
+  const shotPreview = document.getElementById('shotPreview');
+  shotPreview.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-shot-remove]');
+    if (!btn) return;
+    e.stopPropagation();
+    const removed = pendingFiles.splice(Number(btn.getAttribute('data-shot-remove')), 1)[0];
+    if (removed) URL.revokeObjectURL(removed.url);
+    renderShotPreview();
+  });
+}
+
+// Paste screenshots anywhere on the page → attach to the request form.
+document.addEventListener('paste', (e) => {
+  const images = Array.from(e.clipboardData ? e.clipboardData.items : [])
+    .filter((it) => it.type && it.type.startsWith('image/'))
+    .map((it) => it.getAsFile())
+    .filter(Boolean);
+  if (images.length) { e.preventDefault(); addPendingFiles(images); }
+});
+
+// --- card actions ------------------------------------------------------------
+
+async function doMove(id, to) {
+  await api('/cards/' + id + '/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ column: to }),
+  });
+  toast('Moved');
+  await load();
+}
+
+async function doDeliver(id) {
+  const note = prompt('Delivered note (optional) — what shipped?') || '';
+  await api('/cards/' + id + '/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ column: 'delivered', deliveredNote: note }),
+  });
+  toast('Delivered ✅');
+  await load();
+}
+
+async function doApprove(id) {
+  await api('/cards/' + id + '/approve', { method: 'POST' });
+  toast('Approved → To Build');
+  await load();
+}
+
+async function doCounter(id) {
+  const text = prompt('Your counter-comment (sends the card back to Requests):');
+  if (!text || !text.trim()) return;
+  await api('/cards/' + id + '/counter', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: text.trim() }),
+  });
+  toast('Countered → Requests');
+  await load();
+}
+
+async function doComment(id) {
+  const input = document.querySelector('[data-cmt-input="' + id + '"]');
+  const text = input && input.value.trim();
+  if (!text) return;
+  await api('/cards/' + id + '/comment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ author: 'moshe', text }),
+  });
+  await load();
+}
+
+async function doDelete(id) {
+  if (!confirm('Delete this card permanently?')) return;
+  await api('/cards/' + id, { method: 'DELETE' });
+  openRows.delete(id);
+  toast('Deleted');
+  await load();
+}
+
+// Event delegation for all card buttons + delivered-row expansion.
+root.addEventListener('click', (e) => {
+  const shot = e.target.closest('[data-shot]');
+  if (shot) { openLightbox(shot.getAttribute('data-shot')); return; }
+
+  const btn = e.target.closest('[data-act]');
+  if (btn) {
+    const act = btn.getAttribute('data-act');
+    const id = btn.getAttribute('data-id');
+    btn.disabled = true;
+    const done = () => { btn.disabled = false; };
+    const fail = (err) => { btn.disabled = false; toast(err.message || 'failed', true); };
+
+    if (act === 'move') doMove(id, btn.getAttribute('data-to')).catch(fail).finally(done);
+    else if (act === 'deliver') doDeliver(id).catch(fail).finally(done);
+    else if (act === 'approve') doApprove(id).catch(fail).finally(done);
+    else if (act === 'counter') doCounter(id).catch(fail).finally(done);
+    else if (act === 'comment') doComment(id).catch(fail).finally(done);
+    else if (act === 'delete') doDelete(id).catch(fail).finally(done);
+    return;
+  }
+
+  // Expand/collapse a delivered row (ignore clicks inside inputs/details).
+  const drow = e.target.closest('[data-drow]');
+  if (drow && !e.target.closest('.drow-detail')) {
+    const id = drow.getAttribute('data-drow');
+    if (openRows.has(id)) openRows.delete(id); else openRows.add(id);
+    drow.classList.toggle('open');
   }
 });
 
-// Refresh when the tab regains focus (picks up Claude's direct board.json edits).
+// Enter-to-submit in a comment input.
+root.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches('[data-cmt-input]')) {
+    e.preventDefault();
+    doComment(e.target.getAttribute('data-cmt-input')).catch((err) => toast(err.message, true));
+  }
+});
+
+// --- lightbox --------------------------------------------------------------
+
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightboxImg');
+function openLightbox(src) { lightboxImg.src = src; lightbox.classList.add('show'); }
+lightbox.addEventListener('click', () => lightbox.classList.remove('show'));
+
+// Refresh when the tab regains focus (picks up Claude's direct board edits).
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) load();
 });
