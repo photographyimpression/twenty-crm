@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Feedback Board</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>" />
+    <title>BSD · Feedback Board</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231a2230'/><text x='50' y='72' font-size='62' font-family='-apple-system,Helvetica,Arial' font-weight='800' fill='white' text-anchor='middle'>B</text></svg>" />
     <style>
       /* Light "Zrizes" look (Moshe's reference screenshot): white page, thin
          gray borders, numbered column headers with subtitles, outline chips,
@@ -41,8 +41,12 @@
       header {
         padding: 26px 28px 6px; max-width: 1500px; margin: 0 auto;
       }
-      header h1 { margin: 0; font-size: 22px; font-weight: 800; }
+      header h1 { margin: 0; font-size: 22px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
       header .subtitle { color: var(--muted); font-size: 13.5px; margin-top: 6px; }
+      .brand-chip {
+        background: #1a2230; color: #fff; border-radius: 9px; padding: 3px 10px;
+        font-size: 16px; font-weight: 800; letter-spacing: .5px;
+      }
       main { max-width: 1500px; margin: 0 auto; padding: 14px 20px 60px; }
 
       /* Buttons */
@@ -198,8 +202,8 @@
   </head>
   <body>
     <header>
-      <h1>Feedback Board</h1>
-      <div class="subtitle">Private board — drop what you want or a bug (paste screenshots). Say “move everything right” and Claude builds column by column.</div>
+      <h1><span class="brand-chip">BSD</span> Feedback Board</h1>
+      <div class="subtitle">For the <b>BSD app</b> (your CRM at crm.impressionphotography.ca) — drop what you want or a bug (paste screenshots). Say “move everything right” and Claude builds column by column.</div>
     </header>
 
     <main>
