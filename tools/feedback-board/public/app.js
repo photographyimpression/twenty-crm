@@ -25,6 +25,9 @@ let pendingFiles = [];
 let selectedType = 'feature';
 // Delivered rows the user has expanded (survive re-renders).
 const openRows = new Set();
+// Per-card pending comment screenshots: cardId -> [{file, url}]. Pasting while
+// a comment box is focused attaches here instead of the request form.
+const cmtDrafts = {};
 
 // --- helpers ---------------------------------------------------------------
 
@@ -103,21 +106,40 @@ function shotsHtml(card) {
 function threadHtml(card) {
   const comments = Array.isArray(card.comments) ? card.comments : [];
   if (!comments.length) return '';
-  return '<div class="thread">' + comments.map((c) =>
-    '<div class="cmt ' + (c.author === 'claude' ? 'claude' : 'moshe') + '">' +
+  return '<div class="thread">' + comments.map((c) => {
+    const shots = Array.isArray(c.screenshots) && c.screenshots.length
+      ? '<div class="shots">' + c.screenshots.map((f) =>
+          '<img src="uploads/' + esc(f) + '" alt="screenshot" data-shot="uploads/' + esc(f) + '" />').join('') +
+        '</div>'
+      : '';
+    return '<div class="cmt ' + (c.author === 'claude' ? 'claude' : 'moshe') + '">' +
       '<span class="who">' + esc(c.author) + '</span>' +
       '<span class="when">' + fmtDate(c.at) + '</span><br/>' +
       esc(c.text) +
-    '</div>'
-  ).join('') + '</div>';
+      shots +
+    '</div>';
+  }).join('') + '</div>';
 }
 
 function commentBoxHtml(card) {
   return threadHtml(card) +
+    '<div class="shots" data-cmt-shots="' + card.id + '"></div>' +
     '<div class="cmt-add">' +
-      '<input type="text" placeholder="Add a comment…" data-cmt-input="' + card.id + '" />' +
+      '<input type="text" placeholder="Add a comment… (paste a screenshot here too)" data-cmt-input="' + card.id + '" />' +
       '<button class="btn btn-sm" data-act="comment" data-id="' + card.id + '">Add</button>' +
     '</div>';
+}
+
+// Draft-screenshot chips under a card's comment box (kept across re-renders).
+function renderCmtDrafts() {
+  document.querySelectorAll('[data-cmt-shots]').forEach((box) => {
+    const id = box.getAttribute('data-cmt-shots');
+    const draft = cmtDrafts[id] || [];
+    box.innerHTML = draft.map((f, i) =>
+      '<span class="shot-thumb"><img src="' + f.url + '" alt="screenshot" />' +
+      '<button type="button" class="shot-remove" data-cmt-shot-remove="' + id + ':' + i + '" aria-label="Remove">×</button></span>'
+    ).join('');
+  });
 }
 
 function cardHtml(card) {
@@ -235,6 +257,7 @@ function render() {
   }).join('');
   wireInlineForm();
   renderShotPreview();
+  renderCmtDrafts();
 }
 
 // --- inline request form -----------------------------------------------------
@@ -316,13 +339,35 @@ function wireInlineForm() {
   });
 }
 
-// Paste screenshots anywhere on the page → attach to the request form.
+// Paste screenshots anywhere on the page. If a comment box is focused, the
+// image attaches to THAT comment; otherwise it goes to the request form.
 document.addEventListener('paste', (e) => {
   const images = Array.from(e.clipboardData ? e.clipboardData.items : [])
     .filter((it) => it.type && it.type.startsWith('image/'))
     .map((it) => it.getAsFile())
     .filter(Boolean);
-  if (images.length) { e.preventDefault(); addPendingFiles(images); }
+  if (!images.length) return;
+  e.preventDefault();
+  const active = document.activeElement;
+  if (active && active.matches && active.matches('[data-cmt-input]')) {
+    const id = active.getAttribute('data-cmt-input');
+    if (!cmtDrafts[id]) cmtDrafts[id] = [];
+    images.forEach((file) => cmtDrafts[id].push({ file, url: URL.createObjectURL(file) }));
+    renderCmtDrafts();
+  } else {
+    addPendingFiles(images);
+  }
+});
+
+// Remove a pending comment screenshot chip.
+root.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-cmt-shot-remove]');
+  if (!btn) return;
+  e.stopPropagation();
+  const [id, idx] = btn.getAttribute('data-cmt-shot-remove').split(':');
+  const removed = (cmtDrafts[id] || []).splice(Number(idx), 1)[0];
+  if (removed) URL.revokeObjectURL(removed.url);
+  renderCmtDrafts();
 });
 
 // --- card actions ------------------------------------------------------------
@@ -368,13 +413,25 @@ async function doCounter(id) {
 
 async function doComment(id) {
   const input = document.querySelector('[data-cmt-input="' + id + '"]');
-  const text = input && input.value.trim();
-  if (!text) return;
-  await api('/cards/' + id + '/comment', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ author: 'moshe', text }),
-  });
+  const text = (input && input.value.trim()) || '';
+  const draft = cmtDrafts[id] || [];
+  if (!text && draft.length === 0) return;
+  if (draft.length > 0) {
+    // Multipart when screenshots are attached.
+    const fd = new FormData();
+    fd.append('author', 'moshe');
+    fd.append('text', text);
+    draft.forEach((f) => fd.append('screenshots', f.file));
+    await api('/cards/' + id + '/comment', { method: 'POST', body: fd });
+    draft.forEach((f) => URL.revokeObjectURL(f.url));
+    delete cmtDrafts[id];
+  } else {
+    await api('/cards/' + id + '/comment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ author: 'moshe', text }),
+    });
+  }
   await load();
 }
 

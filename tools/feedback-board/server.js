@@ -297,6 +297,14 @@ api.post('/cards/:id/move', (req, res) => {
   if (enteringDelivered) {
     deleteScreenshots(card.screenshots);
     card.screenshots = [];
+    // Comment screenshots are cleaned up on delivery too (same space-saving
+    // rule as card screenshots).
+    (card.comments || []).forEach((comment) => {
+      if (Array.isArray(comment.screenshots) && comment.screenshots.length) {
+        deleteScreenshots(comment.screenshots);
+        delete comment.screenshots;
+      }
+    });
     card.deliveredAt = nowIso();
     if (typeof req.body.deliveredNote === 'string' && req.body.deliveredNote.trim()) {
       card.deliveredNote = req.body.deliveredNote.trim();
@@ -308,18 +316,28 @@ api.post('/cards/:id/move', (req, res) => {
   res.json({ ok: true, card });
 });
 
-// Append a comment. author is "moshe" or "claude".
-api.post('/cards/:id/comment', (req, res) => {
+// Append a comment. author is "moshe" or "claude". Accepts JSON (text-only,
+// how Claude comments) OR multipart with pasted screenshot images — a comment
+// needs text or at least one image.
+api.post('/cards/:id/comment', upload.array('screenshots', 4), (req, res) => {
+  const files = req.files || [];
   const author = req.body && req.body.author === 'claude' ? 'claude' : 'moshe';
   const text = (req.body && req.body.text ? String(req.body.text) : '').trim();
-  if (!text) return res.status(400).json({ error: 'text is required' });
+  if (!text && files.length === 0) {
+    return res.status(400).json({ error: 'add text or a screenshot' });
+  }
 
   const cards = readBoard();
   const card = findCard(cards, req.params.id);
-  if (!card) return res.status(404).json({ error: 'card not found' });
+  if (!card) {
+    deleteScreenshots(files.map((f) => f.filename));
+    return res.status(404).json({ error: 'card not found' });
+  }
 
   if (!Array.isArray(card.comments)) card.comments = [];
-  card.comments.push({ author, text, at: nowIso() });
+  const comment = { author, text, at: nowIso() };
+  if (files.length > 0) comment.screenshots = files.map((f) => f.filename);
+  card.comments.push(comment);
   card.updatedAt = nowIso();
   writeBoard(cards);
   res.json({ ok: true, card });
@@ -353,12 +371,15 @@ api.post('/cards/:id/counter', (req, res) => {
   res.json({ ok: true, card });
 });
 
-// Delete a card + its screenshots.
+// Delete a card + its screenshots (card-level and per-comment).
 api.delete('/cards/:id', (req, res) => {
   const cards = readBoard();
   const idx = cards.findIndex((c) => c && c.id === req.params.id);
   if (idx < 0) return res.status(404).json({ error: 'card not found' });
   deleteScreenshots(cards[idx].screenshots);
+  (cards[idx].comments || []).forEach((comment) =>
+    deleteScreenshots(comment.screenshots),
+  );
   cards.splice(idx, 1);
   writeBoard(cards);
   res.json({ ok: true });
