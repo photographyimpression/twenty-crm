@@ -20,6 +20,7 @@ import { EmailComposerResult } from 'src/engine/core-modules/tool/tools/email-to
 import { EmailToolInput } from 'src/engine/core-modules/tool/tools/email-tool/types/email-tool-input.type';
 import { parseCommaSeparatedEmails } from 'src/engine/core-modules/tool/tools/email-tool/utils/parse-comma-separated-emails.util';
 import {
+  addEmailImageSrcFilterHook,
   EMAIL_HTML_ALLOWED_ATTR,
   EMAIL_HTML_ALLOWED_TAGS,
   isRawHtmlBody,
@@ -332,13 +333,22 @@ export class EmailComposerService {
     const { JSDOM } = await import('jsdom');
     const window = new JSDOM('').window;
     const purify = DOMPurify(window);
-    const sanitizedHtmlBody = isRawHtml
-      ? purify.sanitize(htmlBodyWithSignature || '', {
-          ALLOWED_TAGS: EMAIL_HTML_ALLOWED_TAGS,
-          ALLOWED_ATTR: EMAIL_HTML_ALLOWED_ATTR,
-        })
-      : purify.sanitize(htmlBodyWithSignature || '');
+    // Subject first — the image-src hook below must never apply to it.
     const sanitizedSubject = purify.sanitize(subject || '');
+
+    let sanitizedHtmlBody: string;
+
+    if (isRawHtml) {
+      // Own-host images only: keeps our logos, strips third-party tracking
+      // pixels and data: URIs.
+      addEmailImageSrcFilterHook(purify);
+      sanitizedHtmlBody = purify.sanitize(htmlBodyWithSignature || '', {
+        ALLOWED_TAGS: EMAIL_HTML_ALLOWED_TAGS,
+        ALLOWED_ATTR: EMAIL_HTML_ALLOWED_ATTR,
+      });
+    } else {
+      sanitizedHtmlBody = purify.sanitize(htmlBodyWithSignature || '');
+    }
 
     return {
       success: true,

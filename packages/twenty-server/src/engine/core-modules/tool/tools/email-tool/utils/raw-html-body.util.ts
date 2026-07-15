@@ -61,6 +61,30 @@ export const EMAIL_HTML_ALLOWED_TAGS = [
   'hr',
 ];
 
+// Images in raw-HTML campaign bodies may only load from our own host — this
+// keeps our logos/product shots while stripping third-party tracking pixels
+// and data: URIs. Host-root (not /sig-images/ only) because campaign images
+// also live under /images/... (e.g. the BSD logo).
+export const EMAIL_IMAGE_ALLOWED_SRC_PREFIX =
+  'https://crm.impressionphotography.ca/';
+
+// DOMPurify hook: remove any <img> whose src is not on our host. Registered
+// on the per-compose purify instance right before sanitizing a raw-HTML body.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const addEmailImageSrcFilterHook = (purify: any): void => {
+  purify.addHook('uponSanitizeElement', (node: Element) => {
+    if (node.tagName !== 'IMG') {
+      return;
+    }
+
+    const src = node.getAttribute && node.getAttribute('src');
+
+    if (!src || !src.startsWith(EMAIL_IMAGE_ALLOWED_SRC_PREFIX)) {
+      node.remove();
+    }
+  });
+};
+
 export const EMAIL_HTML_ALLOWED_ATTR = [
   'style',
   'href',
