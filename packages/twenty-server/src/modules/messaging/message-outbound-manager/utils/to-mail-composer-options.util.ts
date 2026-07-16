@@ -18,6 +18,15 @@ export const toMailComposerOptions = (
             filename: attachment.filename,
             content: attachment.content,
             contentType: attachment.contentType,
+            // Inline images (campaign logos): nodemailer emits Content-ID +
+            // Content-Disposition: inline when `cid` is set, which is what
+            // makes <img src="cid:..."> resolve in the received mail.
+            ...(attachment.contentId
+              ? {
+                  cid: attachment.contentId,
+                  contentDisposition: 'inline' as const,
+                }
+              : {}),
           })),
         }
       : {}),
