@@ -18,6 +18,7 @@ import {
 } from 'src/engine/core-modules/tool/tools/email-tool/exceptions/email-tool.exception';
 import { EmailComposerResult } from 'src/engine/core-modules/tool/tools/email-tool/types/email-composer-result.type';
 import { EmailToolInput } from 'src/engine/core-modules/tool/tools/email-tool/types/email-tool-input.type';
+import { embedOwnHostImagesAsCid } from 'src/engine/core-modules/tool/tools/email-tool/utils/embed-own-host-images.util';
 import { parseCommaSeparatedEmails } from 'src/engine/core-modules/tool/tools/email-tool/utils/parse-comma-separated-emails.util';
 import {
   addEmailImageSrcFilterHook,
@@ -337,6 +338,7 @@ export class EmailComposerService {
     const sanitizedSubject = purify.sanitize(subject || '');
 
     let sanitizedHtmlBody: string;
+    const inlineImageAttachments: MessageAttachment[] = [];
 
     if (isRawHtml) {
       // Own-host images only: keeps our logos, strips third-party tracking
@@ -346,6 +348,17 @@ export class EmailComposerService {
         ALLOWED_TAGS: EMAIL_HTML_ALLOWED_TAGS,
         ALLOWED_ATTR: EMAIL_HTML_ALLOWED_ATTR,
       });
+
+      // Embed the surviving own-host images so they render in Outlook, which
+      // blocks remote-linked images. Failures leave the remote URL in place.
+      const embedded = await embedOwnHostImagesAsCid({
+        html: sanitizedHtmlBody,
+        jsdomWindow: window,
+        logger: this.logger,
+      });
+
+      sanitizedHtmlBody = embedded.html;
+      inlineImageAttachments.push(...embedded.attachments);
     } else {
       sanitizedHtmlBody = purify.sanitize(htmlBodyWithSignature || '');
     }
@@ -358,7 +371,7 @@ export class EmailComposerService {
         sanitizedSubject,
         plainTextBody,
         sanitizedHtmlBody,
-        attachments,
+        attachments: [...attachments, ...inlineImageAttachments],
         connectedAccount: connectedAccountWithFreshTokens,
       },
     };

@@ -11,5 +11,9 @@ export type SendMessageInput = {
     filename: string;
     content: Buffer;
     contentType: string;
+    // Inline (embedded) images referenced from `html` as <img src="cid:...">.
+    // Used for campaign logos, which Outlook blocks when remote-linked.
+    contentId?: string;
+    isInline?: boolean;
   }[];
 };

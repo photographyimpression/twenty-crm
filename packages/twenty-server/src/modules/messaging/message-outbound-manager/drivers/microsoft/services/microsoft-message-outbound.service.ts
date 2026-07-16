@@ -67,6 +67,11 @@ export class MicrosoftMessageOutboundService implements MessageOutboundDriver {
               name: attachment.filename,
               contentType: attachment.contentType,
               contentBytes: attachment.content.toString('base64'),
+              // Inline images (campaign logos) are referenced from the HTML
+              // body as cid:<contentId>; Graph needs both fields set.
+              ...(attachment.contentId
+                ? { contentId: attachment.contentId, isInline: true }
+                : {}),
             })),
           }
         : {}),

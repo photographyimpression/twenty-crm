@@ -29,6 +29,11 @@ export type MessageAttachment = {
   filename: string;
   content: Buffer;
   contentType: string;
+  // Inline (embedded) images: set both to reference the attachment from the
+  // HTML body as <img src="cid:contentId">. Outlook blocks remote-linked
+  // images, so campaign logos are embedded this way instead of linked.
+  contentId?: string;
+  isInline?: boolean;
 };
 
 export type MessageParticipant = Omit<
