@@ -1,7 +1,10 @@
 import omit from 'lodash.omit';
 import { isDefined } from 'twenty-shared/utils';
 
-import { cookieStorage } from '~/utils/cookie-storage';
+import {
+  cookieStorage,
+  getPersistentCookieExpires,
+} from '~/utils/cookie-storage';
 
 type CookieAttributesLike = {
   expires?: number | Date;
@@ -35,7 +38,7 @@ export const createJotaiCookieStorage = <ValueType>({
   validateInitFn?: (payload: NonNullable<ValueType>) => boolean;
 }): JotaiSyncStorage<ValueType> => {
   const defaultAttributes = {
-    expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 180),
+    expires: getPersistentCookieExpires(),
     ...(attributes ?? {}),
   };
 

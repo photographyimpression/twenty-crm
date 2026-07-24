@@ -59,7 +59,10 @@ import { i18n } from '@lingui/core';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SOURCE_LOCALE } from 'twenty-shared/translations';
 import { isDefined } from 'twenty-shared/utils';
-import { cookieStorage } from '~/utils/cookie-storage';
+import {
+  cookieStorage,
+  getPersistentCookieExpires,
+} from '~/utils/cookie-storage';
 import { getWorkspaceUrl } from '~/utils/getWorkspaceUrl';
 import { useStore } from 'jotai';
 
@@ -172,7 +175,11 @@ export const useAuth = () => {
   const handleSetAuthTokens = useCallback(
     (tokens: AuthTokenPair) => {
       setTokenPair(tokens);
-      cookieStorage.setItem('tokenPair', JSON.stringify(tokens));
+      // Must pass an expiry — without it this overwrites the persisted cookie
+      // with a session cookie, logging the user out when the browser quits.
+      cookieStorage.setItem('tokenPair', JSON.stringify(tokens), {
+        expires: getPersistentCookieExpires(),
+      });
     },
     [setTokenPair],
   );

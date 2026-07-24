@@ -37,7 +37,10 @@ import {
 import isEmpty from 'lodash.isempty';
 import { getGenericOperationName, isDefined } from 'twenty-shared/utils';
 import { REACT_APP_SERVER_BASE_URL } from '~/config';
-import { cookieStorage } from '~/utils/cookie-storage';
+import {
+  cookieStorage,
+  getPersistentCookieExpires,
+} from '~/utils/cookie-storage';
 import { isUndefinedOrNull } from '~/utils/isUndefinedOrNull';
 
 const logger = loggerLink(() => 'Twenty');
@@ -166,7 +169,11 @@ export class ApolloFactory<TCacheShape> implements ApolloManager<TCacheShape> {
                 // oxlint-disable-next-line no-console
                 console.log('setTokenPair from handleTokenRenewal');
                 onTokenPairChange?.(tokens);
-                cookieStorage.setItem('tokenPair', JSON.stringify(tokens));
+                // Must pass an expiry — without it every token renewal
+                // downgrades the cookie to a session cookie.
+                cookieStorage.setItem('tokenPair', JSON.stringify(tokens), {
+                  expires: getPersistentCookieExpires(),
+                });
               }
             })
             .catch(() => {

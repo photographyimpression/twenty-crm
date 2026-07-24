@@ -1,5 +1,14 @@
 import Cookies from 'js-cookie';
 
+// A cookie written WITHOUT `expires` is a session cookie: the browser deletes
+// it when it fully quits, logging the user out even though the server tokens
+// are valid for months. Any cookie meant to survive a browser restart must
+// pass this expiry.
+export const PERSISTENT_COOKIE_EXPIRES_DAYS = 180;
+
+export const getPersistentCookieExpires = (): Date =>
+  new Date(Date.now() + 1000 * 60 * 60 * 24 * PERSISTENT_COOKIE_EXPIRES_DAYS);
+
 class CookieStorage {
   private keys: Set<string> = new Set();
 
