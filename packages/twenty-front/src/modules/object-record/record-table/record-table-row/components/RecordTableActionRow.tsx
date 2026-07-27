@@ -88,16 +88,51 @@ const StyledText = styled.span`
   white-space: nowrap;
 `;
 
+// Impression fork: transparent inline input for the "type a name → Enter"
+// add row. Fills the label-identifier column, borderless to blend with cells.
+const StyledInput = styled.input`
+  background: transparent;
+  border: none;
+  color: ${themeCssVariables.font.color.primary};
+  font-family: ${themeCssVariables.font.family};
+  font-size: ${themeCssVariables.font.size.md};
+  margin-left: ${themeCssVariables.spacing[2]};
+  outline: none;
+  padding: 0;
+  width: 100%;
+
+  &::placeholder {
+    color: ${themeCssVariables.font.color.tertiary};
+  }
+`;
+
 type RecordTableActionRowProps = {
   LeftIcon: IconComponent;
   text: string;
   onClick?: (event?: React.MouseEvent<HTMLDivElement>) => void;
+  // Impression fork: when variant='input', the label column renders a text
+  // input (inline create) instead of static text. Existing callers omit these
+  // props and keep the plain button-row behavior unchanged.
+  variant?: 'button' | 'input';
+  inputRef?: React.Ref<HTMLInputElement>;
+  inputValue?: string;
+  inputPlaceholder?: string;
+  onInputChange?: (value: string) => void;
+  onInputKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
+  onInputBlur?: () => void;
 };
 
 export const RecordTableActionRow = ({
   LeftIcon,
   text,
   onClick,
+  variant = 'button',
+  inputRef,
+  inputValue,
+  inputPlaceholder,
+  onInputChange,
+  onInputKeyDown,
+  onInputBlur,
 }: RecordTableActionRowProps) => {
   const { theme } = useContext(ThemeContext);
 
@@ -138,7 +173,21 @@ export const RecordTableActionRow = ({
         />
       </StyledIconContainer>
       <StyledActionTextContainer width={firstColumnWidth}>
-        <StyledText>{text}</StyledText>
+        {variant === 'input' ? (
+          <StyledInput
+            ref={inputRef}
+            value={inputValue ?? ''}
+            placeholder={inputPlaceholder}
+            onChange={(event) => onInputChange?.(event.target.value)}
+            onKeyDown={onInputKeyDown}
+            onBlur={onInputBlur}
+            // Row-level onClick focuses the input; don't let a click inside the
+            // input bubble up and re-trigger it.
+            onClick={(event) => event.stopPropagation()}
+          />
+        ) : (
+          <StyledText>{text}</StyledText>
+        )}
       </StyledActionTextContainer>
       <StyledFieldPlaceholderCell
         widthOfFields={

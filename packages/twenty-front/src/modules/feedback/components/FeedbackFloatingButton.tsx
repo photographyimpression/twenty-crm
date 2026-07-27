@@ -15,7 +15,7 @@ const StyledFloatingButton = styled.button`
   border: none;
   border-radius: 50%;
   bottom: 24px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  box-shadow: ${themeCssVariables.boxShadow.strong};
   color: ${themeCssVariables.grayScale.gray1};
   cursor: pointer;
   display: flex;

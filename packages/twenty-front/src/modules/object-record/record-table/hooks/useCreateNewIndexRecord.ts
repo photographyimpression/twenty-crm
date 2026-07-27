@@ -67,7 +67,13 @@ export const useCreateNewIndexRecord = ({
     });
 
   const createNewIndexRecord = useCallback(
-    async (recordInput?: Partial<ObjectRecord>) => {
+    async (
+      recordInput?: Partial<ObjectRecord>,
+      // Impression fork: `stayOnIndex` lets the inline "type a name → Enter"
+      // add row create a record without navigating away or opening the side
+      // panel, so you can keep adding contacts to-do-list style.
+      options?: { stayOnIndex?: boolean },
+    ) => {
       const recordId = v4();
       const recordInputFromRLSPredicates = buildRecordInputFromRLSPredicates();
       const recordInputFromFilters = buildRecordInputFromFilters();
@@ -87,35 +93,37 @@ export const useCreateNewIndexRecord = ({
         ...mergedRecordInput,
       });
 
-      if (
-        recordIndexOpenRecordIn === ViewOpenRecordInType.SIDE_PANEL &&
-        canOpenObjectInSidePanel(objectMetadataItem.nameSingular)
-      ) {
-        openRecordInSidePanel({
-          recordId,
-          objectNameSingular: objectMetadataItem.nameSingular,
-          isNewRecord: true,
-        });
-      } else {
-        const labelIdentifierFieldMetadataItem =
-          getLabelIdentifierFieldMetadataItem(objectMetadataItem);
-
-        closeSidePanelMenu();
-        navigate(
-          AppPath.RecordShowPage,
-          {
+      if (options?.stayOnIndex !== true) {
+        if (
+          recordIndexOpenRecordIn === ViewOpenRecordInType.SIDE_PANEL &&
+          canOpenObjectInSidePanel(objectMetadataItem.nameSingular)
+        ) {
+          openRecordInSidePanel({
+            recordId,
             objectNameSingular: objectMetadataItem.nameSingular,
-            objectRecordId: recordId,
-          },
-          undefined,
-          {
-            state: {
-              isNewRecord: true,
+            isNewRecord: true,
+          });
+        } else {
+          const labelIdentifierFieldMetadataItem =
+            getLabelIdentifierFieldMetadataItem(objectMetadataItem);
+
+          closeSidePanelMenu();
+          navigate(
+            AppPath.RecordShowPage,
+            {
+              objectNameSingular: objectMetadataItem.nameSingular,
               objectRecordId: recordId,
-              labelIdentifierFieldName: labelIdentifierFieldMetadataItem?.name,
             },
-          },
-        );
+            undefined,
+            {
+              state: {
+                isNewRecord: true,
+                objectRecordId: recordId,
+                labelIdentifierFieldName: labelIdentifierFieldMetadataItem?.name,
+              },
+            },
+          );
+        }
       }
 
       if (isDefined(recordIndexGroupFieldMetadataItem)) {
