@@ -75,14 +75,35 @@ function htmlEscape(value) {
     .replace(/>/g, '&gt;');
 }
 
+// The "What shipped" writeup: prefer the explicit deliveredNote, but never let
+// the email be just a bare goal — fall back to the most recent Claude comment,
+// then to the discussion claudeNote. This keeps every delivery email a FULL
+// account of what was done, even if the deliverer forgot to pass a note.
+function getWhatShipped(card) {
+  if (card.deliveredNote && card.deliveredNote.trim()) {
+    return card.deliveredNote.trim();
+  }
+  const claudeComments = (card.comments || []).filter(
+    (c) => c && c.author === 'claude' && c.text && c.text.trim(),
+  );
+  if (claudeComments.length) {
+    return claudeComments[claudeComments.length - 1].text.trim();
+  }
+  if (card.claudeNote && card.claudeNote.trim()) {
+    return card.claudeNote.trim();
+  }
+  return '';
+}
+
 // Fire-and-forget: never blocks or fails the HTTP response.
 function sendDeliveredEmail(card) {
   if (!MAIL_ENABLED) return;
   const title = card.title || 'Your request';
+  const whatShipped = getWhatShipped(card);
   const textParts = ['Delivered ✅', '', title, ''];
   if (card.goal) textParts.push('Goal: ' + card.goal);
   if (card.idea) textParts.push('Idea: ' + card.idea);
-  if (card.deliveredNote) textParts.push('', 'What shipped:', card.deliveredNote);
+  if (whatShipped) textParts.push('', 'What shipped:', whatShipped);
   if (MAIL.boardUrl) textParts.push('', 'Board: ' + MAIL.boardUrl);
 
   const html =
@@ -91,9 +112,9 @@ function sendDeliveredEmail(card) {
     '<h2 style="margin:0 0 12px;font-size:18px">' + htmlEscape(title) + '</h2>' +
     (card.goal ? '<p style="margin:6px 0;color:#333"><b>Goal:</b> ' + htmlEscape(card.goal) + '</p>' : '') +
     (card.idea ? '<p style="margin:6px 0;color:#333"><b>Idea:</b> ' + htmlEscape(card.idea) + '</p>' : '') +
-    (card.deliveredNote
+    (whatShipped
       ? '<div style="margin:12px 0;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#14532d"><b>What shipped:</b><br/>' +
-        htmlEscape(card.deliveredNote) + '</div>'
+        htmlEscape(whatShipped).replace(/\n/g, '<br/>') + '</div>'
       : '') +
     (MAIL.boardUrl
       ? '<p style="margin:16px 0 0"><a href="' + MAIL.boardUrl + '" style="color:#3b82f6;text-decoration:none">Open the Feedback Board →</a></p>'
@@ -308,6 +329,11 @@ api.post('/cards/:id/move', (req, res) => {
     card.deliveredAt = nowIso();
     if (typeof req.body.deliveredNote === 'string' && req.body.deliveredNote.trim()) {
       card.deliveredNote = req.body.deliveredNote.trim();
+    } else if (!card.deliveredNote || !card.deliveredNote.trim()) {
+      // No explicit note passed — capture the latest Claude comment as the
+      // delivered note so the changelog + email say what was done, not just
+      // the goal.
+      card.deliveredNote = getWhatShipped(card);
     }
     sendDeliveredEmail(card); // notify Moshe (no-op unless SMTP env is set)
   }
