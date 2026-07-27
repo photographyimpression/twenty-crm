@@ -1,3 +1,4 @@
+/* oxlint-disable twenty/max-consts-per-file */
 // Impression fork: the private Feedback Board is a separate Express app mounted
 // at an unguessable path on the SAME origin as the CRM, so a relative fetch
 // reaches its API with no CORS setup. Keep this token in sync with the nginx

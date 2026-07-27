@@ -4,14 +4,9 @@
 // Board over its same-origin API — no navigating away. Screenshots can be
 // pasted anywhere in the popup. Title is derived server-side from the goal.
 import { styled } from '@linaria/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  IconExternalLink,
-  IconPhoto,
-  IconSend,
-  IconX,
-} from 'twenty-ui/display';
+import { IconExternalLink, IconSend, IconX } from 'twenty-ui/display';
 import { Button, IconButton } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
@@ -179,12 +174,9 @@ const StyledSuccess = styled.div`
   text-align: center;
 `;
 
-const StyledHiddenInput = styled.input`
-  display: none;
-`;
-
 export const FeedbackRequestModal = () => {
-  const [isOpen, setIsOpen] = useAtomState(isFeedbackRequestModalOpenState);
+  const [isFeedbackRequestModalOpen, setIsFeedbackRequestModalOpen] =
+    useAtomState(isFeedbackRequestModalOpenState);
   const { openModal, closeModal } = useModal();
 
   const [type, setType] = useState<RequestType>('feature');
@@ -194,13 +186,12 @@ export const FeedbackRequestModal = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isFeedbackRequestModalOpen) {
       openModal(FEEDBACK_REQUEST_MODAL_ID);
     }
-  }, [isOpen, openModal]);
+  }, [isFeedbackRequestModalOpen, openModal]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const images = Array.from(files).filter((file) =>
@@ -223,7 +214,7 @@ export const FeedbackRequestModal = () => {
   // (only while open) catches image pastes regardless of which field has focus.
   // Text pastes into the textareas are untouched: we only act on image items.
   useEffect(() => {
-    if (!isOpen) {
+    if (!isFeedbackRequestModalOpen) {
       return;
     }
     const handlePaste = (event: ClipboardEvent) => {
@@ -238,7 +229,7 @@ export const FeedbackRequestModal = () => {
     };
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [isOpen, addFiles]);
+  }, [isFeedbackRequestModalOpen, addFiles]);
 
   const resetAndClose = useCallback(() => {
     attachments.forEach((attachment) =>
@@ -252,8 +243,8 @@ export const FeedbackRequestModal = () => {
     setIsSubmitting(false);
     setIsSubmitted(false);
     closeModal(FEEDBACK_REQUEST_MODAL_ID);
-    setIsOpen(false);
-  }, [attachments, closeModal, setIsOpen]);
+    setIsFeedbackRequestModalOpen(false);
+  }, [attachments, closeModal, setIsFeedbackRequestModalOpen]);
 
   const removeAttachment = (id: string) => {
     setAttachments((current) => {
@@ -312,7 +303,7 @@ export const FeedbackRequestModal = () => {
     }
   };
 
-  if (!isOpen) {
+  if (!isFeedbackRequestModalOpen) {
     return null;
   }
 
@@ -409,28 +400,6 @@ export const FeedbackRequestModal = () => {
                     ))}
                   </StyledThumbs>
                 )}
-
-                <div>
-                  <Button
-                    title="Attach screenshot"
-                    Icon={IconPhoto}
-                    variant="secondary"
-                    size="small"
-                    onClick={() => fileInputRef.current?.click()}
-                  />
-                  <StyledHiddenInput
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(event) => {
-                      if (event.target.files) {
-                        addFiles(event.target.files);
-                      }
-                      event.target.value = '';
-                    }}
-                  />
-                </div>
 
                 {error !== null && <StyledError>{error}</StyledError>}
               </StyledContent>

@@ -8,12 +8,10 @@ import {
   IconMail,
   IconMessage,
   IconSettings,
-  IconSparkles,
 } from 'twenty-ui/display';
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
-import { isFeedbackRequestModalOpenState } from '@/feedback/states/isFeedbackRequestModalOpenState';
 import { useUnreadSmsCount } from '@/sms/hooks/useUnreadSmsCount';
 import { getDocumentationUrl } from '@/support/utils/getDocumentationUrl';
 import { isNavigationDrawerExpandedState } from '@/ui/navigation/states/isNavigationDrawerExpanded';
@@ -43,9 +41,6 @@ export const NavigationDrawerOtherSection = () => {
   );
   const setNavigationMemorizedUrl = useSetAtomState(
     navigationMemorizedUrlState,
-  );
-  const setIsFeedbackRequestModalOpen = useSetAtomState(
-    isFeedbackRequestModalOpenState,
   );
 
   const unreadSmsCount = useUnreadSmsCount();
@@ -91,17 +86,9 @@ export const NavigationDrawerOtherSection = () => {
           Icon={IconListCheck}
           to="https://crm.impressionphotography.ca/command-center/"
         />
-        {/* Custom (Impression fork): opens the in-app "Quick request" popup
-            (FeedbackRequestModal, mounted in DefaultLayout) instead of
-            navigating away — file a feature/bug without leaving the CRM. Plain
-            string label (not the t`` macro) since it isn't in the Lingui
-            catalog. */}
-        {/* eslint-disable-next-line lingui/no-unlocalized-strings */}
-        <NavigationDrawerItem
-          label="Feedback"
-          Icon={IconSparkles}
-          onClick={() => setIsFeedbackRequestModalOpen(true)}
-        />
+        {/* Feedback moved out of the sidebar into a small floating bubble
+            (FeedbackFloatingButton, mounted in DefaultLayout) so it's always
+            one click, not buried in this list. */}
         <NavigationDrawerItem
           label={t`Inbox`}
           Icon={IconMail}
