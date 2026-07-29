@@ -93,7 +93,10 @@
       if (view === 'calls') loadCalls();
       if (view === 'roadmap') loadRoadmap();
       if (view === 'dashboard') loadDashboard();
-      if (view === 'board') loadBoard();
+      if (view === 'board') {
+        loadBoard();
+        loadTemplates();
+      }
       if (view === 'upcoming') loadUpcoming();
     });
   });
@@ -596,6 +599,130 @@
   }
 
   el('refreshBoard').addEventListener('click', loadBoard);
+
+  // ---- EMAIL TEMPLATE LIBRARY ----------------------------------------------
+  // Pick a design, preview it with the merge tokens filled in, copy the HTML
+  // (or the subject) straight into a campaign.
+  const tplState = { list: [], activeId: null, rendered: null };
+
+  async function loadTemplates() {
+    const mount = el('templatesMount');
+    let data;
+    try {
+      data = await apiGet('/templates');
+    } catch (e) {
+      mount.innerHTML = `<div class="state"><p>${esc(e.message)}</p></div>`;
+      return;
+    }
+    tplState.list = data.templates || [];
+    if (tplState.list.length === 0) {
+      mount.innerHTML =
+        '<div class="state"><p style="color:var(--muted)">No templates yet.</p></div>';
+      return;
+    }
+    if (!tplState.list.some((t) => t.id === tplState.activeId)) {
+      tplState.activeId = tplState.list[0].id;
+    }
+    renderTemplateShell();
+    await renderTemplatePreview();
+  }
+
+  function renderTemplateShell() {
+    const picker = tplState.list
+      .map((t) => {
+        const on = t.id === tplState.activeId;
+        return `<button class="btn tpl-pick" data-id="${esc(t.id)}" style="background:${
+          on ? 'var(--accent)' : 'var(--panel-2)'
+        };border:1px solid ${
+          on ? 'var(--accent)' : 'var(--border)'
+        };color:#fff;font-size:14px;padding:9px 14px" title="${esc(
+          t.description || '',
+        )}">${esc(t.name)}</button>`;
+      })
+      .join('');
+
+    el('templatesMount').innerHTML = `
+      <div class="card">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${picker}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <label style="flex:1;min-width:150px;font-size:12px;color:var(--muted)">First name
+            <input class="edit-field" id="tplFirstName" value="there" style="margin-top:4px">
+          </label>
+          <label style="flex:2;min-width:220px;font-size:12px;color:var(--muted)">Button link ({{ctaUrl}})
+            <input class="edit-field" id="tplCtaUrl" placeholder="https://…" style="margin-top:4px">
+          </label>
+        </div>
+        <div id="tplDesc" style="font-size:13px;color:var(--muted);margin-bottom:6px"></div>
+        <div style="font-size:13px;color:var(--muted)">Subject</div>
+        <div id="tplSubject" class="preview-subject" style="margin-bottom:4px"></div>
+        <iframe id="tplPreview" class="preview-frame" style="width:100%;height:52vh;border:0"
+                sandbox="" title="Template preview"></iframe>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn btn-edit" id="tplCopyHtml">Copy HTML</button>
+          <button class="btn btn-edit" id="tplCopySubject">Copy subject</button>
+          <span id="tplCopied" style="font-size:13px;color:var(--green);align-self:center"></span>
+        </div>
+      </div>`;
+
+    el('templatesMount')
+      .querySelectorAll('.tpl-pick')
+      .forEach((b) =>
+        b.addEventListener('click', () => {
+          tplState.activeId = b.getAttribute('data-id');
+          renderTemplateShell();
+          renderTemplatePreview();
+        }),
+      );
+    // Re-render on input so the preview always matches what you'd send.
+    ['tplFirstName', 'tplCtaUrl'].forEach((id) =>
+      el(id).addEventListener('input', debounceTemplatePreview),
+    );
+    el('tplCopyHtml').addEventListener('click', () =>
+      copyTemplatePart(tplState.rendered && tplState.rendered.html, 'HTML copied'),
+    );
+    el('tplCopySubject').addEventListener('click', () =>
+      copyTemplatePart(tplState.rendered && tplState.rendered.subject, 'Subject copied'),
+    );
+  }
+
+  let tplPreviewTimer = null;
+  function debounceTemplatePreview() {
+    clearTimeout(tplPreviewTimer);
+    tplPreviewTimer = setTimeout(renderTemplatePreview, 250);
+  }
+
+  async function renderTemplatePreview() {
+    const firstName = (el('tplFirstName') || {}).value || 'there';
+    const ctaUrl = (el('tplCtaUrl') || {}).value || '';
+    const query = `?firstName=${encodeURIComponent(firstName)}${
+      ctaUrl ? `&ctaUrl=${encodeURIComponent(ctaUrl)}` : ''
+    }`;
+    let data;
+    try {
+      data = await apiGet(`/templates/${encodeURIComponent(tplState.activeId)}${query}`);
+    } catch (e) {
+      el('tplSubject').textContent = e.message;
+      return;
+    }
+    tplState.rendered = data;
+    el('tplDesc').textContent = data.description || '';
+    el('tplSubject').textContent = data.subject || '(no subject)';
+    // srcdoc + sandbox="": renders the real email markup, runs nothing.
+    el('tplPreview').srcdoc = data.html || '';
+  }
+
+  async function copyTemplatePart(text, okMessage) {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      el('tplCopied').textContent = okMessage;
+    } catch (_e) {
+      el('tplCopied').textContent = 'Press Cmd+C to copy';
+    }
+    setTimeout(() => {
+      el('tplCopied').textContent = '';
+    }, 2000);
+  }
 
   // ---- THIS WEEK (look-ahead) ----------------------------------------------
   // Read-only preview of upcoming touches grouped by day. Dates come back as

@@ -1767,6 +1767,93 @@ api.post('/reconcile', async (_req, res) => {
 // Campaign board: for a given sequence (default CASH_FLOW_CAMPAIGN), each
 // recipient's funnel status — sent (COMPLETED), clicked (from the click log),
 // and the touch/subject. "Bought" comes later via a Stripe webhook.
+// ---------------------------------------------------------------------------
+// Campaign template library — designed HTML emails with merge tokens.
+// Templates are plain .html files in ./templates, each carrying a leading
+// `meta: {...}` JSON comment (name / subject / description). Files rather than a
+// DB table so adding a design is one scp, like the rest of this tool.
+// ---------------------------------------------------------------------------
+const TEMPLATES_DIR = process.env.CC_TEMPLATES_DIR || path.join(__dirname, 'templates');
+
+function escTemplateValue(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function readTemplateFile(id) {
+  // Bare basename only — a request must never walk out of TEMPLATES_DIR.
+  const safe = path.basename(String(id || '')).replace(/\.html$/i, '');
+  if (!/^[a-z0-9_-]+$/i.test(safe)) return null;
+  const full = path.join(TEMPLATES_DIR, safe + '.html');
+  if (!fs.existsSync(full)) return null;
+  const raw = fs.readFileSync(full, 'utf8');
+  let meta = {};
+  const match = raw.match(/meta:\s*(\{[\s\S]*?\})\s*$/m);
+  if (match) {
+    try {
+      meta = JSON.parse(match[1]);
+    } catch (_e) {
+      meta = {};
+    }
+  }
+  return {
+    id: safe,
+    name: meta.name || safe,
+    subject: meta.subject || '',
+    description: meta.description || '',
+    // Strip the leading meta comment so it never ships inside an email.
+    html: raw.replace(/^\s*<!--[\s\S]*?-->\s*/, ''),
+  };
+}
+
+function listTemplates() {
+  let files = [];
+  try {
+    files = fs.readdirSync(TEMPLATES_DIR).filter((f) => f.toLowerCase().endsWith('.html'));
+  } catch (_e) {
+    return []; // no templates dir yet -> empty library, never a 500
+  }
+  return files
+    .map((f) => readTemplateFile(f))
+    .filter(Boolean)
+    .map(({ html: _html, ...rest }) => rest); // list view omits the body
+}
+
+// Substitute {{token}}. Any token supplied is replaced; unknown tokens are left
+// intact so a half-filled preview still shows you what is missing.
+function renderTemplateTokens(text, values) {
+  return String(text || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (whole, token) =>
+    Object.prototype.hasOwnProperty.call(values, token)
+      ? escTemplateValue(values[token])
+      : whole,
+  );
+}
+
+api.get('/templates', (_req, res) => {
+  res.json({ templates: listTemplates() });
+});
+
+// Rendered single template. Query params become merge values, so
+// /api/templates/promo?firstName=Sarah&ctaUrl=https://... previews the real thing.
+api.get('/templates/:id', (req, res) => {
+  const tpl = readTemplateFile(req.params.id);
+  if (!tpl) return res.status(404).json({ error: 'template not found' });
+  const values = {
+    firstName: 'there',
+    ctaUrl: STRIPE_BUY_URL,
+    ...req.query,
+  };
+  res.json({
+    ...tpl,
+    subject: renderTemplateTokens(tpl.subject, values),
+    html: renderTemplateTokens(tpl.html, values),
+    tokensUsed: Object.keys(values),
+  });
+});
+
 api.get('/campaign-board', async (req, res) => {
   try {
     const seq = (req.query.sequence || 'CASH_FLOW_CAMPAIGN').toString();
