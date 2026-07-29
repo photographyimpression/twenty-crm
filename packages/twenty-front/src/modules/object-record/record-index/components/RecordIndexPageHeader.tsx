@@ -3,6 +3,7 @@ import { MAIN_CONTEXT_STORE_INSTANCE_ID } from '@/context-store/constants/MainCo
 import { contextStoreCurrentViewIdComponentState } from '@/context-store/states/contextStoreCurrentViewIdComponentState';
 import { contextStoreNumberOfSelectedRecordsComponentState } from '@/context-store/states/contextStoreNumberOfSelectedRecordsComponentState';
 import { useFilteredObjectMetadataItems } from '@/object-metadata/hooks/useFilteredObjectMetadataItems';
+import { QuickAddRecordButton } from '@/object-record/record-index/components/QuickAddRecordButton';
 import { RecordIndexPageHeaderIcon } from '@/object-record/record-index/components/RecordIndexPageHeaderIcon';
 import { useRecordIndexContextOrThrow } from '@/object-record/record-index/contexts/RecordIndexContext';
 import { PageHeaderToggleSidePanelButton } from '@/ui/layout/page-header/components/PageHeaderToggleSidePanelButton';
@@ -71,6 +72,10 @@ export const RecordIndexPageHeader = () => {
     >
       {isDefined(contextStoreCurrentViewId) && (
         <>
+          {/* Impression fork: quick "+ Add <thing>" pop-up form, so adding a
+              contact doesn't mean scrolling to the add row at the bottom of a
+              very long list. */}
+          <QuickAddRecordButton />
           <RecordIndexCommandMenu />
           <PageHeaderToggleSidePanelButton />
         </>
