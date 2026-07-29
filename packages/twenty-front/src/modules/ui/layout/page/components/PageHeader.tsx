@@ -1,6 +1,7 @@
 import { styled } from '@linaria/react';
 import { type ReactNode, useContext } from 'react';
 
+import { FeedbackHeaderButton } from '@/feedback/components/FeedbackHeaderButton';
 import { NavigationDrawerCollapseButton } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerCollapseButton';
 
 import { PAGE_ACTION_CONTAINER_CLICK_OUTSIDE_ID } from '@/ui/layout/page/constants/PageActionContainerClickOutsideId';
@@ -142,6 +143,12 @@ export const PageHeader = ({
           data-click-outside-id={PAGE_ACTION_CONTAINER_CLICK_OUTSIDE_ID}
         >
           {children}
+          {/* Impression fork: feedback lives at the END of the top-right action
+              row on every page. It used to be a position:fixed bubble, but
+              fixed placement either covered page content (bottom-right) or the
+              header's own buttons (top-right) — laying it out here is the only
+              way "upper right" can't collide with anything. */}
+          <FeedbackHeaderButton />
         </StyledPageActionContainer>
       </StyledTopBarContainer>
     </AnimatePresence>

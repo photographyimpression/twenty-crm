@@ -86,9 +86,9 @@ export const NavigationDrawerOtherSection = () => {
           Icon={IconListCheck}
           to="https://crm.impressionphotography.ca/command-center/"
         />
-        {/* Feedback moved out of the sidebar into a small floating bubble
-            (FeedbackFloatingButton, mounted in DefaultLayout) so it's always
-            one click, not buried in this list. */}
+        {/* Feedback is not in this list on purpose: it's the sparkles icon at
+            the top-right of every page (FeedbackHeaderButton, rendered by
+            PageHeader) so it's one click, not buried here. */}
         <NavigationDrawerItem
           label={t`Inbox`}
           Icon={IconMail}
