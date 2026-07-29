@@ -27,10 +27,7 @@ import { NoteWorkspaceEntity } from 'src/modules/note/standard-objects/note.work
 import { NoteTargetWorkspaceEntity } from 'src/modules/note/standard-objects/note-target.workspace-entity';
 import { PersonWorkspaceEntity } from 'src/modules/person/standard-objects/person.workspace-entity';
 import { computeDisplayName } from 'src/utils/compute-display-name';
-import {
-  SmsThreadStateStore,
-  buildReplyToAddress,
-} from 'src/engine/core-modules/telnyx-webhook/sms-thread-state.util';
+import { SmsThreadStateStore } from 'src/engine/core-modules/telnyx-webhook/sms-thread-state.util';
 
 type TelnyxPayload = {
   call_control_id?: string;
@@ -937,20 +934,32 @@ export class TelnyxWebhookService {
     // root Message-ID; subsequent emails reference it so Outlook groups
     // them like iMessage.
     const threadHeaders = this.smsThreadState.getNextHeaders(from);
-    const replyToAddress = buildReplyToAddress(from);
 
-    // Plain-text body: the SMS content is the centerpiece. Quoting
-    // conventions matter — when Moshe replies, Outlook will append the
-    // quoted block AFTER his reply. Our bridge strips quoted lines, so
-    // the original SMS body sits at the top, followed by a clearly
-    // delimited "—" + metadata block the user can ignore.
+    // Deep link straight to this conversation in the CRM's SMS Inbox.
+    // Replying to this EMAIL cannot deliver an SMS: inbound port 25 is
+    // firewalled shut on this host, so a reply never reaches the bridge —
+    // it just bounces. The link points at the one place where hitting
+    // reply actually sends the text.
+    const crmBaseUrl = (
+      process.env['FRONTEND_URL'] ||
+      process.env['SERVER_URL'] ||
+      'https://crm.impressionphotography.ca'
+    ).replace(/\/+$/, '');
+    const threadUrl = `${crmBaseUrl}/sms-inbox?thread=${encodeURIComponent(
+      from.replace(/\D/g, ''),
+    )}`;
+
+    // Plain-text body: the SMS content is the centerpiece. The "—" + "From:"
+    // shape of this footer is load-bearing — tools/sms-reply-bridge strips it
+    // by matching that exact prefix, so keep those two lines as they are.
     const bodyText =
       `${text}\n` +
       `\n` +
       `—\n` +
       `From: ${senderLabel}\n` +
       `Received: ${localTime}\n` +
-      `To reply, just reply to this email.`;
+      `Reply here (replying to this email will NOT send a text):\n` +
+      `${threadUrl}`;
 
     const escapeHtml = (s: string): string =>
       s
@@ -965,9 +974,13 @@ export class TelnyxWebhookService {
         <div style="background: #f5f5f7; padding: 18px 22px; border-radius: 12px; margin-bottom: 16px;">
           <p style="margin: 0; font-size: 17px; line-height: 1.45; color: #1d1d1f; white-space: pre-wrap;">${escapeHtml(text)}</p>
         </div>
+        <p style="margin: 0 0 14px;">
+          <a href="${threadUrl}" style="display: inline-block; background: #3b82f6; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 12px 22px; border-radius: 8px;">Reply to ${escapeHtml(contactName || 'this message')} &rarr;</a>
+        </p>
         <p style="color: #6e6e73; font-size: 13px; margin: 0;">
           From <strong>${escapeHtml(senderLabel)}</strong> &middot; ${escapeHtml(localTime)}<br/>
-          Reply to this email to send an SMS back.
+          Opens the conversation in your CRM. Replying to this email will
+          <strong>not</strong> send a text.
         </p>
       </div>
     `;
@@ -995,14 +1008,15 @@ export class TelnyxWebhookService {
       subject,
       bodyText,
       bodyHtml,
-      replyTo: replyToAddress,
+      // No replyTo: the old sms-reply+<token>@… address can never receive
+      // mail (port 25 closed), so advertising it silently ate replies.
       headers: graphHeaders,
     });
 
     if (graphResult.ok) {
       this.logger.log(
         `SMS notification sent to ${forwardEmail} via Microsoft Graph ` +
-          `(thread-mid=${threadHeaders.messageId}, replyTo=${replyToAddress})`,
+          `(thread-mid=${threadHeaders.messageId})`,
       );
 
       return;
@@ -1028,7 +1042,6 @@ export class TelnyxWebhookService {
         subject,
         text: bodyText,
         html: bodyHtml,
-        replyTo: replyToAddress,
         messageId: threadHeaders.messageId,
         inReplyTo: threadHeaders.inReplyTo,
         headers: smtpHeaders,

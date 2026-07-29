@@ -64,8 +64,10 @@ export const RecordTableNoRecordGroupAddNew = () => {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [inlineValue, setInlineValue] = useState('');
-  // Ref (not state) so back-to-back Enters can't double-submit before the
-  // async create resolves.
+  // A synchronous submit latch, not render state: it must flip before the
+  // next keydown can be handled, which a state update cannot guarantee, and
+  // nothing renders from it.
+  // oxlint-disable-next-line twenty/no-state-useref
   const isSubmittingRef = useRef(false);
 
   const labelIdentifierFieldMetadataItem =
@@ -168,9 +170,7 @@ export const RecordTableNoRecordGroupAddNew = () => {
     enqueueErrorSnackBar,
   ]);
 
-  const handleInputKeyDown = (
-    event: React.KeyboardEvent<HTMLInputElement>,
-  ) => {
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       void submitInlineRecord();

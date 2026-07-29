@@ -119,7 +119,8 @@ export const useCreateNewIndexRecord = ({
               state: {
                 isNewRecord: true,
                 objectRecordId: recordId,
-                labelIdentifierFieldName: labelIdentifierFieldMetadataItem?.name,
+                labelIdentifierFieldName:
+                  labelIdentifierFieldMetadataItem?.name,
               },
             },
           );

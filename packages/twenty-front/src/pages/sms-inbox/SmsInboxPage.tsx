@@ -1,6 +1,7 @@
 import { styled } from '@linaria/react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { IconMessage, IconSearch, IconSend, IconX } from 'twenty-ui/display';
 import {
   AnimatedPlaceholder,
@@ -560,6 +561,36 @@ export const SmsInboxPage = () => {
   // `readTick` whenever a thread is opened so the UI re-evaluates which
   // threads are unread without a full re-fetch.
   const [readTick, setReadTick] = useState(0);
+
+  // Deep link: /sms-inbox?thread=<digits>. The inbound-SMS notification email
+  // links straight to the conversation (replying to that email can't send a
+  // text), so opening the link must select the thread and mark it read exactly
+  // as clicking it would. Mount-only — later selection comes from clicks.
+  // `threads` is still empty on this first render; that's fine, selectedThread
+  // resolves itself once the records finish loading.
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const requestedThread = searchParams.get('thread');
+
+    if (requestedThread === null) {
+      return;
+    }
+
+    const digits = normalizeDigits(requestedThread);
+
+    if (digits === '') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      `sms-thread-last-viewed-${digits}`,
+      String(Date.now()),
+    );
+    setReadTick((tick) => tick + 1);
+    setSelectedDigits(digits);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const unreadDigits = useMemo(() => {
     const result = new Set<string>();
 
