@@ -1551,6 +1551,265 @@ app.get('/go/:approvalId', (req, res) => {
   return res.redirect(302, STRIPE_BUY_URL);
 });
 
+// ---------------------------------------------------------------------------
+// Website form -> CRM lead webhook (NO session auth; secret is in the URL).
+// Elementor's "Webhook" action posts the submitted fields to a bare URL and
+// cannot set custom headers, so the shared secret lives in the path — the same
+// posture as the Feedback Board. Registered here, before the /api session
+// guard, so it stays public.
+//
+//   POST /command-center/lead/<secret>            -> Pre-Phone (default)
+//   POST /command-center/lead/<secret>?sequence=POST_QUOTE_FOLLOWUP
+// ---------------------------------------------------------------------------
+const LEAD_WEBHOOK_SECRET =
+  process.env.CC_LEAD_WEBHOOK_SECRET ||
+  readSecretFile(path.join(__dirname, '.lead-webhook-secret')) ||
+  '';
+const LEAD_LOG_PATH =
+  process.env.CC_LEAD_LOG_PATH || path.join(__dirname, 'website-leads.json');
+const VALID_SEQUENCES = ['PRE_PHONE_EMAIL', 'POST_QUOTE_FOLLOWUP'];
+
+// Elementor names fields after whatever the form author typed, so match on a
+// normalized key (lowercased, non-alphanumerics stripped) against known
+// aliases. Unknown fields are still captured in the note.
+const LEAD_FIELD_ALIASES = {
+  email: ['email', 'emailaddress', 'youremail', 'mail', 'courriel', 'from'],
+  firstName: ['firstname', 'fname', 'prenom', 'given name'],
+  lastName: ['lastname', 'lname', 'surname', 'nom'],
+  fullName: ['name', 'fullname', 'yourname', 'contactname', 'nomcomplet'],
+  phone: ['phone', 'phonenumber', 'tel', 'telephone', 'mobile', 'cell'],
+  company: ['company', 'companyname', 'business', 'businessname', 'entreprise'],
+  message: ['message', 'comments', 'comment', 'details', 'notes', 'enquiry'],
+};
+
+// Fold accents before stripping, so the French form's "Téléphone" / "Prénom"
+// normalize to "telephone" / "prenom" instead of losing the accented letters.
+function normalizeLeadKey(key) {
+  return String(key || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+// Elementor may post flat (`email=…`) or nested (`fields[email][value]=…`).
+// Flatten one level of objects so both shapes resolve.
+function flattenLeadBody(body, out = {}, depth = 0) {
+  if (!body || typeof body !== 'object' || depth > 3) return out;
+  for (const [key, value] of Object.entries(body)) {
+    if (value && typeof value === 'object') {
+      // Elementor's nested shape puts the answer on `.value`.
+      if (typeof value.value === 'string' || typeof value.value === 'number') {
+        out[key] = value.value;
+      } else {
+        flattenLeadBody(value, out, depth + 1);
+      }
+    } else if (value !== undefined && value !== null) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function pickLeadField(flat, field) {
+  const aliases = LEAD_FIELD_ALIASES[field] || [];
+  for (const [key, value] of Object.entries(flat)) {
+    const normalized = normalizeLeadKey(key);
+    if (aliases.includes(normalized) && String(value).trim() !== '') {
+      return String(value).trim();
+    }
+  }
+  return '';
+}
+
+// The CRM rejects a phone it can't parse ("Provided phone number is invalid"),
+// which would fail the whole lead — and website visitors type phones however
+// they like. Normalize to E.164; return '' when unsure so the phone is simply
+// omitted rather than costing us the lead.
+function toE164(phone) {
+  const raw = String(phone || '').trim();
+  const digits = raw.replace(/\D/g, '');
+
+  if (raw.startsWith('+') && digits.length >= 8 && digits.length <= 15) {
+    return `+${digits}`;
+  }
+  if (digits.length === 10) {
+    return `+1${digits}`; // Montreal/NA local form
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+${digits}`;
+  }
+  return '';
+}
+
+function extractEmail(text) {
+  const match = String(text || '').match(
+    /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i,
+  );
+  return match ? match[0] : '';
+}
+
+function appendLeadLog(entry) {
+  let log = [];
+  try {
+    log = JSON.parse(fs.readFileSync(LEAD_LOG_PATH, 'utf8'));
+    if (!Array.isArray(log)) log = [];
+  } catch (_e) {
+    log = [];
+  }
+  log.push(entry);
+  // Keep the tail bounded — this is a debugging aid, not a datastore.
+  if (log.length > 500) log = log.slice(-500);
+  try {
+    fs.writeFileSync(LEAD_LOG_PATH, JSON.stringify(log, null, 2));
+  } catch (e) {
+    console.error(`[lead] could not write log: ${e.message}`);
+  }
+}
+
+async function findPersonIdByEmail(email) {
+  const data = await gql(
+    `query PersonByEmail($email: String!) {
+      people(first: 1, filter: { emails: { primaryEmail: { ilike: $email } } }) {
+        edges { node { id sequenceTag } }
+      }
+    }`,
+    { email },
+  );
+  const node = (((data.people || {}).edges || [])[0] || {}).node;
+  return node || null;
+}
+
+app.post('/lead/:secret', async (req, res) => {
+  // Always 200 to the website: Elementor retries and shows the visitor an
+  // error on a non-2xx, and a lead must never look like a failed submission.
+  const ok = (payload) => res.status(200).json({ ok: true, ...payload });
+
+  if (!LEAD_WEBHOOK_SECRET) {
+    console.error('[lead] rejected: no CC_LEAD_WEBHOOK_SECRET configured');
+    return res.status(503).json({ error: 'webhook not configured' });
+  }
+  if (req.params.secret !== LEAD_WEBHOOK_SECRET) {
+    console.warn('[lead] rejected: bad secret');
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  const flat = flattenLeadBody(req.body);
+  const rawSequence = String(req.query.sequence || 'PRE_PHONE_EMAIL');
+  const sequence = VALID_SEQUENCES.includes(rawSequence)
+    ? rawSequence
+    : 'PRE_PHONE_EMAIL';
+
+  // Email is the only hard requirement — it is the dedupe key and the only way
+  // a sequence can reach them. Fall back to scraping it out of any field.
+  const email =
+    pickLeadField(flat, 'email') ||
+    extractEmail(Object.values(flat).join(' '));
+
+  if (!email) {
+    console.warn(`[lead] no email in submission: ${JSON.stringify(flat).slice(0, 300)}`);
+    appendLeadLog({ at: new Date().toISOString(), outcome: 'no-email', flat });
+    return ok({ skipped: 'no email in submission' });
+  }
+
+  const fullName = pickLeadField(flat, 'fullName');
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  const firstName = pickLeadField(flat, 'firstName') || parts[0] || email.split('@')[0];
+  const lastName = pickLeadField(flat, 'lastName') || parts.slice(1).join(' ');
+  const rawPhone = pickLeadField(flat, 'phone');
+  const phone = toE164(rawPhone);
+  const company = pickLeadField(flat, 'company');
+  const message = pickLeadField(flat, 'message');
+
+  if (rawPhone && !phone) {
+    console.warn(`[lead] unparseable phone dropped: ${rawPhone}`);
+  }
+
+  try {
+    const existing = await findPersonIdByEmail(email);
+    let personId = existing && existing.id;
+    let created = false;
+
+    if (!personId) {
+      // Create WITHOUT the tag: the enrollment workflow triggers on
+      // person.updated watching sequenceTag, so a preset tag never enrolls.
+      const createPerson = async (includePhone) => {
+        const data = await gql(
+          `mutation CreateLead($data: PersonCreateInput!) {
+            createPerson(data: $data) { id }
+          }`,
+          {
+            data: {
+              name: { firstName, lastName },
+              emails: { primaryEmail: email },
+              ...(includePhone &&
+                phone && { phones: { primaryPhoneNumber: phone } }),
+              ...(company && { jobTitle: company }),
+            },
+          },
+        );
+        return data.createPerson.id;
+      };
+
+      try {
+        personId = await createPerson(true);
+      } catch (createError) {
+        // Never lose a lead over a field the CRM won't accept — retry with
+        // just the essentials. The raw submission is kept in the log either way.
+        console.warn(
+          `[lead] create failed (${createError.message}); retrying without phone`,
+        );
+        personId = await createPerson(false);
+      }
+      created = true;
+    }
+
+    // Enroll only if the tag actually changes — an unchanged value emits no
+    // update event, so the workflow would silently not run anyway.
+    let enrolled = false;
+    if (!existing || existing.sequenceTag !== sequence) {
+      await gql(
+        `mutation EnrollLead($id: UUID!, $data: PersonUpdateInput!) {
+          updatePerson(id: $id, data: $data) { id }
+        }`,
+        { id: personId, data: { sequenceTag: sequence } },
+      );
+      enrolled = true;
+    }
+
+    console.log(
+      `[lead] ${created ? 'created' : 'matched'} ${email} -> ${personId}` +
+        ` (${enrolled ? `enrolled ${sequence}` : 'already in sequence'})`,
+    );
+    appendLeadLog({
+      at: new Date().toISOString(),
+      outcome: created ? 'created' : 'matched',
+      email,
+      personId,
+      sequence: enrolled ? sequence : null,
+      firstName,
+      lastName,
+      phone,
+      company,
+      message,
+      flat,
+    });
+
+    return ok({ personId, created, enrolled, sequence });
+  } catch (e) {
+    // Log the whole submission so nothing is lost if the CRM call failed.
+    console.error(`[lead] CRM write failed for ${email}: ${e.message}`);
+    appendLeadLog({
+      at: new Date().toISOString(),
+      outcome: 'error',
+      error: e.message,
+      email,
+      flat,
+    });
+    return ok({ queuedLocally: true, error: e.message });
+  }
+});
+
 function readCampaignClicks() {
   try {
     return JSON.parse(fs.readFileSync(CLICKS_PATH, 'utf8'));
