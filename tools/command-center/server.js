@@ -470,6 +470,45 @@ async function fetchAllApprovals() {
   return all;
 }
 
+// ---------------------------------------------------------------------------
+// Which mailbox does an outbound touch send FROM?
+//
+// The "Execute Approved Touch" workflow passes the approval's own
+// `sendFromAccountId` straight into the SEND_EMAIL step's connectedAccountId.
+// When that field is empty, twenty-server does NOT fail — it silently falls
+// back to "the first connected account" (email-composer.service.ts:269, a
+// `find()` with NO order by). That order is arbitrary, so an unrelated row
+// rewrite could flip cold sequence mail onto Moshe's PRIMARY business address
+// (moshe@impressionphotography.ca) and burn its reputation. Every approval the
+// sequence workflows create has this field NULL, so the safe sender today is
+// luck, not design.
+//
+// So: pin it explicitly at send time. SENDER_POOL is a rotation pool — with one
+// entry this is simply "always the dedicated campaign mailbox" (identical to
+// today's behaviour, minus the landmine). Add a second warmed mailbox id to the
+// env var and round-robin starts automatically, no code change:
+//   CC_SENDER_POOL=<accountId>,<accountId>
+// Rotation is keyed on the RECIPIENT, not a counter, so one lead always hears
+// from the same address across all 7 touches — alternating mid-thread is what
+// actually looks like spam.
+const DEFAULT_SENDER_ACCOUNT_ID = '382ab8d9-46e4-4471-81fb-f5723681191c'; // moshe@ph.impressionphotograph1.ca
+const SENDER_POOL = (process.env.CC_SENDER_POOL || DEFAULT_SENDER_ACCOUNT_ID)
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function pickSendFromAccountId(approval) {
+  // Respect an id already stamped on the approval (e.g. the Cash Flow campaign).
+  if (approval && approval.sendFromAccountId) return approval.sendFromAccountId;
+  if (SENDER_POOL.length === 0) return null;
+  if (SENDER_POOL.length === 1) return SENDER_POOL[0];
+
+  const key = String((approval && approval.recipientEmail) || '').toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return SENDER_POOL[hash % SENDER_POOL.length];
+}
+
 async function updateApproval(id, patch) {
   const data = await gql(
     `mutation Upd($id: UUID!, $data: ApprovalUpdateInput!) {
@@ -1954,8 +1993,12 @@ api.post('/approval/:id/send', async (req, res) => {
     }
 
     // "Send" = set APPROVED; the Twenty workflow does the actual send + flips
-    // to COMPLETED.
-    const updated = await updateApproval(req.params.id, { approvalStatus: 'APPROVED' });
+    // to COMPLETED. Pin the sending identity first (see pickSendFromAccountId).
+    const sendFromAccountId = pickSendFromAccountId(current);
+    const updated = await updateApproval(req.params.id, {
+      approvalStatus: 'APPROVED',
+      ...(sendFromAccountId && { sendFromAccountId }),
+    });
     // Re-date the next touch for this lead right away.
     try {
       await reconcile();
