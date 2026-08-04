@@ -166,6 +166,7 @@ export class TelnyxWebhookService {
 
     this.loadCallRecords();
     this.loadSmsRecords();
+    this.loadBlockedNumbers();
     this.cleanupStaleRecords();
 
     this.smsThreadState = new SmsThreadStateStore(this.dataDir);
@@ -382,6 +383,17 @@ export class TelnyxWebhookService {
 
       // Store the inbound SMS with normalized phone numbers
       this.storeSmsRecord(smsRecord);
+
+      // Blocked sender: keep the message (so the thread is still there if the
+      // number is ever unblocked) but do nothing that costs money or attention
+      // — no auto-reply (an outbound SMS is billed), no notification email, no
+      // timeline note. Telnyx bills for RECEIVING the text before this webhook
+      // is ever called, so that part cannot be avoided from here.
+      if (this.isNumberBlocked(fromNumber)) {
+        this.logger.log(`Ignoring SMS from blocked number ${fromNumber}`);
+
+        return;
+      }
 
       // Log to person's timeline (async, don't block webhook)
       this.logSmsToTimeline(smsRecord).catch((err) =>
@@ -1363,6 +1375,89 @@ export class TelnyxWebhookService {
 
   private normalizePhone(phone: string): string {
     return phone.replace(/[\s\-()]/g, '');
+  }
+
+  // --- Blocked numbers ----------------------------------------------------
+  // Spam texters and robo-callers. Compared on DIGITS ONLY so +1 514…,
+  // (514)…, and 1514… are all the same entry.
+  private blockedNumbers = new Set<string>();
+
+  private blockKey(phone: string): string {
+    const digits = String(phone ?? '').replace(/\D/g, '');
+
+    // Treat a North-American number as the same whether or not it carries the
+    // leading country code, so blocking from either the SMS or the call side
+    // catches both.
+    return digits.length === 11 && digits.startsWith('1')
+      ? digits.slice(1)
+      : digits;
+  }
+
+  isNumberBlocked(phone: string): boolean {
+    const key = this.blockKey(phone);
+
+    return key !== '' && this.blockedNumbers.has(key);
+  }
+
+  blockNumber(phone: string): boolean {
+    const key = this.blockKey(phone);
+
+    if (key === '') return false;
+    this.blockedNumbers.add(key);
+    this.saveBlockedNumbers();
+    this.logger.log(`Blocked number ${phone}`);
+
+    return true;
+  }
+
+  unblockNumber(phone: string): boolean {
+    const key = this.blockKey(phone);
+    const removed = this.blockedNumbers.delete(key);
+
+    if (removed) {
+      this.saveBlockedNumbers();
+      this.logger.log(`Unblocked number ${phone}`);
+    }
+
+    return removed;
+  }
+
+  listBlockedNumbers(): string[] {
+    return [...this.blockedNumbers];
+  }
+
+  private blockedNumbersPath(): string {
+    return path.join(this.dataDir, 'blocked-numbers.json');
+  }
+
+  private saveBlockedNumbers(): void {
+    try {
+      fs.writeFileSync(
+        this.blockedNumbersPath(),
+        JSON.stringify([...this.blockedNumbers], null, 2),
+      );
+    } catch (error) {
+      this.logger.error(`Failed to save blocked numbers: ${error}`);
+    }
+  }
+
+  private loadBlockedNumbers(): void {
+    try {
+      const filePath = this.blockedNumbersPath();
+
+      if (fs.existsSync(filePath)) {
+        const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+        if (Array.isArray(parsed)) {
+          this.blockedNumbers = new Set(
+            parsed.map((n) => this.blockKey(String(n))).filter(Boolean),
+          );
+          this.logger.log(`Loaded ${this.blockedNumbers.size} blocked numbers`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Failed to load blocked numbers: ${error}`);
+    }
   }
 
   // Returns the matching person's display name (or null), without

@@ -259,6 +259,38 @@ export class TelnyxWebhookController {
     // We pass a client_state tag so when call.answered fires later we can
     // tell *we* answered this leg (vs a Telnyx-internal answer for outbound
     // WebRTC calls that share this webhook).
+    // Blocked caller: reject BEFORE answering. Answering is what starts the
+    // billed leg (and would then ring the owner's cell, billing a second one),
+    // so a reject is both the quiet outcome and the free one.
+    if (
+      eventType === 'call.initiated' &&
+      direction === 'incoming' &&
+      callControlId &&
+      telnyxApiKey &&
+      this.telnyxWebhookService.isNumberBlocked(
+        (payload?.from as string | undefined) ?? '',
+      )
+    ) {
+      this.logger.log(`Rejecting call from blocked number ${payload?.from}`);
+
+      void fetch(
+        `https://api.telnyx.com/v2/calls/${callControlId}/actions/reject`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${telnyxApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ cause: 'CALL_REJECTED' }),
+        },
+      ).catch((err) =>
+        this.logger.error(`Failed to reject blocked call: ${err}`),
+      );
+
+      // The 200 was already sent at the top of this handler — just stop here.
+      return;
+    }
+
     if (
       eventType === 'call.initiated' &&
       direction === 'incoming' &&
@@ -655,6 +687,45 @@ export class TelnyxWebhookController {
   }
 
   // Outbound SMS send endpoint — called from the CRM frontend
+  // --- Blocked numbers ------------------------------------------------------
+  // Spam texters / robo-callers. Blocking suppresses the auto-reply and the
+  // notification email, and rejects their calls before the billed leg starts.
+  @Get('blocked')
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  getBlockedNumbers(): { blocked: string[] } {
+    return { blocked: this.telnyxWebhookService.listBlockedNumbers() };
+  }
+
+  @Post('blocked')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  blockNumber(@Body() body: { number?: string }): {
+    ok: boolean;
+    blocked?: string[];
+    error?: string;
+  } {
+    const number = (body?.number ?? '').trim();
+
+    if (!number) return { ok: false, error: 'number is required' };
+    if (!this.telnyxWebhookService.blockNumber(number)) {
+      return { ok: false, error: 'not a usable phone number' };
+    }
+
+    return { ok: true, blocked: this.telnyxWebhookService.listBlockedNumbers() };
+  }
+
+  @Post('blocked/remove')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  unblockNumber(@Body() body: { number?: string }): {
+    ok: boolean;
+    blocked: string[];
+  } {
+    this.telnyxWebhookService.unblockNumber((body?.number ?? '').trim());
+
+    return { ok: true, blocked: this.telnyxWebhookService.listBlockedNumbers() };
+  }
+
   @Post('sms/send')
   @HttpCode(HttpStatus.OK)
   @UseGuards(PublicEndpointGuard, NoPermissionGuard)

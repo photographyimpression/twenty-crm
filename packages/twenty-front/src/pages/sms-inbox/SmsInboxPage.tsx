@@ -238,6 +238,24 @@ const StyledDetailHeaderText = styled.div`
   white-space: nowrap;
 `;
 
+const StyledBlockButton = styled.button`
+  background: transparent;
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.tertiary};
+  cursor: pointer;
+  font-family: inherit;
+  font-size: ${themeCssVariables.font.size.xs};
+  margin-left: auto;
+  margin-right: ${themeCssVariables.spacing[2]};
+  padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
+
+  &:hover {
+    border-color: ${themeCssVariables.border.color.strong};
+    color: ${themeCssVariables.font.color.danger};
+  }
+`;
+
 const StyledCloseButton = styled.button`
   background: transparent;
   border: none;
@@ -520,6 +538,7 @@ export const SmsInboxPage = () => {
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, 200);
   const [selectedDigits, setSelectedDigits] = useState<string | null>(null);
+  const [blockedDigits, setBlockedDigits] = useState<string[]>([]);
   const [composerText, setComposerText] = useState('');
   const [sending, setSending] = useState(false);
   const [statusText, setStatusText] = useState('');
@@ -620,6 +639,44 @@ export const SmsInboxPage = () => {
     // readTick intentionally invalidates this memo on each thread click
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, readTick]);
+
+  // The server compares on digits without a leading country code, so mirror
+  // that here rather than guessing at formatting.
+  const blockKey = useCallback((value: string): string => {
+    const digits = normalizeDigits(value);
+
+    return digits.length === 11 && digits.startsWith('1')
+      ? digits.slice(1)
+      : digits;
+  }, []);
+
+  useEffect(() => {
+    void fetch(`${getServerUrl()}/telnyx/blocked`)
+      .then((r) => (r.ok ? r.json() : { blocked: [] }))
+      .then((d: { blocked?: string[] }) => setBlockedDigits(d.blocked ?? []))
+      .catch(() => setBlockedDigits([]));
+  }, []);
+
+  const toggleBlocked = useCallback(
+    async (phone: string, shouldBlock: boolean) => {
+      const endpoint = shouldBlock ? 'blocked' : 'blocked/remove';
+
+      try {
+        const response = await fetch(`${getServerUrl()}/telnyx/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number: phone }),
+        });
+        const data = (await response.json()) as { blocked?: string[] };
+
+        setBlockedDigits(data.blocked ?? []);
+      } catch {
+        // Leave the current state alone — the button simply won't flip, which
+        // is a truer signal than optimistically showing "Blocked".
+      }
+    },
+    [],
+  );
 
   const selectedThread = useMemo(
     () =>
@@ -855,6 +912,23 @@ export const SmsInboxPage = () => {
                 <StyledDetailHeaderText>
                   {selectedThread.counterpartyDisplay}
                 </StyledDetailHeaderText>
+                <StyledBlockButton
+                  type="button"
+                  onClick={() =>
+                    void toggleBlocked(
+                      selectedThread.counterpartyDigits,
+                      !blockedDigits.includes(
+                        blockKey(selectedThread.counterpartyDigits),
+                      ),
+                    )
+                  }
+                >
+                  {blockedDigits.includes(
+                    blockKey(selectedThread.counterpartyDigits),
+                  )
+                    ? t`Unblock`
+                    : t`Block`}
+                </StyledBlockButton>
                 <StyledCloseButton
                   type="button"
                   aria-label={t`Close conversation`}
