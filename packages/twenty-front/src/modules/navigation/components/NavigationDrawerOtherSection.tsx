@@ -74,9 +74,10 @@ export const NavigationDrawerOtherSection = () => {
         containAnimation
         initial={false}
       >
-        {/* Custom (Impression fork): external link to the Daily Command Center
-            triage app. External https `to` makes NavigationDrawerItem open it
-            in a new tab so the CRM stays put. Re-apply on Twenty upgrades.
+        {/* Custom (Impression fork): the Daily Command Center. It used to be an
+            external link, which left the app entirely — no nav, no header. It
+            now opens in-app (CommandCenterPage embeds it) so it looks and
+            behaves like the rest of the CRM. Re-apply on Twenty upgrades.
             Plain string (not the t`` macro): "Command Center" isn't in the
             compiled Lingui catalog, so the macro renders the message id
             ("Nf5ZtG") instead of the text. */}
@@ -84,7 +85,8 @@ export const NavigationDrawerOtherSection = () => {
         <NavigationDrawerItem
           label="Command Center"
           Icon={IconListCheck}
-          to="https://crm.impressionphotography.ca/command-center/"
+          to={AppPath.CommandCenterPage}
+          active={location.pathname === AppPath.CommandCenterPage}
         />
         {/* Feedback is not in this list on purpose: it's the sparkles icon at
             the top-right of every page (FeedbackHeaderButton, rendered by

@@ -106,6 +106,12 @@ const InboxPage = lazy(() =>
   })),
 );
 
+const CommandCenterPage = lazy(() =>
+  import('~/pages/command-center/CommandCenterPage').then((module) => ({
+    default: module.CommandCenterPage,
+  })),
+);
+
 const SmsInboxPage = lazy(() =>
   import('~/pages/sms-inbox/SmsInboxPage').then((module) => ({
     default: module.SmsInboxPage,
@@ -221,6 +227,14 @@ export const useCreateAppRouter = (
             element={
               <LazyRoute>
                 <InboxPage />
+              </LazyRoute>
+            }
+          />
+          <Route
+            path={AppPath.CommandCenterPage}
+            element={
+              <LazyRoute>
+                <CommandCenterPage />
               </LazyRoute>
             }
           />

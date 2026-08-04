@@ -22,6 +22,9 @@ export enum AppPath {
   OpportunitiesPage = '/objects/opportunities',
   InboxPage = '/inbox',
   SmsInboxPage = '/sms-inbox',
+  // nginx serves the standalone app at /command-center/, so the in-app page
+  // that embeds it must live on a different path.
+  CommandCenterPage = '/command',
 
   RecordIndexPage = '/objects/:objectNamePlural',
   RecordShowPage = '/object/:objectNameSingular/:objectRecordId',
