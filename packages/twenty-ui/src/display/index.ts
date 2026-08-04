@@ -131,6 +131,7 @@ export {
   IconBroadcast,
   IconBrowserMaximize,
   IconBuildingSkyscraper,
+  IconBulb,
   IconCalendar,
   IconCalendarDue,
   IconCalendarEvent,
