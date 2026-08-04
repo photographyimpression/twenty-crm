@@ -96,6 +96,7 @@
       if (view === 'board') {
         loadBoard();
         loadTemplates();
+        renderOfferPanel();
       }
       if (view === 'upcoming') loadUpcoming();
     });
@@ -683,6 +684,119 @@
     el('tplCopySubject').addEventListener('click', () =>
       copyTemplatePart(tplState.rendered && tplState.rendered.subject, 'Subject copied'),
     );
+  }
+
+
+  // ---- SEASONAL OFFER (enrol one client) -----------------------------------
+  // The three emails are rendered server-side from the amount + bonus count you
+  // type, so the preview here is byte-identical to what would actually be sent.
+  const offerState = { touch: 1, rendered: null };
+
+  function renderOfferPanel() {
+    const mount = el('offerMount');
+    if (!mount || mount.dataset.ready === '1') {
+      if (mount && mount.dataset.ready === '1') refreshOfferPreview();
+      return;
+    }
+    mount.dataset.ready = '1';
+    mount.innerHTML = `
+      <div class="card">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <label style="flex:2;min-width:210px;font-size:12px;color:var(--muted)">Client email (must exist in the CRM)
+            <input class="edit-field" id="offEmail" placeholder="client@company.com" style="margin-top:4px">
+          </label>
+          <label style="flex:1;min-width:130px;font-size:12px;color:var(--muted)">Prepaid card
+            <input class="edit-field" id="offCard" value="$1,000" style="margin-top:4px">
+          </label>
+          <label style="flex:1;min-width:120px;font-size:12px;color:var(--muted)">Extra images
+            <input class="edit-field" id="offExtra" value="10" inputmode="numeric" style="margin-top:4px">
+          </label>
+        </div>
+        <div id="offMeta" style="font-size:13px;color:var(--muted);margin:10px 0 6px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn btn-edit off-touch" data-touch="1">Touch 1 · day 0</button>
+          <button class="btn btn-edit off-touch" data-touch="2">Touch 2 · day 2</button>
+          <button class="btn btn-edit off-touch" data-touch="3">Touch 3 · final hours</button>
+        </div>
+        <div style="font-size:13px;color:var(--muted)">Subject</div>
+        <div id="offSubject" class="preview-subject" style="margin-bottom:4px"></div>
+        <iframe id="offPreview" class="preview-frame" style="width:100%;height:52vh;border:0"
+                sandbox="" title="Offer preview"></iframe>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn btn-send" id="offEnroll">Enrol this client</button>
+          <span id="offMsg" style="font-size:13px;align-self:center"></span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px">
+          Creates 3 pending emails in Triage. Nothing sends until you approve each one.
+        </div>
+      </div>`;
+
+    mount.querySelectorAll('.off-touch').forEach((b) =>
+      b.addEventListener('click', () => {
+        offerState.touch = Number(b.getAttribute('data-touch'));
+        refreshOfferPreview();
+      }),
+    );
+    ['offCard', 'offExtra'].forEach((id) =>
+      el(id).addEventListener('input', debounceOfferPreview),
+    );
+    el('offEnroll').addEventListener('click', enrolOffer);
+    refreshOfferPreview();
+  }
+
+  let offerTimer = null;
+  function debounceOfferPreview() {
+    clearTimeout(offerTimer);
+    offerTimer = setTimeout(refreshOfferPreview, 250);
+  }
+
+  async function refreshOfferPreview() {
+    const cardAmount = (el('offCard') || {}).value || '$1,000';
+    const extraImages = (el('offExtra') || {}).value || '10';
+    let data;
+    try {
+      data = await apiGet(
+        `/offer/preview?cardAmount=${encodeURIComponent(cardAmount)}&extraImages=${encodeURIComponent(extraImages)}`,
+      );
+    } catch (e) {
+      el('offMeta').textContent = e.message;
+      return;
+    }
+    offerState.rendered = data;
+    const touch = (data.touches || []).find((t) => t.touchNumber === offerState.touch);
+    el('offMeta').innerHTML =
+      `Reads as the <b>${esc(data.saleName)}</b> offer, ending <b>${esc(data.deadline)}</b> — the window starts the day you enrol, so it is never out of season.`;
+    el('offSubject').textContent = touch ? touch.subject : '';
+    const frame = el('offPreview');
+    if (frame && touch) frame.srcdoc = touch.html;
+    document.querySelectorAll('.off-touch').forEach((b) =>
+      b.classList.toggle('active', Number(b.getAttribute('data-touch')) === offerState.touch),
+    );
+  }
+
+  async function enrolOffer() {
+    const msg = el('offMsg');
+    const email = (el('offEmail').value || '').trim();
+    if (!email) {
+      msg.style.color = 'var(--red)';
+      msg.textContent = 'Enter the client email first.';
+      return;
+    }
+    msg.style.color = 'var(--muted)';
+    msg.textContent = 'Enrolling…';
+    try {
+      const out = await apiPost('/offer/enroll', {
+        email,
+        cardAmount: (el('offCard').value || '').trim(),
+        extraImages: (el('offExtra').value || '').trim(),
+      });
+      msg.style.color = 'var(--green)';
+      msg.textContent = `✅ ${out.enrolled} enrolled — 3 emails waiting in Triage (ends ${out.deadline}).`;
+      el('offEmail').value = '';
+    } catch (e) {
+      msg.style.color = 'var(--red)';
+      msg.textContent = e.message;
+    }
   }
 
   let tplPreviewTimer = null;

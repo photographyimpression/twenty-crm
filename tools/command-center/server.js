@@ -24,6 +24,14 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const {
+  SEASONAL_OFFER_KEY,
+  SEASONAL_OFFER_TOUCHES,
+  seasonNameFor,
+  offerWindow,
+  formatDeadline,
+  renderTouch,
+} = require('./offer-campaign');
 
 const PORT = process.env.PORT || 4242;
 const GRAPHQL_URL =
@@ -374,11 +382,20 @@ const SEQUENCE_GAPS = {
   // One-week cash push: touch 1 due immediately, touch 2 a few days later
   // (the Thursday "deadline" nudge before the Friday cutoff).
   CASH_FLOW_CAMPAIGN: { 1: 0, 2: 3 },
+  // Seasonal offer: a hard 3-day window. Touch 1 on enrolment, a reminder on
+  // day 2, and the last-hours push on day 3. The deadline is the whole point,
+  // so these dates are set at enrolment and must not be re-cascaded.
+  [SEASONAL_OFFER_KEY]: { 1: 0, 2: 2, 3: 3 },
 };
-const SEQUENCE_TOTALS = { PRE_PHONE_EMAIL: 12, POST_QUOTE_FOLLOWUP: 7, CASH_FLOW_CAMPAIGN: 2 };
+const SEQUENCE_TOTALS = {
+  PRE_PHONE_EMAIL: 12,
+  POST_QUOTE_FOLLOWUP: 7,
+  CASH_FLOW_CAMPAIGN: 2,
+  [SEASONAL_OFFER_KEY]: SEASONAL_OFFER_TOUCHES,
+};
 // Sequences whose first-touch dates are managed externally (a drip stagger),
 // so the cascade must not recompute/collapse them back to enrollment day.
-const FIXED_SCHEDULE_SEQUENCES = new Set(['CASH_FLOW_CAMPAIGN']);
+const FIXED_SCHEDULE_SEQUENCES = new Set(['CASH_FLOW_CAMPAIGN', SEASONAL_OFFER_KEY]);
 
 function seqOf(approval) {
   return approval.sequenceKey || DEFAULT_SEQUENCE;
@@ -507,6 +524,46 @@ function pickSendFromAccountId(approval) {
   let hash = 0;
   for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
   return SENDER_POOL[hash % SENDER_POOL.length];
+}
+
+async function createApproval(data) {
+  const out = await gql(
+    `mutation CreateApproval($data: ApprovalCreateInput!) {
+      createApproval(data: $data) { ${APPROVAL_FIELDS} }
+    }`,
+    { data },
+  );
+  return out.createApproval;
+}
+
+// Build the 3 touches for one person. Returns drafts only — the caller decides
+// whether to persist them (enrol) or just show them (preview).
+function buildSeasonalOfferTouches({ firstName, cardAmount, extraImages, startDate }) {
+  const { start, end } = offerWindow(startDate);
+  const saleName = seasonNameFor(start);
+  const deadline = formatDeadline(end);
+  const gaps = SEQUENCE_GAPS[SEASONAL_OFFER_KEY];
+
+  return Array.from({ length: SEASONAL_OFFER_TOUCHES }, (_unused, index) => {
+    const touchNumber = index + 1;
+    const scheduled = new Date(start.getTime());
+    scheduled.setDate(scheduled.getDate() + (gaps[touchNumber] || 0));
+    // The last touch is the "final hours" push, so put it late in the day.
+    if (touchNumber === SEASONAL_OFFER_TOUCHES) scheduled.setHours(19, 0, 0, 0);
+
+    const { subject, html } = renderTouch(touchNumber, {
+      firstName,
+      cardAmount,
+      extraImages,
+      deadline,
+      saleName,
+      // Rewritten to /go/<approvalId> once the row exists, so clicks are
+      // attributable to the person. Until then it points at the offer itself.
+      ctaUrl: STRIPE_BUY_URL,
+    });
+
+    return { touchNumber, subject, html, scheduledDate: scheduled, saleName, deadline };
+  });
 }
 
 async function updateApproval(id, patch) {
@@ -2154,6 +2211,110 @@ api.get('/templates/:id', (req, res) => {
     html: renderTemplateTokens(tpl.html, values),
     tokensUsed: Object.keys(values),
   });
+});
+
+// --- Seasonal offer -------------------------------------------------------
+// Preview renders the exact three emails without writing anything, so a draft
+// can be read end-to-end before a real client is ever involved.
+api.get('/offer/preview', (req, res) => {
+  const cardAmount = String(req.query.cardAmount || '$1,000').trim();
+  const extraImages = String(req.query.extraImages || '10').trim();
+  const firstName = String(req.query.firstName || 'Sarah').trim();
+
+  const touches = buildSeasonalOfferTouches({
+    firstName,
+    cardAmount,
+    extraImages,
+    startDate: new Date(),
+  });
+
+  res.json({
+    saleName: touches[0].saleName,
+    deadline: touches[0].deadline,
+    touches: touches.map((t) => ({
+      touchNumber: t.touchNumber,
+      subject: t.subject,
+      html: t.html,
+      scheduledDate: t.scheduledDate.toISOString(),
+    })),
+  });
+});
+
+// Enrol ONE person. Creates 3 PENDING approvals — nothing is emailed until
+// each one is approved in Triage, same as every other sequence.
+api.post('/offer/enroll', async (req, res) => {
+  try {
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+    const cardAmount = String((req.body && req.body.cardAmount) || '').trim();
+    const extraImages = String((req.body && req.body.extraImages) || '').trim();
+
+    if (!email) return res.status(400).json({ error: 'email is required' });
+    if (!cardAmount) return res.status(400).json({ error: 'cardAmount is required (e.g. $1,000)' });
+    if (!/^\d+$/.test(extraImages)) {
+      return res.status(400).json({ error: 'extraImages must be a whole number' });
+    }
+
+    const person = await gql(
+      `query OfferPerson($email: String!) {
+        people(first: 1, filter: { emails: { primaryEmail: { ilike: $email } } }) {
+          edges { node { id name { firstName lastName } company { name } } }
+        }
+      }`,
+      { email },
+    );
+    const node = (((person.people || {}).edges || [])[0] || {}).node;
+    if (!node) {
+      return res.status(404).json({ error: `No contact in the CRM with the email ${email}` });
+    }
+
+    const firstName = ((node.name || {}).firstName || '').trim();
+    const leadName = `${firstName} ${((node.name || {}).lastName || '').trim()}`.trim();
+    const companyName = ((node.company || {}).name || '').trim();
+
+    const touches = buildSeasonalOfferTouches({
+      firstName,
+      cardAmount,
+      extraImages,
+      startDate: new Date(),
+    });
+
+    const created = [];
+    for (const touch of touches) {
+      const approval = await createApproval({
+        touchNumber: touch.touchNumber,
+        emailSubject: touch.subject,
+        emailBody: touch.html,
+        recipientEmail: email,
+        leadName: leadName || email,
+        companyName: companyName || null,
+        actionType: 'SEND_EMAIL',
+        approvalStatus: 'PENDING',
+        sequenceKey: SEASONAL_OFFER_KEY,
+        scheduledDate: touch.scheduledDate.toISOString(),
+        // Copy Moshe on every send, as asked.
+        bccEmail: USER_EMAIL,
+      });
+
+      // Now that the row exists, point the CTA at the per-approval redirect so
+      // a click is attributable to this person and shows on the campaign board.
+      const trackedHtml = touch.html.split(STRIPE_BUY_URL).join(
+        `${CRM_BASE_URL}/command-center/go/${approval.id}`,
+      );
+      await updateApproval(approval.id, { emailBody: trackedHtml });
+      created.push({ id: approval.id, touchNumber: touch.touchNumber, scheduledDate: touch.scheduledDate });
+    }
+
+    res.json({
+      ok: true,
+      enrolled: leadName || email,
+      saleName: touches[0].saleName,
+      deadline: touches[0].deadline,
+      approvals: created,
+      note: 'Created as PENDING — nothing sends until you approve each one in Triage.',
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 api.get('/campaign-board', async (req, res) => {
