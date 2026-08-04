@@ -17,6 +17,8 @@ import { useObjectPermissionsForObject } from '@/object-record/hooks/useObjectPe
 import { useRecordIndexContextOrThrow } from '@/object-record/record-index/contexts/RecordIndexContext';
 import { isRecordTableCreateDisabled } from '@/object-record/record-table/utils/isRecordTableCreateDisabled';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
+import { AppPath } from 'twenty-shared/types';
+import { getAppPath } from 'twenty-shared/utils';
 import { ModalStatefulWrapper } from '@/ui/layout/modal/components/ModalStatefulWrapper';
 import { useModal } from '@/ui/layout/modal/hooks/useModal';
 
@@ -170,7 +172,7 @@ export const QuickAddRecordButton = () => {
     const normalizedPhone = toE164(phoneValue);
 
     try {
-      await createOneRecord({
+      const createdRecord = await createOneRecord({
         ...(fieldName !== undefined && { [fieldName]: titleValue }),
         ...(showEmail &&
           emailValue.trim() !== '' && {
@@ -182,7 +184,20 @@ export const QuickAddRecordButton = () => {
           }),
       });
 
-      enqueueSuccessSnackBar({ message: `Added ${trimmedName}` });
+      // Adding deliberately keeps you on the list, so the confirmation carries
+      // the one click through to the record just created.
+      enqueueSuccessSnackBar({
+        // eslint-disable-next-line lingui/no-unlocalized-strings
+        message: `Added ${trimmedName}`,
+        options: {
+          // eslint-disable-next-line lingui/no-unlocalized-strings
+          actionText: 'Open',
+          actionTo: getAppPath(AppPath.RecordShowPage, {
+            objectNameSingular,
+            objectRecordId: createdRecord.id,
+          }),
+        },
+      });
 
       if (shouldKeepOpen) {
         // "Save and add another": clear the form but stay put so a batch of

@@ -14,7 +14,8 @@ import { useAtomComponentStateCallbackState } from '@/ui/utilities/state/jotai/h
 import { t } from '@lingui/core/macro';
 import { useStore } from 'jotai';
 import { useCallback, useRef, useState } from 'react';
-import { isDefined } from 'twenty-shared/utils';
+import { AppPath } from 'twenty-shared/types';
+import { getAppPath, isDefined } from 'twenty-shared/utils';
 import { IconPlus } from 'twenty-ui/display';
 import { FieldMetadataType } from '~/generated-metadata/graphql';
 
@@ -144,8 +145,20 @@ export const RecordTableNoRecordGroupAddNew = () => {
 
       insertCreatedRecordIntoTable(createdRecord);
 
-      // eslint-disable-next-line lingui/no-unlocalized-strings
-      enqueueSuccessSnackBar({ message: `Added ${trimmedValue}` });
+      // The confirmation doubles as a way in: adding stays on the list (so you
+      // can keep typing), and this is the one click to the record you just made.
+      enqueueSuccessSnackBar({
+        // eslint-disable-next-line lingui/no-unlocalized-strings
+        message: `Added ${trimmedValue}`,
+        options: {
+          // eslint-disable-next-line lingui/no-unlocalized-strings
+          actionText: 'Open',
+          actionTo: getAppPath(AppPath.RecordShowPage, {
+            objectNameSingular: objectMetadataItem.nameSingular,
+            objectRecordId: createdRecord.id,
+          }),
+        },
+      });
     } catch {
       // The create failed — put the typed name back so it isn't silently lost
       // (unless the user already started typing the next contact into the
@@ -164,6 +177,7 @@ export const RecordTableNoRecordGroupAddNew = () => {
     inlineValue,
     labelIdentifierFieldMetadataItem?.name,
     labelIdentifierType,
+    objectMetadataItem.nameSingular,
     createNewIndexRecord,
     insertCreatedRecordIntoTable,
     enqueueSuccessSnackBar,
