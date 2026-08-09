@@ -113,15 +113,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/openai-compatible@npm:2.0.30":
-  version: 2.0.30
-  resolution: "@ai-sdk/openai-compatible@npm:2.0.30"
+"@ai-sdk/openai-compatible@npm:2.0.36":
+  version: 2.0.36
+  resolution: "@ai-sdk/openai-compatible@npm:2.0.36"
   dependencies:
     "@ai-sdk/provider": "npm:3.0.8"
-    "@ai-sdk/provider-utils": "npm:4.0.15"
+    "@ai-sdk/provider-utils": "npm:4.0.20"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/650d926223826bead721cf7d2bbdfb311debaaaa83a04b220b28a93ff99abc7c4914d0aa9a23441c396da00a41a214891a8e1ddfef7f4de320238947a28a8bb7
+  checksum: 10c0/d526592690942476bb2d8ea07c8b0a481235e5783df6849ebb3ff78fe6a11b05e4d05078f7507e8662e6add1cd4e844e5fd51043b0c559d3190e8433ecd4e9e2
   languageName: node
   linkType: hard
 
@@ -163,6 +163,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ai-sdk/provider-utils@npm:4.0.20":
+  version: 4.0.20
+  resolution: "@ai-sdk/provider-utils@npm:4.0.20"
+  dependencies:
+    "@ai-sdk/provider": "npm:3.0.8"
+    "@standard-schema/spec": "npm:^1.1.0"
+    eventsource-parser: "npm:^3.0.6"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/749d9f91b2b098f716246bbb92a801d0f8a952fed4481e48b7d36a1c026cfe96b9d956f34b95270bc4628048ad57edd7b19026c167e8ded288e741aa289d4cdd
+  languageName: node
+  linkType: hard
+
 "@ai-sdk/provider@npm:2.0.1":
   version: 2.0.1
   resolution: "@ai-sdk/provider@npm:2.0.1"
@@ -196,15 +209,15 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/xai@npm:^3.0.57":
-  version: 3.0.59
-  resolution: "@ai-sdk/xai@npm:3.0.59"
+  version: 3.0.71
+  resolution: "@ai-sdk/xai@npm:3.0.71"
   dependencies:
-    "@ai-sdk/openai-compatible": "npm:2.0.30"
+    "@ai-sdk/openai-compatible": "npm:2.0.36"
     "@ai-sdk/provider": "npm:3.0.8"
-    "@ai-sdk/provider-utils": "npm:4.0.15"
+    "@ai-sdk/provider-utils": "npm:4.0.20"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/88bb697ee92e46308c037f7d2647eb580f7dba8dbbf459f50b5edbc0a28d02e133042678bbedf74d7aede47d933b6a37c1a14f9f91b9b5b62de8e08a73112957
+  checksum: 10c0/dbb201afcc64e0b425ca156d164b2beae3252ac803574ee2d3935ed007f9f7abb233e9c999321e33b7bd01ca0e8143aa7ec31ecc2f6e244f71a1244235d2ed5d
   languageName: node
   linkType: hard
 
