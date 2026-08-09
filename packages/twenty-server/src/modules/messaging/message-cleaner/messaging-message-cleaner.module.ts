@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { DataSourceModule } from 'src/engine/metadata-modules/data-source/data-source.module';
 import { MessagingCommonModule } from 'src/modules/messaging/common/messaging-common.module';
+import { MessagingCleanNonContactMessagesCommand } from 'src/modules/messaging/message-cleaner/commands/messaging-clean-non-contact-messages.command';
 import { MessagingMessageCleanerRemoveOrphansCommand } from 'src/modules/messaging/message-cleaner/commands/messaging-message-clearner-remove-orphans.command';
 import { MessagingResetChannelCommand } from 'src/modules/messaging/message-cleaner/commands/messaging-reset-channel.command';
 import { MessagingConnectedAccountDeletionCleanupJob } from 'src/modules/messaging/message-cleaner/jobs/messaging-connected-account-deletion-cleanup.job';
@@ -19,6 +20,7 @@ import { MessagingMessageCleanerService } from 'src/modules/messaging/message-cl
   providers: [
     MessagingConnectedAccountDeletionCleanupJob,
     MessagingMessageCleanerConnectedAccountListener,
+    MessagingCleanNonContactMessagesCommand,
     MessagingMessageCleanerRemoveOrphansCommand,
     MessagingResetChannelCommand,
     MessagingMessageCleanerService,

@@ -29,12 +29,14 @@ import { MessagingIMAPDriverModule } from 'src/modules/messaging/message-import-
 import { MessagingMicrosoftDriverModule } from 'src/modules/messaging/message-import-manager/drivers/microsoft/messaging-microsoft-driver.module';
 import { MessagingSmtpDriverModule } from 'src/modules/messaging/message-import-manager/drivers/smtp/messaging-smtp-driver.module';
 import { MessagingAddSingleMessageToCacheForImportJob } from 'src/modules/messaging/message-import-manager/jobs/messaging-add-single-message-to-cache-for-import.job';
+import { MessagingBackfillForContactJob } from 'src/modules/messaging/message-import-manager/jobs/messaging-backfill-for-contact.job';
 import { MessagingCleanCacheJob } from 'src/modules/messaging/message-import-manager/jobs/messaging-clean-cache';
 import { MessagingMessageListFetchJob } from 'src/modules/messaging/message-import-manager/jobs/messaging-message-list-fetch.job';
 import { MessagingMessagesImportJob } from 'src/modules/messaging/message-import-manager/jobs/messaging-messages-import.job';
 import { MessagingOngoingStaleJob } from 'src/modules/messaging/message-import-manager/jobs/messaging-ongoing-stale.job';
 import { MessagingRelaunchFailedMessageChannelJob } from 'src/modules/messaging/message-import-manager/jobs/messaging-relaunch-failed-message-channel.job';
 import { MessagingMessageImportManagerMessageChannelListener } from 'src/modules/messaging/message-import-manager/listeners/messaging-import-manager-message-channel.listener';
+import { MessagingPersonCreatedBackfillListener } from 'src/modules/messaging/message-import-manager/listeners/messaging-person-created-backfill.listener';
 import { MessagingAccountAuthenticationService } from 'src/modules/messaging/message-import-manager/services/messaging-account-authentication.service';
 import { MessagingCursorService } from 'src/modules/messaging/message-import-manager/services/messaging-cursor.service';
 import { MessagingDeleteFolderMessagesService } from 'src/modules/messaging/message-import-manager/services/messaging-delete-folder-messages.service';
@@ -91,7 +93,9 @@ import { MessagingMonitoringModule } from 'src/modules/messaging/monitoring/mess
     MessagingOngoingStaleCronJob,
     MessagingRelaunchFailedMessageChannelsCronJob,
     MessagingAddSingleMessageToCacheForImportJob,
+    MessagingBackfillForContactJob,
     MessagingMessageImportManagerMessageChannelListener,
+    MessagingPersonCreatedBackfillListener,
     MessagingCleanCacheJob,
     MessagingMessageService,
     MessagingMessageFolderAssociationService,

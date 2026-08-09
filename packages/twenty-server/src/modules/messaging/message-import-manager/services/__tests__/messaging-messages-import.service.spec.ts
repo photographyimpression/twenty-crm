@@ -1,7 +1,10 @@
 import { Logger, type Provider } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 
-import { ConnectedAccountProvider } from 'twenty-shared/types';
+import {
+  ConnectedAccountProvider,
+  MessageParticipantRole,
+} from 'twenty-shared/types';
 
 import { CacheStorageService } from 'src/engine/core-modules/cache-storage/services/cache-storage.service';
 import { CacheStorageNamespace } from 'src/engine/core-modules/cache-storage/types/cache-storage-namespace.enum';
@@ -119,9 +122,42 @@ describe('MessagingMessagesImportService', () => {
       {
         provide: GlobalWorkspaceOrmManager,
         useValue: {
-          getRepository: jest.fn().mockResolvedValue({
-            update: jest.fn().mockResolvedValue(undefined),
-          }),
+          getRepository: jest
+            .fn()
+            .mockImplementation((_workspaceId: string, entityName: string) => {
+              if (entityName === 'person') {
+                return Promise.resolve({
+                  createQueryBuilder: jest.fn().mockReturnValue({
+                    select: jest.fn().mockReturnThis(),
+                    where: jest.fn().mockReturnThis(),
+                    andWhere: jest.fn().mockReturnThis(),
+                    orWhere: jest.fn().mockReturnThis(),
+                    withDeleted: jest.fn().mockReturnThis(),
+                    orderBy: jest.fn().mockReturnThis(),
+                    getMany: jest.fn().mockResolvedValue([
+                      {
+                        id: 'person-1',
+                        emails: {
+                          primaryEmail: 'sender@example.com',
+                          additionalEmails: [],
+                        },
+                      },
+                      {
+                        id: 'person-2',
+                        emails: {
+                          primaryEmail: 'recipient@example.com',
+                          additionalEmails: [],
+                        },
+                      },
+                    ]),
+                  }),
+                });
+              }
+
+              return Promise.resolve({
+                update: jest.fn().mockResolvedValue(undefined),
+              });
+            }),
           executeInWorkspaceContext: jest
             .fn()
             .mockImplementation((fn: () => any, _authContext?: any) => fn()),
@@ -132,14 +168,46 @@ describe('MessagingMessagesImportService', () => {
         useValue: {
           getMessages: jest.fn().mockResolvedValue([
             {
-              id: 'message-1',
-              from: 'sender@example.com',
-              to: 'test@gmail.com',
+              externalId: 'message-1',
+              subject: 'Subject 1',
+              text: 'body',
+              receivedAt: new Date(),
+              headerMessageId: '<m1@x>',
+              messageThreadExternalId: 'thread-1',
+              participants: [
+                {
+                  role: MessageParticipantRole.FROM,
+                  handle: 'sender@example.com',
+                  displayName: 'Sender',
+                },
+                {
+                  role: MessageParticipantRole.TO,
+                  handle: 'test@gmail.com',
+                  displayName: 'Me',
+                },
+              ],
+              attachments: [],
             },
             {
-              id: 'message-2',
-              from: 'test@gmail.com',
-              to: 'recipient@example.com',
+              externalId: 'message-2',
+              subject: 'Subject 2',
+              text: 'body',
+              receivedAt: new Date(),
+              headerMessageId: '<m2@x>',
+              messageThreadExternalId: 'thread-2',
+              participants: [
+                {
+                  role: MessageParticipantRole.FROM,
+                  handle: 'test@gmail.com',
+                  displayName: 'Me',
+                },
+                {
+                  role: MessageParticipantRole.TO,
+                  handle: 'recipient@example.com',
+                  displayName: 'Recipient',
+                },
+              ],
+              attachments: [],
             },
           ]),
         },

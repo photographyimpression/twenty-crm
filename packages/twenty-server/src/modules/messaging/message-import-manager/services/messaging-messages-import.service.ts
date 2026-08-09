@@ -30,7 +30,9 @@ import {
 } from 'src/modules/messaging/message-import-manager/services/messaging-import-exception-handler.service';
 import { MessagingSaveMessagesAndEnqueueContactCreationService } from 'src/modules/messaging/message-import-manager/services/messaging-save-messages-and-enqueue-contact-creation.service';
 import { filterEmails } from 'src/modules/messaging/message-import-manager/utils/filter-emails.util';
+import { filterOutNonContactMessages } from 'src/modules/messaging/message-import-manager/utils/filter-out-non-contact-messages.util';
 import { MessagingMonitoringService } from 'src/modules/messaging/monitoring/services/messaging-monitoring.service';
+import { type PersonWorkspaceEntity } from 'src/modules/person/standard-objects/person.workspace-entity';
 
 @Injectable()
 export class MessagingMessagesImportService {
@@ -162,15 +164,47 @@ export class MessagingMessagesImportService {
           );
         }
 
-        const messagesToSave = filterEmails(
+        const handleAliases =
+          connectedAccountWithFreshTokens.handleAliases.split(',');
+
+        const messagesPassingStandardFilters = filterEmails(
           messageChannel.handle,
-          [...connectedAccountWithFreshTokens.handleAliases.split(',')],
+          [...handleAliases],
           allMessages,
           blocklist
             .map((blocklistItem) => blocklistItem.handle)
             .filter(isDefined),
           messageChannel.excludeGroupEmails,
         );
+
+        // Only persist messages where at least one non-self participant
+        // matches an existing CRM Person. Keeps the workspace DB scoped to
+        // relationship-relevant traffic instead of mirroring the entire
+        // mailbox. Person.created backfill brings in history for new contacts.
+        const personRepository =
+          await this.globalWorkspaceOrmManager.getRepository<PersonWorkspaceEntity>(
+            workspaceId,
+            'person',
+            { shouldBypassPermissionChecks: true },
+          );
+
+        const droppedBeforeContactFilter =
+          messagesPassingStandardFilters.length;
+
+        const messagesToSave = await filterOutNonContactMessages({
+          messages: messagesPassingStandardFilters,
+          selfHandles: [messageChannel.handle, ...handleAliases],
+          personRepository,
+        });
+
+        const droppedByContactFilter =
+          droppedBeforeContactFilter - messagesToSave.length;
+
+        if (droppedByContactFilter > 0) {
+          this.logger.log(
+            `WorkspaceId: ${workspaceId}, MessageChannelId: ${messageChannel.id} - Dropped ${droppedByContactFilter} message(s) with no CRM contact participant`,
+          );
+        }
 
         if (messagesToSave.length > 0) {
           await this.saveMessagesAndEnqueueContactCreationService.saveMessagesAndEnqueueContactCreation(
