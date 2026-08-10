@@ -69,9 +69,7 @@ export const PageLayoutRecordPageRenderer = ({
     ...(canOpenOnItsOwnPage
       ? [
           <RecordShowSidePanelOpenRecordButton
-            objectNameSingular={
-              targetRecordIdentifier.targetObjectNameSingular
-            }
+            objectNameSingular={targetRecordIdentifier.targetObjectNameSingular}
             recordId={targetRecordIdentifier.id}
           />,
         ]
