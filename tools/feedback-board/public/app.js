@@ -142,11 +142,17 @@ function renderCmtDrafts() {
   });
 }
 
+// The form only asks a bug for "what's wrong", so don't label that text "Goal"
+// when the card is read back.
+function goalLabel(card) {
+  return card.type === 'bug' ? 'What’s wrong' : 'Goal';
+}
+
 function cardHtml(card) {
   const col = card.column || 'inbox';
 
   let fields = '';
-  if (card.goal) fields += '<div class="kcard-field"><span class="lbl">Goal</span>' + esc(card.goal) + '</div>';
+  if (card.goal) fields += '<div class="kcard-field"><span class="lbl">' + goalLabel(card) + '</span>' + esc(card.goal) + '</div>';
   if (card.idea) fields += '<div class="kcard-field"><span class="lbl">Idea</span>' + esc(card.idea) + '</div>';
 
   let claudeNote = '';
@@ -190,7 +196,7 @@ function cardHtml(card) {
 function deliveredRowHtml(card) {
   const open = openRows.has(card.id) ? ' open' : '';
   let detail = '';
-  if (card.goal) detail += '<div class="kcard-field"><span class="lbl">Goal</span>' + esc(card.goal) + '</div>';
+  if (card.goal) detail += '<div class="kcard-field"><span class="lbl">' + goalLabel(card) + '</span>' + esc(card.goal) + '</div>';
   if (card.idea) detail += '<div class="kcard-field"><span class="lbl">Idea</span>' + esc(card.idea) + '</div>';
   if (card.deliveredNote) {
     detail += '<div class="delivered-note"><span class="lbl">What shipped</span>' + esc(card.deliveredNote) + '</div>';
@@ -291,11 +297,15 @@ function clearPendingFiles() {
 async function submitInlineForm() {
   const formErr = document.getElementById('formErr');
   const goal = document.getElementById('goalInput').value.trim();
-  const idea = document.getElementById('ideaInput').value.trim();
+  // Idea is hidden for bugs — drop anything typed before switching type, so a
+  // bug card never carries a stale "how it could work" back to the board.
+  const idea = selectedType === 'bug' ? '' : document.getElementById('ideaInput').value.trim();
   formErr.textContent = '';
 
   if (!goal && !idea && pendingFiles.length === 0) {
-    formErr.textContent = 'Add something — a goal, an idea, or paste a screenshot.';
+    formErr.textContent = selectedType === 'bug'
+      ? 'Say what’s wrong, or paste a screenshot.'
+      : 'Add something — a goal, an idea, or paste a screenshot.';
     return;
   }
 
