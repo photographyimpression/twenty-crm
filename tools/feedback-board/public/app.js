@@ -217,11 +217,13 @@ function inlineFormHtml() {
       '<button type="button" data-type="feature" class="' + (selectedType === 'feature' ? 'active' : '') + '">✨ Feature</button>' +
       '<button type="button" data-type="bug" class="' + (selectedType === 'bug' ? 'active' : '') + '">🐞 Bug</button>' +
     '</div>' +
-    '<div class="field">' +
-      '<label>Goal — what you want to achieve <span class="opt">(optional)</span></label>' +
+    // Field labels/visibility adapt to the type: a bug just needs "what's
+    // wrong", not a goal + idea (Moshe: "a bug we just tell you the issue").
+    '<div class="field" id="goalField">' +
+      '<label id="goalLabel">Goal — what you want to achieve <span class="opt">(optional)</span></label>' +
       '<textarea id="goalInput" placeholder="e.g. clients should confirm their shoot time themselves"></textarea>' +
     '</div>' +
-    '<div class="field">' +
+    '<div class="field" id="ideaField">' +
       '<label>Idea — how it could work <span class="opt">(optional)</span></label>' +
       '<textarea id="ideaInput" placeholder="e.g. a link in the reminder email…"></textarea>' +
     '</div>' +
@@ -317,15 +319,35 @@ async function submitInlineForm() {
   }
 }
 
+// A bug just needs "what's wrong"; a feature keeps goal + idea. Swap the
+// labels and hide the Idea field when Bug is selected.
+function applyTypeToForm() {
+  const goalLabel = document.getElementById('goalLabel');
+  const ideaField = document.getElementById('ideaField');
+  const goalInput = document.getElementById('goalInput');
+  if (!goalLabel || !ideaField || !goalInput) return;
+  if (selectedType === 'bug') {
+    goalLabel.innerHTML = 'What’s the bug? What happened?';
+    goalInput.placeholder = 'e.g. I replied to an SMS email but the client got no text';
+    ideaField.style.display = 'none';
+  } else {
+    goalLabel.innerHTML = 'Goal — what you want to achieve <span class="opt">(optional)</span>';
+    goalInput.placeholder = 'e.g. clients should confirm their shoot time themselves';
+    ideaField.style.display = '';
+  }
+}
+
 function wireInlineForm() {
   const toggle = document.getElementById('typeToggle');
   if (!toggle) return;
+  applyTypeToForm();
   toggle.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-type]');
     if (!b) return;
     selectedType = b.getAttribute('data-type');
     toggle.querySelectorAll('button').forEach((x) =>
       x.classList.toggle('active', x.getAttribute('data-type') === selectedType));
+    applyTypeToForm();
   });
   document.getElementById('addRequestBtn').addEventListener('click', submitInlineForm);
   const shotPreview = document.getElementById('shotPreview');
