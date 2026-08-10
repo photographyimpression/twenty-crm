@@ -57,6 +57,27 @@ export const PageLayoutRecordPageRenderer = ({
     targetObjectNameSingular: targetRecordIdentifier.targetObjectNameSingular,
   });
 
+  // A note is written and read in place — there is no fuller version of it to
+  // open on its own page, so the Open action is noise in the note panel.
+  // Options stays: it still holds Delete and the rest of the record actions.
+  const canOpenOnItsOwnPage =
+    targetRecordIdentifier.targetObjectNameSingular !==
+    CoreObjectNameSingular.Note;
+
+  const sidePanelActions = [
+    <RecordPageSidePanelCommandMenu />,
+    ...(canOpenOnItsOwnPage
+      ? [
+          <RecordShowSidePanelOpenRecordButton
+            objectNameSingular={
+              targetRecordIdentifier.targetObjectNameSingular
+            }
+            recordId={targetRecordIdentifier.id}
+          />,
+        ]
+      : []),
+  ];
+
   return (
     <>
       <RecordShowEffect
@@ -100,19 +121,7 @@ export const PageLayoutRecordPageRenderer = ({
           </LayoutRenderingProvider>
         </StyledContentContainer>
 
-        {isInSidePanel && (
-          <SidePanelFooter
-            actions={[
-              <RecordPageSidePanelCommandMenu />,
-              <RecordShowSidePanelOpenRecordButton
-                objectNameSingular={
-                  targetRecordIdentifier.targetObjectNameSingular
-                }
-                recordId={targetRecordIdentifier.id}
-              />,
-            ]}
-          />
-        )}
+        {isInSidePanel && <SidePanelFooter actions={sidePanelActions} />}
       </StyledShowPageRightContainer>
     </>
   );
