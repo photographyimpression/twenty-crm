@@ -1,5 +1,7 @@
 import { DropdownMenuItemsContainer } from '@/ui/layout/dropdown/components/DropdownMenuItemsContainer';
+import { DropdownMenuSearchInput } from '@/ui/layout/dropdown/components/DropdownMenuSearchInput';
 import { DropdownMenuSeparator } from '@/ui/layout/dropdown/components/DropdownMenuSeparator';
+import { useMemo, useState } from 'react';
 
 import { useActiveFieldMetadataItems } from '@/object-metadata/hooks/useActiveFieldMetadataItems';
 import { isFieldMetadataItemFilterableAndSortableSelector } from '@/object-metadata/states/isFieldMetadataItemFilterableAndSortableSelector';
@@ -27,6 +29,10 @@ import {
   useIcons,
 } from 'twenty-ui/display';
 import { MenuItem } from 'twenty-ui/navigation';
+
+// Below this many hidden fields the list is quicker to read than to type into,
+// and a search box is just another row in the way.
+const MINIMUM_FIELDS_TO_SHOW_SEARCH_INPUT = 6;
 
 export type RecordTableColumnHeadDropdownMenuProps = {
   recordField: RecordField;
@@ -150,6 +156,21 @@ export const RecordTableColumnHeadDropdownMenu = ({
         .includes(fieldMetadataItem.id),
   );
 
+  const [fieldSearchFilter, setFieldSearchFilter] = useState('');
+
+  const shouldShowFieldSearchInput =
+    availableFieldsToInsert.length >= MINIMUM_FIELDS_TO_SHOW_SEARCH_INPUT;
+
+  const filteredFieldsToInsert = useMemo(
+    () =>
+      availableFieldsToInsert.filter((fieldMetadataItem) =>
+        fieldMetadataItem.label
+          .toLowerCase()
+          .includes(fieldSearchFilter.toLowerCase().trim()),
+      ),
+    [availableFieldsToInsert, fieldSearchFilter],
+  );
+
   const handleInsertField = async (fieldMetadataId: string) => {
     closeDropdownAndToggleScroll();
     await changeRecordFieldVisibility({
@@ -209,14 +230,28 @@ export const RecordTableColumnHeadDropdownMenu = ({
                 accent="default"
                 disabled
               />
-              {availableFieldsToInsert.map((fieldMetadataItem) => (
-                <MenuItem
-                  key={fieldMetadataItem.id}
-                  onClick={() => handleInsertField(fieldMetadataItem.id)}
-                  LeftIcon={getIcon(fieldMetadataItem.icon)}
-                  text={fieldMetadataItem.label}
-                />
-              ))}
+            </DropdownMenuItemsContainer>
+            {shouldShowFieldSearchInput && (
+              <DropdownMenuSearchInput
+                value={fieldSearchFilter}
+                onChange={(event) => setFieldSearchFilter(event.target.value)}
+                placeholder={t`Search a field`}
+                role="combobox"
+              />
+            )}
+            <DropdownMenuItemsContainer hasMaxHeight>
+              {filteredFieldsToInsert.length === 0 ? (
+                <MenuItem text={t`No results`} />
+              ) : (
+                filteredFieldsToInsert.map((fieldMetadataItem) => (
+                  <MenuItem
+                    key={fieldMetadataItem.id}
+                    onClick={() => handleInsertField(fieldMetadataItem.id)}
+                    LeftIcon={getIcon(fieldMetadataItem.icon)}
+                    text={fieldMetadataItem.label}
+                  />
+                ))
+              )}
             </DropdownMenuItemsContainer>
           </>
         )}
