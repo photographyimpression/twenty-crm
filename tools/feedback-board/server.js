@@ -33,12 +33,18 @@
 // tools/feedback-board/deploy.sh + README):
 //   GET    /api/board                     -> queue snapshot: non-delivered cards
 //                                             (urgent first) + counts + recently
-//                                             delivered
+//                                             delivered + buildNow/buildNowAt
 //   POST   /api/board {id, status}        -> claim/move a card between
 //                                             non-delivered columns
+//   POST   /api/board {clearBuildNow:true}-> lower the owner's build-now flag
 //   POST   /api/board/deliver {id, note}  -> deliver through the SAME path as
 //                                             the UI move (screenshot cleanup +
 //                                             delivered email fire)
+//   POST   /api/build-now                 -> OWNER action (URL-secret gated,
+//                                             like the other browser
+//                                             endpoints): raise the build-now
+//                                             flag for the "Build everything
+//                                             waiting — now" form button
 
 const express = require('express');
 const crypto = require('crypto');
@@ -162,23 +168,48 @@ const VALID_TYPES = ['feature', 'bug'];
 // Board store — ONE JSON file, read FRESH on every GET so Claude's direct edits
 // to board.json show up on the next page load. Writes are temp-file + atomic
 // rename to avoid corrupting the file if two writes race.
+//
+// Shape: { cards: [...], buildNow: bool, buildNowAt: ISO|null }. buildNow is
+// the owner's "Build everything waiting — now" flag (POST /api/build-now);
+// the build agent reads it on GET /api/board and clears it with POST
+// /api/board {clearBuildNow:true}. Older files (a bare card array) or files
+// missing the fields are tolerated — they read as "no flag set".
 // ---------------------------------------------------------------------------
 
-function readBoard() {
+function readStore() {
   try {
-    const raw = fs.readFileSync(BOARD_PATH, 'utf8');
-    const cards = JSON.parse(raw);
-    return Array.isArray(cards) ? cards : [];
+    const raw = JSON.parse(fs.readFileSync(BOARD_PATH, 'utf8'));
+    if (Array.isArray(raw)) {
+      // Pre-build-now format: the file was just the cards array.
+      return { cards: raw, buildNow: false, buildNowAt: null };
+    }
+    return {
+      cards: Array.isArray(raw.cards) ? raw.cards : [],
+      buildNow: raw.buildNow === true,
+      buildNowAt: typeof raw.buildNowAt === 'string' ? raw.buildNowAt : null,
+    };
   } catch (_e) {
     // Missing or corrupt file -> empty board. Never throw on read.
-    return [];
+    return { cards: [], buildNow: false, buildNowAt: null };
   }
 }
 
-function writeBoard(cards) {
+function writeStore(store) {
   const tmp = BOARD_PATH + '.tmp-' + process.pid + '-' + Date.now();
-  fs.writeFileSync(tmp, JSON.stringify(cards, null, 2));
+  fs.writeFileSync(tmp, JSON.stringify(store, null, 2));
   fs.renameSync(tmp, BOARD_PATH); // atomic on the same filesystem
+}
+
+// Card-only views of the store (what every endpoint below used before the
+// build-now fields existed) — writeBoard preserves the flag fields.
+function readBoard() {
+  return readStore().cards;
+}
+
+function writeBoard(cards) {
+  const store = readStore();
+  store.cards = Array.isArray(cards) ? cards : [];
+  writeStore(store);
 }
 
 function nowIso() {
@@ -445,6 +476,27 @@ api.delete('/cards/:id', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Build-now — OWNER action for the "Build everything waiting — now" button in
+// the intake forms. Raises the flag the autonomous build agent reads on
+// GET /api/board; the agent clears it (POST /api/board {clearBuildNow:true})
+// once the run has picked the queue up. Gated by the mount-path URL secret
+// like the other browser endpoints (no destructive action: worst case a build
+// runs early). set_at is kept on clear so the last trigger time stays visible.
+// ---------------------------------------------------------------------------
+api.post('/build-now', (req, res) => {
+  const set = !req.body || req.body.set !== false;
+  const store = readStore();
+  store.buildNow = set;
+  if (set) store.buildNowAt = nowIso();
+  writeStore(store);
+  res.json({
+    ok: true,
+    buildNow: store.buildNow,
+    buildNowAt: store.buildNowAt || null,
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Version — feeds the header's green traffic light. deploy.sh bakes a
 // version.json next to the app (systemd-friendly: no unit edit, no
 // daemon-reload); GIT_SHA/BUILD_AT env vars win when set. sha:null means the
@@ -507,9 +559,10 @@ function machineAuth(req, res, next) {
 }
 
 // Queue snapshot: every non-delivered card (urgent first, oldest first within
-// each group) + counts + the last 10 deliveries.
+// each group) + counts + the last 10 deliveries + the owner's build-now flag.
 api.get('/board', machineAuth, (req, res) => {
-  const cards = readBoard();
+  const store = readStore();
+  const cards = store.cards;
   const isUrgent = (c) => c && c.urgent === true && c.column !== 'delivered';
   const items = cards
     .filter((c) => c && c.column !== 'delivered')
@@ -542,13 +595,26 @@ api.get('/board', machineAuth, (req, res) => {
       urgent: items.filter((i) => i.urgent).length,
     },
     recentlyDelivered: recentlyDelivered(cards, 10),
+    buildNow: store.buildNow === true,
+    buildNowAt: store.buildNowAt || null,
   });
 });
 
 // Claim/move a card between the non-delivered columns. Deliveries go through
-// POST /api/board/deliver so the email + cleanup fire.
+// POST /api/board/deliver so the email + cleanup fire. {clearBuildNow:true}
+// (no id/status) lowers the owner's build-now flag instead.
 api.post('/board', machineAuth, (req, res) => {
   const body = req.body || {};
+  if (body.clearBuildNow === true) {
+    const store = readStore();
+    store.buildNow = false; // buildNowAt kept — when it was last triggered
+    writeStore(store);
+    return res.json({
+      ok: true,
+      buildNow: false,
+      buildNowAt: store.buildNowAt || null,
+    });
+  }
   const status = body.status || body.column;
   if (!MACHINE_COLUMNS.includes(status)) {
     return res.status(400).json({

@@ -108,9 +108,15 @@ other admin token — the browser endpoints stay URL-secret-only). Send it as
 
 | Method | Path | Body | Effect |
 | --- | --- | --- | --- |
-| GET | `/api/board` | — | `{items, counts:{pending,urgent}, recentlyDelivered[10]}` — every **non-delivered** card, urgent first, then oldest first. Items carry `id,title,status,column,type,urgent,urgedAt,createdAt,updatedAt,goal,idea,claudeNote,comments[]` (`status` is a friendly label of `column`; screenshots are just a count). |
+| GET | `/api/board` | — | `{items, counts:{pending,urgent}, recentlyDelivered[10], buildNow, buildNowAt}` — every **non-delivered** card, urgent first, then oldest first. Items carry `id,title,status,column,type,urgent,urgedAt,createdAt,updatedAt,goal,idea,claudeNote,comments[]` (`status` is a friendly label of `column`; screenshots are just a count). `buildNow`/`buildNowAt` are the owner's build-now flag (below). |
 | POST | `/api/board` | `{id, status}` | claim/move a card between non-delivered columns (`inbox`/`discussion`/`tobuild`). |
+| POST | `/api/board` | `{clearBuildNow: true}` | lower the owner's build-now flag once the run has picked the queue up (`buildNowAt` is kept as the last-trigger time). |
 | POST | `/api/board/deliver` | `{id, note}` | deliver through the SAME path as a UI move: screenshot cleanup, `deliveredAt`, note defaulting, and the "✅ Delivered" email all fire. |
+| POST | `/api/build-now` | `{set?}` | OWNER action (URL-secret gated like the other browser endpoints): the "🔨 Build everything waiting — now" button under the intake forms' urgent checkbox raises the flag (`buildNow:true` + `buildNowAt` stamped in `board.json`) so the builder starts within ~15 min. |
+
+`board.json` shape: `{cards: [...], buildNow: bool, buildNowAt: ISO-or-null}` — a
+legacy bare-array file (or missing fields) reads as "no flag set" and is
+rewritten in the new shape on the next save.
 
 ```bash
 curl -H "Authorization: Bearer $BOARD_SECRET" https://crm.impressionphotography.ca/board-<TOKEN>/api/board

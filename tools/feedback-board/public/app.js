@@ -238,6 +238,7 @@ function inlineFormHtml() {
       '<textarea id="ideaInput" placeholder="e.g. a link in the reminder email…"></textarea>' +
     '</div>' +
     '<label class="urgent-toggle"><input type="checkbox" id="urgentInput" /><span>⚡ Urgent — build this now</span></label>' +
+    '<div class="bn-row" data-bn-row></div>' +
     '<div class="shots" id="shotPreview"></div>' +
     '<input type="file" id="fileInput" accept="image/*" multiple hidden />' +
     '<button class="btn btn-primary" id="addRequestBtn" style="width:100%;justify-content:center">🚀 Add request</button>' +
@@ -359,6 +360,7 @@ function wireInlineForm() {
   const toggle = document.getElementById('typeToggle');
   if (!toggle) return;
   applyTypeToForm();
+  renderBuildNowRow();
   toggle.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-type]');
     if (!b) return;
@@ -378,6 +380,64 @@ function wireInlineForm() {
     renderShotPreview();
   });
 }
+
+// --- build everything waiting — now ------------------------------------------
+//
+// Secondary action under the urgent checkbox (inline intake form + the
+// quick-request popup): raises the board's buildNow flag so the autonomous
+// builder picks up the whole queue immediately instead of waiting for its next
+// run (it clears the flag itself once the run starts). Two-tap inline confirm;
+// one delegated handler serves both forms, and armed-state lives here so it
+// survives the inline form re-rendering.
+
+const BN_IDLE =
+  '<button type="button" class="btn bn-trigger" data-bn="arm">🔨 Build everything waiting — now</button>';
+const BN_CONFIRM =
+  '<span class="bn-q">Build <b>everything</b> waiting, now?</span>' +
+  '<button type="button" class="btn btn-sm btn-green" data-bn="go">Yes — build</button>' +
+  '<button type="button" class="btn btn-sm" data-bn="cancel">Cancel</button>';
+let bnArmed = false;
+let bnBusy = false;
+
+function renderBuildNowRow() {
+  document.querySelectorAll('[data-bn-row]').forEach((row) => {
+    row.innerHTML = bnArmed ? BN_CONFIRM : BN_IDLE;
+  });
+}
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-bn]');
+  if (!b || bnBusy) return;
+  const act = b.getAttribute('data-bn');
+  if (act === 'arm') {
+    bnArmed = true;
+    renderBuildNowRow();
+  } else if (act === 'cancel') {
+    bnArmed = false;
+    renderBuildNowRow();
+  } else if (act === 'go') {
+    bnBusy = true;
+    b.disabled = true;
+    api('/build-now', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ set: true }),
+    })
+      .then(() => {
+        bnArmed = false;
+        toast('Queued — the builder will start within ~15 min.');
+      })
+      .catch((err) => {
+        b.disabled = false;
+        toast(err.message || 'Failed to trigger the build.', true);
+      })
+      .finally(() => {
+        bnBusy = false;
+        renderBuildNowRow();
+      });
+  }
+});
+renderBuildNowRow();
 
 // Paste screenshots anywhere on the page. If the quick-request popup is open
 // the image attaches THERE; if a comment box is focused, to THAT comment;
