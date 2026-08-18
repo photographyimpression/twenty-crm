@@ -695,6 +695,9 @@ export const SmsInboxPage = () => {
       `sms-thread-last-viewed-${digits}`,
       String(Date.now()),
     );
+    // Reading a thread is reading messages — reset the global sidebar badge
+    // too (mount-only marking left it stale until the next poll).
+    markSmsAsRead();
     setReadTick((tick) => tick + 1);
     setSelectedDigits(digits);
     setComposerText('');
