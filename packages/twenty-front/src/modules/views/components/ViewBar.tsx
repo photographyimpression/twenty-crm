@@ -1,8 +1,14 @@
+// LOCAL-PATCH: status strip (update loop)
+// (fork-only) StatusStrip mounted once in the top bar's right button group.
+// Upstream twenty does not have src/modules/status-strip — on merge, keep or
+// drop this import + its usage below with the rest of the local patch.
+
 import { type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { ObjectSortDropdownButton } from '@/object-record/object-sort-dropdown/components/ObjectSortDropdownButton';
 import { useIsPrefetchLoading } from '@/prefetch/hooks/useIsPrefetchLoading';
+import { StatusStrip } from '@/status-strip/components/StatusStrip';
 import { TopBar } from '@/ui/layout/top-bar/components/TopBar';
 import { QueryParamsFiltersEffect } from '@/views/components/QueryParamsFiltersEffect';
 import { QueryParamsSortsEffect } from '@/views/components/QueryParamsSortsEffect';
@@ -62,6 +68,8 @@ export const ViewBar = ({
         }
         rightComponent={
           <>
+            {/* LOCAL-PATCH: status strip (update loop) — see src/modules/status-strip */}
+            <StatusStrip />
             <ObjectFilterDropdownComponentInstanceContext.Provider
               value={{ instanceId: ViewBarFilterDropdownIds.MAIN }}
             >

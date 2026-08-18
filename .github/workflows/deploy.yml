@@ -1,3 +1,11 @@
+# LOCAL-PATCH: status strip (update loop)
+# Fork-local additions in this file (search LOCAL-PATCH below):
+#   1. REACT_APP_FEEDBACK_BOARD_URL build-arg — public board URL (token-in-URL
+#      is the ONLY auth; the BOARD_SECRET never leaves the server).
+#   2. REACT_APP_GIT_SHA build-arg — lets the frontend's StatusStrip compare
+#      its build against /crm-version.json (see scripts/deploy-status-strip.md).
+#   3. The SSH deploy step stamps /opt/crm-version.json after compose up.
+
 name: Build and Deploy Custom Twenty CRM
 
 on:
@@ -52,6 +60,9 @@ jobs:
             REACT_APP_TELNYX_SIP_USERNAME=${{ secrets.REACT_APP_TELNYX_SIP_USERNAME }}
             REACT_APP_TELNYX_SIP_PASSWORD=${{ secrets.REACT_APP_TELNYX_SIP_PASSWORD }}
             REACT_APP_TELNYX_FROM_NUMBER=${{ secrets.REACT_APP_TELNYX_FROM_NUMBER }}
+            # LOCAL-PATCH: status strip (update loop)
+            REACT_APP_FEEDBACK_BOARD_URL=https://crm.impressionphotography.ca/board-480d724fe05b0c3f74bc75dff25f9301
+            REACT_APP_GIT_SHA=${{ github.sha }}
 
   deploy-to-ovh:
     needs: build-and-push-image
@@ -98,3 +109,15 @@ jobs:
             sed -i 's|image: twentycrm/twenty.*|image: ghcr.io/${{ env.IMAGE_NAME }}:latest|' docker-compose.yml
             docker compose pull
             docker compose up -d
+
+            # LOCAL-PATCH: status strip (update loop)
+            # Stamp /opt/crm-version.json (served at /crm-version.json by nginx,
+            # snippet in scripts/nginx-crm-version.conf) so already-open CRM tabs
+            # see "newer build than this page" and pulse the green arrow.
+            # Mirrors scripts/publish-crm-version.sh — kept inline here because
+            # this SSH step has no checkout of the repo.
+            SHA='${{ github.sha }}'
+            printf '{"version":"%s","notes":"%s","builtAt":"%s"}\n' \
+              "$SHA" \
+              "deployed from main (CI)" \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /opt/crm-version.json

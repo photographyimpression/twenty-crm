@@ -40,10 +40,18 @@ ARG REACT_APP_TELNYX_SIP_USERNAME
 ARG REACT_APP_TELNYX_SIP_PASSWORD
 ARG REACT_APP_TELNYX_FROM_NUMBER
 
+# LOCAL-PATCH: status strip (update loop)
+# Feedback Board URL (public, token-in-URL only) + the git sha this front was
+# built from, so the strip's green arrow can compare against /crm-version.json.
+ARG REACT_APP_FEEDBACK_BOARD_URL
+ARG REACT_APP_GIT_SHA
+
 # Make Telnyx env vars available to Vite at build time
 ENV REACT_APP_TELNYX_SIP_USERNAME=$REACT_APP_TELNYX_SIP_USERNAME
 ENV REACT_APP_TELNYX_SIP_PASSWORD=$REACT_APP_TELNYX_SIP_PASSWORD
 ENV REACT_APP_TELNYX_FROM_NUMBER=$REACT_APP_TELNYX_FROM_NUMBER
+ENV REACT_APP_FEEDBACK_BOARD_URL=$REACT_APP_FEEDBACK_BOARD_URL
+ENV REACT_APP_GIT_SHA=$REACT_APP_GIT_SHA
 
 COPY ./packages/twenty-front /app/packages/twenty-front
 COPY ./packages/twenty-ui /app/packages/twenty-ui
