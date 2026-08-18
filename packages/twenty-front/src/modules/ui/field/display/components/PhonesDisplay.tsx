@@ -7,7 +7,11 @@ import { ExpandableList } from '@/ui/layout/expandable-list/components/Expandabl
 
 import { useCallContext } from '@/calls/contexts/CallProvider';
 import { styled } from '@linaria/react';
-import { parsePhoneNumber } from 'libphonenumber-js';
+import {
+  getCountryCallingCode,
+  parsePhoneNumber,
+  type CountryCode,
+} from 'libphonenumber-js';
 import { isDefined } from 'twenty-shared/utils';
 import { RoundedLink } from 'twenty-ui/navigation';
 import { logError } from '~/utils/logError';
@@ -72,10 +76,15 @@ export const PhonesDisplay = ({
         value?.primaryPhoneNumber
           ? {
               number: value.primaryPhoneNumber,
+              // Falling back to the ISO country code would produce garbage
+              // like "CA5149271647" — translate it to a real calling code.
               callingCode:
                 value.primaryPhoneCallingCode ||
-                value.primaryPhoneCountryCode ||
-                '',
+                (value.primaryPhoneCountryCode
+                  ? `+${getCountryCallingCode(
+                      value.primaryPhoneCountryCode as CountryCode,
+                    )}`
+                  : ''),
             }
           : null,
         ...parseAdditionalPhones(value?.additionalPhones),

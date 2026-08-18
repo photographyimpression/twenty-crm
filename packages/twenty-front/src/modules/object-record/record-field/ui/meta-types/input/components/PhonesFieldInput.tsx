@@ -217,8 +217,6 @@ export const PhonesFieldInput = () => {
                 placeholder={placeholder}
                 value={value as E164Number}
                 onChange={onChange as unknown as (newValue: E164Number) => void}
-                international={true}
-                withCountryCallingCode={true}
                 countrySelectComponent={PhoneCountryPickerDropdownButton}
                 defaultCountry={defaultCountry}
               />
