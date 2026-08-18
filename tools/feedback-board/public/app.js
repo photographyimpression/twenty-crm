@@ -91,9 +91,13 @@ function cardsFor(col) {
 // --- rendering -------------------------------------------------------------
 
 function pillHtml(card) {
-  return card.type === 'bug'
+  const urgent =
+    card.urgent && (card.column || 'inbox') !== 'delivered'
+      ? '<span class="pill pill-urgent">⚡ Urgent</span>'
+      : '';
+  return (card.type === 'bug'
     ? '<span class="pill pill-bug">🐞 Bug</span>'
-    : '<span class="pill pill-feature">✨ Feature</span>';
+    : '<span class="pill pill-feature">✨ Feature</span>') + urgent;
 }
 
 function shotsHtml(card) {
@@ -233,6 +237,7 @@ function inlineFormHtml() {
       '<label>Idea — how it could work <span class="opt">(optional)</span></label>' +
       '<textarea id="ideaInput" placeholder="e.g. a link in the reminder email…"></textarea>' +
     '</div>' +
+    '<label class="urgent-toggle"><input type="checkbox" id="urgentInput" /><span>⚡ Urgent — build this now</span></label>' +
     '<div class="shots" id="shotPreview"></div>' +
     '<input type="file" id="fileInput" accept="image/*" multiple hidden />' +
     '<button class="btn btn-primary" id="addRequestBtn" style="width:100%;justify-content:center">🚀 Add request</button>' +
@@ -266,6 +271,7 @@ function render() {
   wireInlineForm();
   renderShotPreview();
   renderCmtDrafts();
+  updateStatusLights();
 }
 
 // --- inline request form -----------------------------------------------------
@@ -314,6 +320,7 @@ async function submitInlineForm() {
   fd.append('type', selectedType);
   fd.append('goal', goal);
   fd.append('idea', idea);
+  fd.append('urgent', document.getElementById('urgentInput').checked ? 'true' : 'false');
   pendingFiles.forEach((f) => fd.append('screenshots', f.file));
 
   const btn = document.getElementById('addRequestBtn');
@@ -321,6 +328,7 @@ async function submitInlineForm() {
   try {
     await api('/cards', { method: 'POST', body: fd });
     clearPendingFiles();
+    document.getElementById('urgentInput').checked = false;
     toast('Added to Requests');
     await load();
   } catch (err) {
@@ -371,8 +379,9 @@ function wireInlineForm() {
   });
 }
 
-// Paste screenshots anywhere on the page. If a comment box is focused, the
-// image attaches to THAT comment; otherwise it goes to the request form.
+// Paste screenshots anywhere on the page. If the quick-request popup is open
+// the image attaches THERE; if a comment box is focused, to THAT comment;
+// otherwise it goes to the inline request form.
 document.addEventListener('paste', (e) => {
   const images = Array.from(e.clipboardData ? e.clipboardData.items : [])
     .filter((it) => it.type && it.type.startsWith('image/'))
@@ -380,6 +389,11 @@ document.addEventListener('paste', (e) => {
     .filter(Boolean);
   if (!images.length) return;
   e.preventDefault();
+  if (qrOpen) {
+    images.forEach((file) => qrFiles.push({ file, url: URL.createObjectURL(file) }));
+    renderQrShots();
+    return;
+  }
   const active = document.activeElement;
   if (active && active.matches && active.matches('[data-cmt-input]')) {
     const id = active.getAttribute('data-cmt-input');
@@ -525,5 +539,314 @@ lightbox.addEventListener('click', () => lightbox.classList.remove('show'));
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) load();
 });
+
+// --- traffic lights ---------------------------------------------------------
+//
+// The header strip (like the Zrizes app): RED opens the quick-request popup,
+// AMBER ? lights while cards sit in Discussion waiting on YOUR decision,
+// GREEN hammer (dim) shows the build queue (Requests + To Build, urgent ⚡
+// first on hover), GREEN ↓ (solid) pulses ONLY when the running service is a
+// newer build than the loaded page (hover = recent deliveries, click =
+// reload). Idle lights stay slate; nothing else pulses.
+
+const COLUMN_LABEL = { inbox: 'Requested', discussion: 'Discussion', tobuild: 'To Build' };
+
+// AMBER — the Discussion column: the only cards the build loop deliberately
+// skips, i.e. exactly the ones worth a persistent light.
+function updateDecisionLight() {
+  const btn = document.getElementById('lightDecision');
+  const pop = document.getElementById('popDecision');
+  if (!btn || !pop) return;
+  const items = cards.filter((c) => (c.column || 'inbox') === 'discussion');
+  const n = items.length;
+  btn.classList.toggle('lit', n > 0);
+  btn.title = n
+    ? n + ' card' + (n === 1 ? '' : 's') + ' waiting for your decision'
+    : 'Nothing needs your decision';
+
+  let html = '<p class="pop-title">Waiting for your call (' + n + ')</p>';
+  if (!n) {
+    html += '<p class="pop-empty">Nothing needs a decision right now.</p>';
+  } else {
+    html += '<ul class="pop-list">' + items.slice(0, 9).map((c) =>
+      '<li><span class="t"><span class="tt">' + esc(c.title) + '</span></span></li>'
+    ).join('') + '</ul>';
+    if (n > 9) html += '<p class="pop-more">+' + (n - 9) + ' more…</p>';
+  }
+  html += '<button class="pop-link" id="popOpenBoard" type="button">Answer on the board →</button>';
+  pop.innerHTML = html;
+}
+
+// GREEN hammer (dim) — the build queue: everything accepted/requested that is
+// NOT in Discussion (those wait on the owner) and not delivered yet.
+function updateQueueLight() {
+  const btn = document.getElementById('lightQueue');
+  const pop = document.getElementById('popQueue');
+  if (!btn || !pop) return;
+  const items = cards
+    .filter((c) => {
+      const col = c.column || 'inbox';
+      return col === 'inbox' || col === 'tobuild';
+    })
+    .sort((a, b) => {
+      if (!!b.urgent !== !!a.urgent) return b.urgent ? 1 : -1; // urgent first
+      return new Date(a.createdAt || 0) - new Date(b.createdAt || 0); // FIFO
+    });
+  const n = items.length;
+  const urgent = items.filter((c) => c.urgent).length;
+  btn.classList.toggle('lit', n > 0);
+  btn.title = n
+    ? (urgent ? urgent + ' urgent · ' : '') + n + ' queued for the next build'
+    : 'Nothing queued';
+
+  let html = '<p class="pop-title">Queued for the next build (' + n + ')</p>';
+  if (!n) {
+    html += '<p class="pop-empty">Nothing queued — drop a request any time (red icon).</p>';
+  } else {
+    html += '<ul class="pop-list">' + items.slice(0, 9).map((c) =>
+      '<li>' + (c.urgent ? '<span class="zap">⚡</span>' : '') +
+      '<span class="t"><span class="tt">' + esc(c.title) + '</span>' +
+      '<span class="st">' + esc(COLUMN_LABEL[c.column || 'inbox'] || c.column) + '</span></span></li>'
+    ).join('') + '</ul>';
+    if (n > 9) html += '<p class="pop-more">+' + (n - 9) + ' more…</p>';
+  }
+  html += '<button class="pop-link" id="popOpenQueue" type="button">Open the board →</button>';
+  pop.innerHTML = html;
+}
+
+function updateStatusLights() {
+  updateDecisionLight();
+  updateQueueLight();
+}
+
+// GREEN ↓ — /api/version poll (every 60s + on tab focus). The baseline sha is
+// the FIRST successful poll of this page lifetime, kept in an in-memory
+// variable ONLY: sessionStorage/localStorage survive location.reload() (the
+// very action this light performs) and would leave it stuck pulsing after the
+// reload that applied the update. Any later poll that sees a different sha
+// means the running service is newer than the loaded page.
+let versionInfo = null;
+let updateReady = false;
+let baselineSha = null;
+
+async function checkVersion() {
+  try {
+    const d = await api('/version');
+    if (!d || typeof d !== 'object') return;
+    versionInfo = d;
+    updateReady = false;
+    if (d.sha) {
+      if (baselineSha === null) {
+        baselineSha = d.sha; // this page's baseline — set once, in memory
+      } else if (d.sha !== baselineSha) {
+        updateReady = true;
+      }
+    }
+    renderUpdateLight();
+  } catch (_e) {
+    /* version endpoint unreachable — leave the light as-is */
+  }
+}
+
+function renderUpdateLight() {
+  const btn = document.getElementById('lightUpdate');
+  const pop = document.getElementById('popUpdate');
+  if (!btn || !pop) return;
+  btn.classList.toggle('lit', updateReady);
+  btn.title = updateReady
+    ? 'Update ready — click to reload and apply'
+    : versionInfo && versionInfo.sha
+      ? 'Up to date (' + versionInfo.sha + ')'
+      : 'Version info unavailable';
+
+  let html;
+  if (updateReady) {
+    html = '<p class="pop-title">Update ready</p>';
+    const shipped = (versionInfo.recentlyDelivered || []).slice(0, 8);
+    if (shipped.length) {
+      html += '<p class="pop-empty" style="margin:0 0 6px">Recently shipped:</p>' +
+        '<ul class="pop-list">' + shipped.map((s) =>
+          '<li><span class="t"><span class="tt">' + esc(s.title) + '</span></span></li>').join('') + '</ul>';
+    }
+    html += '<button class="pop-reload" id="popReload" type="button">Reload to apply</button>';
+  } else {
+    html = '<p class="pop-uptodate">✓ You’re up to date' +
+      (versionInfo && versionInfo.sha ? ' (' + esc(versionInfo.sha) + ')' : '') + '</p>';
+  }
+  pop.innerHTML = html;
+}
+
+function reloadForUpdate() {
+  location.reload();
+}
+
+// Hover popovers (+ click-toggle for touch). Clicking elsewhere closes them.
+function bindPopover(wrapId) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  const pop = wrap.querySelector('.pop');
+  wrap.addEventListener('mouseenter', () => pop.classList.add('show'));
+  wrap.addEventListener('mouseleave', () => pop.classList.remove('show'));
+  wrap.querySelector('.light').addEventListener('click', (e) => {
+    e.stopPropagation();
+    pop.classList.toggle('show');
+  });
+}
+
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('.pop.show').forEach((p) => {
+    if (!e.target.closest('#' + p.parentElement.id)) p.classList.remove('show');
+  });
+});
+
+// Popover links scroll to the board — the Discussion column for the amber
+// "your call" list, the top of the board for the queue list.
+function popLinkToBoard(popId, columnKey) {
+  document.getElementById(popId).classList.remove('show');
+  let target = null;
+  const cols = document.querySelectorAll('#root .col');
+  if (columnKey) {
+    // Column order is fixed: inbox(0) discussion(1) tobuild(2) delivered(3).
+    const order = ['inbox', 'discussion', 'tobuild', 'delivered'];
+    target = cols[order.indexOf(columnKey)] || null;
+  }
+  (target || cols[0]).scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+document.getElementById('popDecision').addEventListener('click', (e) => {
+  if (e.target.id === 'popOpenBoard') popLinkToBoard('popDecision', 'discussion');
+});
+
+document.getElementById('popQueue').addEventListener('click', (e) => {
+  if (e.target.id === 'popOpenQueue') popLinkToBoard('popQueue', null);
+});
+
+document.getElementById('popUpdate').addEventListener('click', (e) => {
+  if (e.target.id === 'popReload') reloadForUpdate();
+});
+
+document.getElementById('lightUpdate').addEventListener('click', () => {
+  if (updateReady) reloadForUpdate();
+});
+
+setInterval(checkVersion, 60_000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) checkVersion();
+});
+checkVersion();
+
+// --- quick-request popup (the red light) -------------------------------------
+
+let qrOpen = false;
+let qrType = 'feature';
+let qrFiles = [];
+
+function applyQrType() {
+  const toggle = document.getElementById('qrTypeToggle');
+  toggle.querySelectorAll('button').forEach((b) =>
+    b.classList.toggle('active', b.getAttribute('data-type') === qrType));
+  document.getElementById('qrIdeaField').style.display = qrType === 'bug' ? 'none' : '';
+  document.getElementById('qrGoalLabel').textContent = qrType === 'bug'
+    ? 'What’s the bug? What happened?'
+    : 'Goal — what you want to achieve';
+  document.getElementById('qrTitle').textContent = qrType === 'bug' ? '🐞 Bug report' : '✨ Feature request';
+  document.getElementById('qrGoal').placeholder = qrType === 'bug'
+    ? 'e.g. I replied to an SMS email but the client got no text'
+    : 'e.g. clients should confirm their shoot time themselves';
+}
+
+function renderQrShots() {
+  const box = document.getElementById('qrShots');
+  box.innerHTML = qrFiles.map((f, i) =>
+    '<span class="shot-thumb"><img src="' + f.url + '" alt="screenshot" />' +
+    '<button type="button" class="shot-remove" data-qr-shot-remove="' + i + '" aria-label="Remove">×</button></span>'
+  ).join('');
+}
+
+function openQuickRequest() {
+  qrOpen = true;
+  document.getElementById('qrForm').style.display = '';
+  document.getElementById('qrDone').style.display = 'none';
+  document.getElementById('qrErr').textContent = '';
+  document.getElementById('qrOverlay').classList.add('show');
+  applyQrType();
+  setTimeout(() => document.getElementById('qrGoal').focus(), 60);
+}
+
+function closeQuickRequest() {
+  qrOpen = false;
+  document.getElementById('qrOverlay').classList.remove('show');
+}
+
+async function submitQuickRequest() {
+  const err = document.getElementById('qrErr');
+  const goal = document.getElementById('qrGoal').value.trim();
+  const idea = qrType === 'bug' ? '' : document.getElementById('qrIdea').value.trim();
+  const urgent = document.getElementById('qrUrgent').checked;
+  err.textContent = '';
+  if (!goal && !idea && qrFiles.length === 0) {
+    err.textContent = qrType === 'bug'
+      ? 'Say what’s wrong, or paste a screenshot.'
+      : 'Add something — a goal, an idea, or paste a screenshot.';
+    return;
+  }
+  const fd = new FormData();
+  fd.append('type', qrType);
+  fd.append('goal', goal);
+  fd.append('idea', idea);
+  fd.append('urgent', urgent ? 'true' : 'false');
+  qrFiles.forEach((f) => fd.append('screenshots', f.file));
+
+  const btn = document.getElementById('qrSubmit');
+  btn.disabled = true;
+  try {
+    await api('/cards', { method: 'POST', body: fd });
+    qrFiles.forEach((f) => URL.revokeObjectURL(f.url));
+    qrFiles = [];
+    renderQrShots();
+    document.getElementById('qrGoal').value = '';
+    document.getElementById('qrIdea').value = '';
+    document.getElementById('qrUrgent').checked = false;
+    document.getElementById('qrForm').style.display = 'none';
+    document.getElementById('qrDone').style.display = '';
+    await load();
+    setTimeout(closeQuickRequest, 1400);
+  } catch (e) {
+    err.textContent = e.message || 'Failed to create card.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('lightRequest').addEventListener('click', openQuickRequest);
+document.getElementById('qrClose').addEventListener('click', closeQuickRequest);
+document.getElementById('qrOverlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeQuickRequest();
+});
+document.getElementById('qrTypeToggle').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-type]');
+  if (!b) return;
+  qrType = b.getAttribute('data-type');
+  applyQrType();
+});
+document.getElementById('qrSubmit').addEventListener('click', submitQuickRequest);
+document.getElementById('qrShots').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-qr-shot-remove]');
+  if (!btn) return;
+  const removed = qrFiles.splice(Number(btn.getAttribute('data-qr-shot-remove')), 1)[0];
+  if (removed) URL.revokeObjectURL(removed.url);
+  renderQrShots();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && qrOpen) closeQuickRequest();
+});
+
+// Route pasted screenshots into the popup when it's open (the earlier paste
+// handler handles the inline form + focused comment boxes).
+
+bindPopover('decisionWrap');
+bindPopover('queueWrap');
+bindPopover('updateWrap');
+updateStatusLights();
 
 load();

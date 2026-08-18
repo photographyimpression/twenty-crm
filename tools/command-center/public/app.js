@@ -1121,6 +1121,248 @@
     if (e.key === 'Enter') addIdea();
   });
 
+  // ---- TRAFFIC LIGHTS --------------------------------------------------------
+  //
+  // The header strip (like the Zrizes app): RED opens the idea popup, AMBER ?
+  // lights while approvals wait on YOUR decision (the triage queue), GREEN
+  // hammer (dim) shows roadmap ideas queued for a future build, GREEN ↓
+  // (solid) pulses ONLY when the running service is a newer build than the
+  // loaded page (click = reload). Idle lights stay slate; nothing else pulses.
+
+  // AMBER — the triage queue: approvals awaiting a Send/Skip decision. Fed by
+  // the same loadQueue() that drives the Triage tab, so no extra API call.
+  function updateDecisionLight() {
+    const btn = el('lightDecision');
+    const pop = el('popDecision');
+    if (!btn || !pop) return;
+    const items = (queue || []).filter((a) => a && !a.done);
+    const n = items.length;
+    btn.classList.toggle('lit', n > 0);
+    btn.title = n
+      ? `${n} approval${n === 1 ? '' : 's'} waiting for your decision`
+      : 'Nothing needs your decision';
+
+    let html = `<p class="pop-title">Waiting for your call (${n})</p>`;
+    if (!n) {
+      html += '<p class="pop-empty">Nothing needs a decision right now.</p>';
+    } else {
+      html += '<ul class="pop-list">' + items.slice(0, 9).map((a) =>
+        `<li><span class="tt" title="${esc(a.leadName || '')}">${esc(a.leadName || 'Unknown lead')}</span></li>`).join('') + '</ul>';
+      if (n > 9) html += `<p class="pop-more">+${n - 9} more…</p>`;
+    }
+    html += '<button class="pop-link" id="popOpenTriage" type="button">Open Triage →</button>';
+    pop.innerHTML = html;
+  }
+
+  // GREEN hammer (dim) — roadmap ideas queued for a future build.
+  let roadmapCache = null; // {items, at} — refreshed at most once a minute
+
+  async function roadmapItems() {
+    if (!roadmapCache || Date.now() - roadmapCache.at > 60_000) {
+      const d = await apiGet('/roadmap');
+      roadmapCache = { items: d.items || [], at: Date.now() };
+    }
+    return roadmapCache.items;
+  }
+
+  async function updateQueueLight() {
+    const btn = el('lightQueue');
+    const pop = el('popQueue');
+    if (!btn || !pop) return;
+    let items;
+    try {
+      items = (await roadmapItems()).filter((it) => !it.done);
+    } catch (_e) {
+      return; // roadmap unreachable — leave the light as-is
+    }
+    btn.classList.toggle('lit', items.length > 0);
+    btn.title = items.length
+      ? `${items.length} idea${items.length === 1 ? '' : 's'} queued on the roadmap`
+      : 'Nothing queued';
+
+    let html = `<p class="pop-title">Queued on the roadmap (${items.length})</p>`;
+    if (!items.length) {
+      html += '<p class="pop-empty">Nothing queued — suggest an idea (red icon).</p>';
+    } else {
+      html += '<ul class="pop-list">' + items.slice(0, 9).map((it) =>
+        `<li><span class="tt" title="${esc(it.text)}">💡 ${esc(it.text)}</span></li>`).join('') + '</ul>';
+      if (items.length > 9) html += `<p class="pop-more">+${items.length - 9} more…</p>`;
+    }
+    html += '<button class="pop-link" id="popOpenRoadmap" type="button">Open the Roadmap →</button>';
+    pop.innerHTML = html;
+  }
+
+  // GREEN ↓ — /api/version poll (every 60s + on tab focus). The baseline sha
+  // is the FIRST successful poll of this page lifetime, kept in an in-memory
+  // variable ONLY: sessionStorage/localStorage survive location.reload() (the
+  // very action this arrow performs) and would leave it stuck pulsing after
+  // the reload that applied the update.
+  let versionInfo = null;
+  let updateReady = false;
+  let baselineSha = null;
+
+  async function checkVersion() {
+    try {
+      const d = await apiGet('/version');
+      if (!d || typeof d !== 'object') return;
+      versionInfo = d;
+      updateReady = false;
+      if (d.sha) {
+        if (baselineSha === null) {
+          baselineSha = d.sha; // this page's baseline — set once, in memory
+        } else if (d.sha !== baselineSha) {
+          updateReady = true;
+        }
+      }
+      renderUpdateLight();
+    } catch (_e) {
+      /* version endpoint unreachable — leave the light as-is */
+    }
+  }
+
+  function renderUpdateLight() {
+    const btn = el('lightUpdate');
+    const pop = el('popUpdate');
+    if (!btn || !pop) return;
+    btn.classList.toggle('lit', updateReady);
+    btn.title = updateReady
+      ? 'Update ready — click to reload and apply'
+      : versionInfo && versionInfo.sha
+        ? `Up to date (${versionInfo.sha})`
+        : 'Version info unavailable';
+
+    let html;
+    if (updateReady) {
+      html = '<p class="pop-title">Update ready</p>';
+      if (versionInfo.builtAt) {
+        const d = new Date(versionInfo.builtAt);
+        html += `<p class="pop-empty">Built ${esc(d.toLocaleString())}</p>`;
+      }
+      html += '<button class="pop-reload" id="popReload" type="button">Reload to apply</button>';
+    } else {
+      html = '<p class="pop-uptodate">✓ You’re up to date' +
+        (versionInfo && versionInfo.sha ? ` (${esc(versionInfo.sha)})` : '') + '</p>';
+    }
+    pop.innerHTML = html;
+  }
+
+  function reloadForUpdate() {
+    window.location.reload();
+  }
+
+  function bindPopover(wrapId, onOpen) {
+    const wrap = el(wrapId);
+    if (!wrap) return;
+    const pop = wrap.querySelector('.pop');
+    wrap.addEventListener('mouseenter', () => {
+      pop.classList.add('show');
+      if (onOpen) onOpen();
+    });
+    wrap.addEventListener('mouseleave', () => pop.classList.remove('show'));
+    wrap.querySelector('.light').addEventListener('click', (e) => {
+      e.stopPropagation();
+      pop.classList.toggle('show');
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    document.querySelectorAll('.pop.show').forEach((p) => {
+      if (!e.target.closest(`#${p.parentElement.id}`)) p.classList.remove('show');
+    });
+  });
+
+  el('popDecision').addEventListener('click', (e) => {
+    if (e.target.id !== 'popOpenTriage') return;
+    el('popDecision').classList.remove('show');
+    const tab = document.querySelector('.tab[data-view="triage"]');
+    if (tab) tab.click();
+  });
+
+  el('popQueue').addEventListener('click', (e) => {
+    if (e.target.id !== 'popOpenRoadmap') return;
+    el('popQueue').classList.remove('show');
+    const tab = document.querySelector('.tab[data-view="roadmap"]');
+    if (tab) tab.click();
+  });
+
+  el('popUpdate').addEventListener('click', (e) => {
+    if (e.target.id === 'popReload') reloadForUpdate();
+  });
+
+  el('lightUpdate').addEventListener('click', () => {
+    if (updateReady) reloadForUpdate();
+  });
+
+  // loadQueue() (boot + tab actions) re-renders the amber light along the way.
+  const _renderTriageOrig = renderTriage;
+  renderTriage = function (...args) {
+    _renderTriageOrig.apply(this, args);
+    updateDecisionLight();
+  };
+
+  bindPopover('decisionWrap');
+  bindPopover('queueWrap', updateQueueLight);
+  bindPopover('updateWrap');
+  updateDecisionLight();
+  updateQueueLight();
+  setInterval(checkVersion, 60_000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkVersion();
+  });
+  checkVersion();
+
+  // ---- IDEA POPUP (the red light) ---------------------------------------------
+
+  let qrOpen = false;
+
+  function openIdeaPopup() {
+    qrOpen = true;
+    el('qrForm').style.display = '';
+    el('qrDone').style.display = 'none';
+    el('qrOverlay').classList.add('show');
+    setTimeout(() => el('qrText').focus(), 60);
+  }
+
+  function closeIdeaPopup() {
+    qrOpen = false;
+    el('qrOverlay').classList.remove('show');
+  }
+
+  async function submitIdea() {
+    const text = el('qrText').value.trim();
+    if (!text) return;
+    el('qrSubmit').disabled = true;
+    try {
+      await apiPost('/roadmap', { text });
+      roadmapCache = null; // pick the new item up on the next hover
+      el('qrText').value = '';
+      el('qrForm').style.display = 'none';
+      el('qrDone').style.display = '';
+      updateQueueLight();
+      setTimeout(closeIdeaPopup, 1400);
+    } catch (e) {
+      toast('Failed: ' + e.message, true);
+    } finally {
+      el('qrSubmit').disabled = false;
+    }
+  }
+
+  el('lightRequest').addEventListener('click', openIdeaPopup);
+  el('qrClose').addEventListener('click', closeIdeaPopup);
+  el('qrOverlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeIdeaPopup();
+  });
+  el('qrSubmit').addEventListener('click', submitIdea);
+  el('qrText').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitIdea();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && qrOpen) closeIdeaPopup();
+  });
+
   // ---- boot ----------------------------------------------------------------
 
   loadQueue();

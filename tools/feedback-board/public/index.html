@@ -103,6 +103,7 @@
       }
       .pill-feature { border: 1px solid var(--border-2); color: #444c5c; }
       .pill-bug { border: 1px solid #f3c1c1; color: #c03030; }
+      .pill-urgent { border: 1px solid #fcd34d; background: #fffbeb; color: #b45309; }
       .kcard-title { font-weight: 700; font-size: 14.5px; line-height: 1.35; margin: 2px 0 6px; }
       .kcard-field { font-size: 13px; color: #3c4656; margin: 6px 0; line-height: 1.5; }
       .kcard-field .lbl { color: var(--muted); font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; display: block; margin-bottom: 2px; }
@@ -198,12 +199,124 @@
       }
       .lightbox.show { display: flex; }
       .lightbox img { max-width: 100%; max-height: 100%; border-radius: 10px; }
+
+      /* ---- Traffic lights (update loop at a glance, like the Zrizes app) ---- */
+      /* RED = request something · AMBER ? = waiting on YOUR decision ·
+         GREEN hammer (dim) = queued for the next build · GREEN ↓ (solid) =
+         update ready. Only the arrow ever pulses; idle lights stay slate. */
+      .header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+      .lights { display: flex; align-items: center; gap: 4px; margin-top: 2px; flex-shrink: 0; }
+      .light-wrap { position: relative; display: flex; }
+      .light {
+        position: relative; width: 30px; height: 30px; border-radius: 8px; border: none;
+        background: transparent; color: #b6bdca; cursor: pointer; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        transition: background .12s ease, color .12s ease;
+      }
+      .light:hover { background: #f0f2f6; }
+      .light svg { width: 16px; height: 16px; }
+      .light-red { color: var(--red); }
+      .light-decision.lit { color: var(--orange); }
+      /* Dim on purpose — the queue is "on the list", not actionable. */
+      .light-queue.lit { color: rgba(22, 163, 74, .55); }
+      .light-queue.lit:hover { color: var(--green); }
+      .light-update.lit { color: var(--green); }
+      /* The one and only pulse in the strip: the running service is newer than
+         this page — click to download it (reload). */
+      .light .pulse { position: absolute; inset: 0; border-radius: 8px; background: var(--green); opacity: 0; pointer-events: none; }
+      .light-update.lit .pulse { animation: lightping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+      @keyframes lightping {
+        0% { transform: scale(1); opacity: .35; }
+        75%, 100% { transform: scale(1.55); opacity: 0; }
+      }
+      .pop {
+        position: absolute; top: calc(100% + 8px); right: 0; width: 268px; background: var(--panel);
+        border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 32px rgba(20,30,50,.14);
+        padding: 12px; display: none; z-index: 80; text-align: left;
+      }
+      .pop.show { display: block; }
+      .pop-title { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin: 0 0 8px; }
+      .pop-list { list-style: none; margin: 0; padding: 0; max-height: 224px; overflow: auto; }
+      .pop-list li { font-size: 12.5px; color: #3c4656; padding: 3px 0; display: flex; gap: 5px; align-items: baseline; }
+      .pop-list .zap { color: var(--orange); font-weight: 800; }
+      .pop-list .t { min-width: 0; }
+      .pop-list .tt { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pop-list .st { font-size: 10.5px; color: var(--muted); }
+      .pop-more { font-size: 11px; color: var(--muted); margin-top: 4px; }
+      .pop-empty { font-size: 12px; color: var(--muted); line-height: 1.5; }
+      .pop-link { display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 11.5px; font-weight: 600; color: var(--accent); text-decoration: none; cursor: pointer; background: none; border-left: none; border-right: none; border-bottom: none; padding-left: 0; padding-right: 0; }
+      .pop-link:hover { color: var(--accent-hover); }
+      .pop-reload { display: block; width: 100%; margin-top: 8px; padding: 7px 10px; border: none; border-radius: 8px; background: var(--green); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
+      .pop-reload:hover { background: var(--green-hover); }
+      .pop-uptodate { font-size: 12px; color: var(--muted); }
+
+      /* ---- Quick-request popup (the red light) ---- */
+      .qr-overlay {
+        position: fixed; inset: 0; background: rgba(15,20,30,.45); display: none;
+        align-items: flex-start; justify-content: center; padding: 8vh 16px; z-index: 90;
+      }
+      .qr-overlay.show { display: flex; }
+      .qr-card {
+        background: var(--panel); border-radius: 16px; box-shadow: 0 24px 64px rgba(15,25,45,.25);
+        width: 430px; max-width: 100%; padding: 18px 18px 16px; max-height: 84vh; overflow: auto;
+      }
+      .qr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+      .qr-head h2 { margin: 0; font-size: 16px; font-weight: 800; }
+      .qr-close { background: none; border: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+      .qr-close:hover { color: var(--text); background: var(--panel-2); }
+      .qr-card .field { margin-bottom: 10px; }
+      .qr-card label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+      .qr-card textarea {
+        width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--border-2);
+        border-radius: 9px; padding: 9px 11px; font-size: 13px; font-family: inherit;
+        min-height: 64px; line-height: 1.45; resize: vertical;
+      }
+      .qr-card textarea:focus { outline: none; border-color: var(--accent); }
+      .urgent-toggle {
+        display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; cursor: pointer;
+        font-size: 13px; font-weight: 700; color: #b45309; user-select: none;
+      }
+      .urgent-toggle input { width: 15px; height: 15px; accent-color: #d97706; cursor: pointer; }
+      .qr-shots { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+      .qr-done { text-align: center; padding: 18px 6px 8px; }
+      .qr-done .big { font-size: 34px; }
+      .qr-done p { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
     </style>
   </head>
   <body>
     <header>
-      <h1><span class="brand-chip">BSD</span> Feedback Board</h1>
-      <div class="subtitle">For the <b>BSD app</b> (your CRM at crm.impressionphotography.ca) — drop what you want or a bug (paste screenshots). Say “move everything right” and Claude builds column by column.</div>
+      <div class="header-row">
+        <div>
+          <h1><span class="brand-chip">BSD</span> Feedback Board</h1>
+          <div class="subtitle">For the <b>BSD app</b> (your CRM at crm.impressionphotography.ca) — drop what you want or a bug (paste screenshots). Say “move everything right” and Claude builds column by column.</div>
+        </div>
+        <div class="lights" id="trafficLights">
+          <div class="light-wrap">
+            <button class="light light-red" id="lightRequest" type="button" title="Request a feature or report a bug" aria-label="Request a feature or report a bug">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg>
+            </button>
+          </div>
+          <div class="light-wrap" id="decisionWrap">
+            <button class="light light-decision" id="lightDecision" type="button" title="Nothing needs your decision" aria-label="Requests waiting for your decision">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </button>
+            <div class="pop" id="popDecision"></div>
+          </div>
+          <div class="light-wrap" id="queueWrap">
+            <button class="light light-queue" id="lightQueue" type="button" title="Nothing queued" aria-label="Requests queued for the next build">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/></svg>
+            </button>
+            <div class="pop" id="popQueue"></div>
+          </div>
+          <div class="light-wrap" id="updateWrap">
+            <button class="light light-update" id="lightUpdate" type="button" title="Up to date" aria-label="Update status">
+              <span class="pulse"></span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></svg>
+            </button>
+            <div class="pop" id="popUpdate"></div>
+          </div>
+        </div>
+      </div>
     </header>
 
     <main>
@@ -214,6 +327,39 @@
 
     <div class="toast" id="toast"></div>
     <div class="lightbox" id="lightbox"><img id="lightboxImg" alt="" /></div>
+
+    <!-- Quick-request popup (opened by the red traffic light) -->
+    <div class="qr-overlay" id="qrOverlay">
+      <div class="qr-card" id="qrCard">
+        <div class="qr-head">
+          <h2 id="qrTitle">✨ Feature request</h2>
+          <button class="qr-close" id="qrClose" type="button" aria-label="Close">×</button>
+        </div>
+        <div id="qrForm">
+          <div class="field type-toggle" id="qrTypeToggle">
+            <button type="button" data-type="feature" class="active">✨ Feature</button>
+            <button type="button" data-type="bug">🐞 Bug</button>
+          </div>
+          <div class="field">
+            <label id="qrGoalLabel">Goal — what you want to achieve</label>
+            <textarea id="qrGoal" placeholder="e.g. clients should confirm their shoot time themselves"></textarea>
+          </div>
+          <div class="field" id="qrIdeaField">
+            <label>Idea — how it could work <span style="font-weight:400;opacity:.8">(optional)</span></label>
+            <textarea id="qrIdea" placeholder="e.g. a link in the reminder email…"></textarea>
+          </div>
+          <label class="urgent-toggle"><input type="checkbox" id="qrUrgent" /><span>⚡ Urgent — build this now</span></label>
+          <div class="qr-shots" id="qrShots"></div>
+          <button class="btn btn-primary" id="qrSubmit" type="button" style="width:100%;justify-content:center">🚀 Send request</button>
+          <div class="form-err" id="qrErr"></div>
+          <div class="form-hint">Paste screenshots anywhere — they attach when you send.</div>
+        </div>
+        <div class="qr-done" id="qrDone" style="display:none">
+          <div class="big">✅</div>
+          <p>Added to Requests — it will be built next run.</p>
+        </div>
+      </div>
+    </div>
 
     <script src="app.js"></script>
   </body>

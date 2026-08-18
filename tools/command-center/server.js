@@ -2623,14 +2623,33 @@ api.post('/task/:id/done', async (req, res) => {
 // App version: when the CRM container was last (re)created = last deploy.
 // Shown on the Roadmap tab so Moshe can see he's always on the latest build
 // (the PWA/web app has no separate download — it IS the deployed version).
+// `sha`/`builtAt` describe THIS tool's build (green traffic light in the
+// header): GIT_SHA/BUILD_AT env win; otherwise the version.json deploy.sh
+// scps next to the app (systemd-friendly — no unit edit, no daemon-reload).
+function readOwnVersion() {
+  if (process.env.GIT_SHA || process.env.BUILD_AT) {
+    return { sha: process.env.GIT_SHA || null, builtAt: process.env.BUILD_AT || null };
+  }
+  try {
+    const v = JSON.parse(
+      fs.readFileSync(path.join(__dirname, 'version.json'), 'utf8')
+    );
+    return { sha: v.sha || null, builtAt: v.builtAt || null };
+  } catch (_e) {
+    return { sha: null, builtAt: null };
+  }
+}
+
 api.get('/version', (req, res) => {
   execFile(
     'docker',
     ['inspect', '--format', '{{.Created}}', 'twenty-server-1'],
     { timeout: 5000 },
     (err, stdout) => {
-      if (err) return res.json({ deployedAt: null });
-      res.json({ deployedAt: stdout.trim() });
+      res.json({
+        deployedAt: err ? null : stdout.trim(),
+        ...readOwnVersion(),
+      });
     }
   );
 });

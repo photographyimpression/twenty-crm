@@ -24,6 +24,21 @@
 //   POST   /api/cards/:id/counter {text}  -> add moshe comment, -> back to inbox
 //   DELETE /api/cards/:id                 -> delete card (+ its screenshots)
 //   GET    /api/health                    -> liveness
+//   GET    /api/version                   -> {sha, builtAt} + recent deliveries
+//                                             (green traffic light; env GIT_SHA/
+//                                             BUILD_AT, else version.json deploy
+//                                             stamp, else nulls)
+//
+// Machine API for an autonomous build agent (guarded by BOARD_SECRET, see
+// tools/feedback-board/deploy.sh + README):
+//   GET    /api/board                     -> queue snapshot: non-delivered cards
+//                                             (urgent first) + counts + recently
+//                                             delivered
+//   POST   /api/board {id, status}        -> claim/move a card between
+//                                             non-delivered columns
+//   POST   /api/board/deliver {id, note}  -> deliver through the SAME path as
+//                                             the UI move (screenshot cleanup +
+//                                             delivered email fire)
 
 const express = require('express');
 const crypto = require('crypto');
@@ -36,6 +51,13 @@ const PORT = process.env.PORT || 4243;
 const DATA_DIR = process.env.FB_DATA_DIR || __dirname;
 const BOARD_PATH = process.env.FB_BOARD_PATH || path.join(DATA_DIR, 'board.json');
 const UPLOAD_DIR = process.env.FB_UPLOAD_DIR || path.join(DATA_DIR, 'uploads');
+// Deploy stamp written next to the app by deploy.sh (GIT_SHA/BUILD_AT env win
+// over it when set; version.json is the systemd-friendly channel — no unit-file
+// mutation, no daemon-reload, just an scp'd file).
+const VERSION_PATH = path.join(DATA_DIR, 'version.json');
+// Shared secret for the machine API (/api/board*). The board's own browser
+// endpoints stay URL-secret-only like before; only the agent API needs this.
+const BOARD_SECRET = process.env.BOARD_SECRET || null;
 
 // ---------------------------------------------------------------------------
 // Email-on-delivery — notify Moshe when a card is delivered (like his other
@@ -260,6 +282,7 @@ api.post('/cards', upload.array('screenshots', 8), (req, res) => {
   let title = (req.body.title || '').trim();
   const goal = (req.body.goal || '').trim();
   const idea = (req.body.idea || '').trim();
+  const urgent = ['true', 'on', '1'].includes(String(req.body.urgent || '').toLowerCase());
 
   if (!title && !goal && !idea && files.length === 0) {
     cleanupUploads();
@@ -287,6 +310,8 @@ api.post('/cards', upload.array('screenshots', 8), (req, res) => {
     goal,
     idea,
     column: 'inbox',
+    urgent,
+    urgedAt: urgent ? at : null,
     screenshots: files.map((f) => f.filename),
     comments: [],
     claudeNote: '',
@@ -299,6 +324,33 @@ api.post('/cards', upload.array('screenshots', 8), (req, res) => {
   writeBoard(cards);
   res.json({ ok: true, card });
 });
+
+// Everything that happens when a card enters `delivered` — shared by the UI
+// move endpoint and the machine deliver endpoint so an agent delivery behaves
+// EXACTLY like a UI one: screenshots cleaned up, deliveredAt stamped, note
+// defaulted to what shipped, and the email to Moshe fires.
+function enterDelivered(card, note) {
+  deleteScreenshots(card.screenshots);
+  card.screenshots = [];
+  // Comment screenshots are cleaned up on delivery too (same space-saving
+  // rule as card screenshots).
+  (card.comments || []).forEach((comment) => {
+    if (Array.isArray(comment.screenshots) && comment.screenshots.length) {
+      deleteScreenshots(comment.screenshots);
+      delete comment.screenshots;
+    }
+  });
+  card.deliveredAt = nowIso();
+  if (typeof note === 'string' && note.trim()) {
+    card.deliveredNote = note.trim();
+  } else if (!card.deliveredNote || !card.deliveredNote.trim()) {
+    // No explicit note passed — capture the latest Claude comment as the
+    // delivered note so the changelog + email say what was done, not just
+    // the goal.
+    card.deliveredNote = getWhatShipped(card);
+  }
+  sendDeliveredEmail(card); // notify Moshe (no-op unless SMTP env is set)
+}
 
 // Move a card to a column. Moving INTO delivered deletes screenshots + stamps
 // deliveredAt; an optional note becomes deliveredNote.
@@ -316,26 +368,7 @@ api.post('/cards/:id/move', (req, res) => {
   card.updatedAt = nowIso();
 
   if (enteringDelivered) {
-    deleteScreenshots(card.screenshots);
-    card.screenshots = [];
-    // Comment screenshots are cleaned up on delivery too (same space-saving
-    // rule as card screenshots).
-    (card.comments || []).forEach((comment) => {
-      if (Array.isArray(comment.screenshots) && comment.screenshots.length) {
-        deleteScreenshots(comment.screenshots);
-        delete comment.screenshots;
-      }
-    });
-    card.deliveredAt = nowIso();
-    if (typeof req.body.deliveredNote === 'string' && req.body.deliveredNote.trim()) {
-      card.deliveredNote = req.body.deliveredNote.trim();
-    } else if (!card.deliveredNote || !card.deliveredNote.trim()) {
-      // No explicit note passed — capture the latest Claude comment as the
-      // delivered note so the changelog + email say what was done, not just
-      // the goal.
-      card.deliveredNote = getWhatShipped(card);
-    }
-    sendDeliveredEmail(card); // notify Moshe (no-op unless SMTP env is set)
+    enterDelivered(card, req.body.deliveredNote);
   }
 
   writeBoard(cards);
@@ -409,6 +442,147 @@ api.delete('/cards/:id', (req, res) => {
   cards.splice(idx, 1);
   writeBoard(cards);
   res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Version — feeds the header's green traffic light. deploy.sh bakes a
+// version.json next to the app (systemd-friendly: no unit edit, no
+// daemon-reload); GIT_SHA/BUILD_AT env vars win when set. sha:null means the
+// build wasn't stamped and update detection stays off (light stays slate).
+// ---------------------------------------------------------------------------
+
+function readVersionInfo() {
+  if (process.env.GIT_SHA || process.env.BUILD_AT) {
+    return { sha: process.env.GIT_SHA || null, builtAt: process.env.BUILD_AT || null };
+  }
+  try {
+    const v = JSON.parse(fs.readFileSync(VERSION_PATH, 'utf8'));
+    return { sha: v.sha || null, builtAt: v.builtAt || null };
+  } catch (_e) {
+    return { sha: null, builtAt: null };
+  }
+}
+
+function recentlyDelivered(cards, limit) {
+  return cards
+    .filter((c) => c && c.column === 'delivered')
+    .sort(
+      (a, b) =>
+        new Date(b.deliveredAt || b.updatedAt || 0) -
+        new Date(a.deliveredAt || a.updatedAt || 0),
+    )
+    .slice(0, limit || 10)
+    .map((c) => ({ title: c.title, deliveredAt: c.deliveredAt || c.updatedAt || null }));
+}
+
+api.get('/version', (req, res) => {
+  res.json({ ...readVersionInfo(), recentlyDelivered: recentlyDelivered(readBoard(), 10) });
+});
+
+// ---------------------------------------------------------------------------
+// Machine API — the work queue as an autonomous build agent sees it. Guarded
+// by BOARD_SECRET (env on the systemd service; the browser endpoints above
+// stay URL-secret-only). Accepts `Authorization: Bearer <secret>` or
+// `x-board-secret: <secret>`.
+// ---------------------------------------------------------------------------
+
+const MACHINE_COLUMNS = ['inbox', 'discussion', 'tobuild'];
+const STATUS_LABEL = { inbox: 'requested', discussion: 'discussion', tobuild: 'to-build' };
+
+function machineAuth(req, res, next) {
+  if (!BOARD_SECRET) {
+    return res.status(503).json({ error: 'machine API disabled: set BOARD_SECRET on the service' });
+  }
+  const auth = req.headers.authorization || '';
+  const provided =
+    (auth.startsWith('Bearer ') ? auth.slice(7) : '') ||
+    req.headers['x-board-secret'] ||
+    '';
+  const a = Buffer.from(String(provided));
+  const b = Buffer.from(BOARD_SECRET);
+  if (!provided || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return res.status(401).json({ error: 'bad or missing board secret' });
+  }
+  next();
+}
+
+// Queue snapshot: every non-delivered card (urgent first, oldest first within
+// each group) + counts + the last 10 deliveries.
+api.get('/board', machineAuth, (req, res) => {
+  const cards = readBoard();
+  const isUrgent = (c) => c && c.urgent === true && c.column !== 'delivered';
+  const items = cards
+    .filter((c) => c && c.column !== 'delivered')
+    .sort((a, b) => {
+      const ua = isUrgent(a) ? 0 : 1;
+      const ub = isUrgent(b) ? 0 : 1;
+      if (ua !== ub) return ua - ub; // urgent first
+      return new Date(a.createdAt || 0) - new Date(b.createdAt || 0); // FIFO
+    })
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      status: STATUS_LABEL[c.column] || c.column,
+      column: c.column,
+      type: c.type || null,
+      urgent: c.urgent === true,
+      urgedAt: c.urgedAt || null,
+      createdAt: c.createdAt || null,
+      updatedAt: c.updatedAt || null,
+      goal: c.goal || '',
+      idea: c.idea || '',
+      claudeNote: c.claudeNote || '',
+      comments: Array.isArray(c.comments) ? c.comments : [],
+      screenshots: Array.isArray(c.screenshots) ? c.screenshots.length : 0,
+    }));
+  res.json({
+    items,
+    counts: {
+      pending: items.length,
+      urgent: items.filter((i) => i.urgent).length,
+    },
+    recentlyDelivered: recentlyDelivered(cards, 10),
+  });
+});
+
+// Claim/move a card between the non-delivered columns. Deliveries go through
+// POST /api/board/deliver so the email + cleanup fire.
+api.post('/board', machineAuth, (req, res) => {
+  const body = req.body || {};
+  const status = body.status || body.column;
+  if (!MACHINE_COLUMNS.includes(status)) {
+    return res.status(400).json({
+      error: 'status must be one of ' + MACHINE_COLUMNS.join('/') +
+        ' (use POST /api/board/deliver to deliver)',
+    });
+  }
+  const cards = readBoard();
+  const card = findCard(cards, body.id);
+  if (!card) return res.status(404).json({ error: 'card not found' });
+  if (card.column === 'delivered') {
+    return res.status(409).json({ error: 'card already delivered' });
+  }
+  card.column = status;
+  card.updatedAt = nowIso();
+  writeBoard(cards);
+  res.json({ ok: true, card });
+});
+
+// Deliver a card through the same path as the UI move: screenshot cleanup,
+// deliveredAt, note defaulting, and the email to Moshe all fire.
+api.post('/board/deliver', machineAuth, (req, res) => {
+  const body = req.body || {};
+  const cards = readBoard();
+  const card = findCard(cards, body.id);
+  if (!card) return res.status(404).json({ error: 'card not found' });
+  if (card.column === 'delivered') {
+    return res.status(409).json({ error: 'card already delivered' });
+  }
+  card.column = 'delivered';
+  card.updatedAt = nowIso();
+  enterDelivered(card, body.note);
+  writeBoard(cards);
+  res.json({ ok: true, card });
 });
 
 app.use('/api', api);

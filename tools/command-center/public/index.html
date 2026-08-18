@@ -171,6 +171,80 @@
         border-radius: 10px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
       .refresh:hover { color: var(--text); }
 
+      /* ---- Traffic lights (update loop at a glance, like the Zrizes app) ---- */
+      /* RED = suggest an idea · AMBER ? = approvals waiting on YOUR decision ·
+         GREEN hammer (dim) = roadmap ideas queued · GREEN ↓ (solid) = update
+         ready. Only the arrow ever pulses; idle lights stay slate. */
+      .lights { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+      .light-wrap { position: relative; display: flex; }
+      .light {
+        position: relative; width: 30px; height: 30px; border-radius: 8px; border: none;
+        background: transparent; color: #566072; cursor: pointer; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        transition: background .12s ease, color .12s ease;
+      }
+      .light:hover { background: var(--panel-2); }
+      .light svg { width: 16px; height: 16px; }
+      .light-red { color: var(--red); }
+      .light-decision.lit { color: var(--amber); }
+      /* Dim on purpose — the queue is "on the list", not actionable. */
+      .light-queue.lit { color: rgba(34, 197, 94, .55); }
+      .light-queue.lit:hover { color: var(--green); }
+      .light-update.lit { color: var(--green); }
+      /* The one and only pulse in the strip: the running service is newer than
+         this page — click to download it (reload). */
+      .light .pulse { position: absolute; inset: 0; border-radius: 8px; background: var(--green); opacity: 0; pointer-events: none; }
+      .light-update.lit .pulse { animation: lightping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+      @keyframes lightping {
+        0% { transform: scale(1); opacity: .35; }
+        75%, 100% { transform: scale(1.55); opacity: 0; }
+      }
+      .pop {
+        position: absolute; top: calc(100% + 8px); right: 0; width: 268px; background: var(--panel);
+        border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow);
+        padding: 12px; display: none; z-index: 80; text-align: left;
+      }
+      .pop.show { display: block; }
+      .pop-title { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin: 0 0 8px; }
+      .pop-list { list-style: none; margin: 0; padding: 0; max-height: 224px; overflow: auto; }
+      .pop-list li { font-size: 12.5px; color: #d7dce6; padding: 3px 0; }
+      .pop-list .tt { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pop-more { font-size: 11px; color: var(--muted); margin-top: 4px; }
+      .pop-empty { font-size: 12px; color: var(--muted); line-height: 1.5; }
+      .pop-link { display: block; margin-top: 8px; padding: 8px 0 0; border-top: 1px solid var(--border); font-size: 11.5px; font-weight: 600; color: var(--accent); text-decoration: none; cursor: pointer; background: none; border-left: none; border-right: none; border-bottom: none; padding-left: 0; padding-right: 0; font-family: inherit; }
+      .pop-link:hover { color: #6ea3f5; }
+      .pop-reload { display: block; width: 100%; margin-top: 8px; padding: 7px 10px; border: none; border-radius: 8px; background: var(--green); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
+      .pop-reload:hover { background: var(--green-hover); }
+      .pop-uptodate { font-size: 12px; color: var(--muted); }
+
+      /* ---- Idea popup (the red light) ---- */
+      .qr-overlay {
+        position: fixed; inset: 0; background: rgba(5, 8, 14, .6); display: none;
+        align-items: flex-start; justify-content: center; padding: 8vh 16px; z-index: 90;
+      }
+      .qr-overlay.show { display: flex; }
+      .qr-card {
+        background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+        box-shadow: var(--shadow); width: 430px; max-width: 100%; padding: 18px 18px 16px;
+      }
+      .qr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+      .qr-head h2 { margin: 0; font-size: 16px; font-weight: 800; }
+      .qr-close { background: none; border: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+      .qr-close:hover { color: var(--text); background: var(--panel-2); }
+      .qr-card textarea {
+        width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 9px; padding: 9px 11px; font-size: 13px; font-family: inherit;
+        min-height: 72px; line-height: 1.45; resize: vertical; margin-bottom: 10px;
+      }
+      .qr-card textarea:focus { outline: none; border-color: var(--accent); }
+      .qr-card .btn-primary2 { background: var(--accent); border: none; color: #fff; border-radius: 9px;
+        padding: 9px 14px; font-size: 13px; font-weight: 700; cursor: pointer; width: 100%; font-family: inherit; }
+      .qr-card .btn-primary2:hover:not(:disabled) { background: var(--accent-hover); }
+      .qr-card .btn-primary2:disabled { opacity: .5; cursor: default; }
+      .qr-done { text-align: center; padding: 18px 6px 8px; }
+      .qr-done .big { font-size: 34px; }
+      .qr-done p { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
       /* Triage extras: "Preview final" link button + keyboard-shortcut hint */
       .card-tools { display: flex; justify-content: flex-end; margin-top: 14px; }
       .btn-preview {
@@ -344,6 +418,32 @@
         <button class="tab" data-view="calls">Calls <span class="badge" id="callsBadge">0</span></button>
         <button class="tab" data-view="roadmap">Roadmap</button>
       </nav>
+      <div class="lights" id="trafficLights">
+        <div class="light-wrap">
+          <button class="light light-red" id="lightRequest" type="button" title="Suggest an idea for the roadmap" aria-label="Suggest an idea for the roadmap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg>
+          </button>
+        </div>
+        <div class="light-wrap" id="decisionWrap">
+          <button class="light light-decision" id="lightDecision" type="button" title="Nothing needs your decision" aria-label="Approvals waiting for your decision">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </button>
+          <div class="pop" id="popDecision"></div>
+        </div>
+        <div class="light-wrap" id="queueWrap">
+          <button class="light light-queue" id="lightQueue" type="button" title="Nothing queued" aria-label="Roadmap ideas queued for a future build">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/></svg>
+          </button>
+          <div class="pop" id="popQueue"></div>
+        </div>
+        <div class="light-wrap" id="updateWrap">
+          <button class="light light-update" id="lightUpdate" type="button" title="Up to date" aria-label="Update status">
+            <span class="pulse"></span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></svg>
+          </button>
+          <div class="pop" id="popUpdate"></div>
+        </div>
+      </div>
     </header>
 
     <main>
@@ -432,6 +532,24 @@
     </main>
 
     <div class="toast" id="toast"></div>
+
+    <!-- Idea popup (opened by the red traffic light) -->
+    <div class="qr-overlay" id="qrOverlay">
+      <div class="qr-card">
+        <div class="qr-head">
+          <h2>💡 Suggest an idea</h2>
+          <button class="qr-close" id="qrClose" type="button" aria-label="Close">×</button>
+        </div>
+        <div id="qrForm">
+          <textarea id="qrText" placeholder="What should this tool do next?"></textarea>
+          <button class="btn-primary2" id="qrSubmit" type="button">Add to roadmap</button>
+        </div>
+        <div class="qr-done" id="qrDone" style="display:none">
+          <div class="big">✅</div>
+          <p>Added to the roadmap.</p>
+        </div>
+      </div>
+    </div>
 
     <script src="app.js"></script>
   </body>

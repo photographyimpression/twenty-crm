@@ -15,3 +15,7 @@ board.json.tmp-*
 .env
 # Server-only SMTP settings (contains the mailbox password) — never commit.
 .env-mail
+
+# version.json is baked per-deploy by deploy.sh (git sha + build time, served
+# by /api/version) — a deploy artifact, never committed.
+version.json
