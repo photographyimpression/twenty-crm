@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## The Feedback Board is the build queue (do not skip this)
+
+Moshe's requests live on the **Feedback Board** (`tools/feedback-board/`, deployed
+at `/opt/feedback-board/` on the OVH box, `board.json` is the live store). A card
+moving to **Delivered** means the work was ACTUALLY BUILT and DEPLOYED — never
+drag cards right just to clear the board (stated 2026-08-18).
+
+Workflow per card:
+1. Build the feature/fix, deploy it to prod.
+2. Deliver **via the API** — `ssh root@15.204.91.183` then
+   `curl -X POST 127.0.0.1:4243/api/cards/<id>/move -H 'content-type: application/json' -d '{"column":"delivered","deliveredNote":"what shipped"}'`.
+   The API fires the "✅ Delivered" email to Moshe automatically (SMTP env on
+   the service). Editing `board.json` directly does NOT send the email — use
+   the API for deliveries.
+3. Too vague to build → park in `discussion` with a `claudeNote` question.
+4. Screenshots are deleted on delivery by design — look at them BEFORE
+   building, they are often the whole spec.
+
 ## Project Overview
 
 Twenty is an open-source CRM built with modern technologies in a monorepo structure. The codebase is organized as an Nx workspace with multiple packages.
