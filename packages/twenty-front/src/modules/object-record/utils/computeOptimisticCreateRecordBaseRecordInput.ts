@@ -20,5 +20,16 @@ export const computeOptimisticCreateRecordBaseRecordInput = (
     baseRecordInput.position = Number.NEGATIVE_INFINITY;
   }
 
+  // The server stamps createdAt; mirror it optimistically so "Created X ago"
+  // labels render the instant a new record's panel opens, not after the
+  // mutation response lands.
+  if (
+    objectMetadataItem.fields.some(
+      (field) => field.name === 'createdAt' && field.isSystem,
+    )
+  ) {
+    baseRecordInput.createdAt = new Date().toISOString();
+  }
+
   return baseRecordInput;
 };

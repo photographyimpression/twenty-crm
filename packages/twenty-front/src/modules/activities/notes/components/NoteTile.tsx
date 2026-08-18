@@ -1,5 +1,4 @@
 import { styled } from '@linaria/react';
-import { t } from '@lingui/core/macro';
 
 import { ActivityTargetsInlineCell } from '@/activities/inline-cell/components/ActivityTargetsInlineCell';
 import { useActivityTargetsComponentInstanceId } from '@/activities/inline-cell/hooks/useActivityTargetsComponentInstanceId';
@@ -37,12 +36,6 @@ const StyledCardDetailsContainer = styled.div`
   width: calc(100% - ${themeCssVariables.spacing[8]});
 `;
 
-const StyledNoteTitle = styled.div`
-  color: ${themeCssVariables.font.color.primary};
-  font-size: ${themeCssVariables.font.size.md};
-  font-weight: ${themeCssVariables.font.weight.semiBold};
-`;
-
 const StyledCardContent = styled.div`
   align-self: stretch;
   color: ${themeCssVariables.font.color.secondary};
@@ -66,6 +59,12 @@ const StyledFooter = styled.div`
   justify-content: center;
   padding: ${themeCssVariables.spacing[2]};
   width: calc(100% - ${themeCssVariables.spacing[4]});
+`;
+
+const StyledNoteDate = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.sm};
+  white-space: nowrap;
 `;
 
 export const NoteTile = ({
@@ -94,7 +93,17 @@ export const NoteTile = ({
           })
         }
       >
-        <StyledNoteTitle>{note.title ?? t`Task Title`}</StyledNoteTitle>
+        {/* Notes are written date-first now: the title is optional and the
+            body is the note, so lead the tile with the creation date. */}
+        <StyledNoteDate>
+          {note.createdAt
+            ? new Date(note.createdAt).toLocaleDateString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })
+            : ''}
+        </StyledNoteDate>
         <StyledCardContent>{body}</StyledCardContent>
       </StyledCardDetailsContainer>
       <StyledFooter>

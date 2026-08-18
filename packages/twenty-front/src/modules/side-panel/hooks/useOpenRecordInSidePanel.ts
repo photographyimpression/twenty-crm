@@ -191,10 +191,16 @@ export const useOpenRecordInSidePanel = () => {
       }
 
       if (isNewRecord) {
+        // Notes: a title is noise for a quick note — the user writes the
+        // body and the creation date is stamped automatically. Skip the
+        // auto-focused Title input so the panel lands ready to type the note.
+        const skipTitleEdit =
+          objectNameSingular === CoreObjectNameSingular.Note;
+
         const labelIdentifierField =
           getLabelIdentifierFieldMetadataItem(objectMetadataItem);
 
-        if (isDefined(labelIdentifierField)) {
+        if (!skipTitleEdit && isDefined(labelIdentifierField)) {
           openNewRecordTitleCell({
             recordId,
             fieldName: labelIdentifierField.name,
