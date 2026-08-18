@@ -10,7 +10,7 @@ export const RecordTableCellDisplayMode = ({
 }: {
   children: ReactNode;
 }) => {
-  const { recordId, isRecordFieldReadOnly: isReadOnly } =
+  const { recordId, isRecordFieldReadOnly: isReadOnly, isLabelIdentifier } =
     useContext(FieldContext);
 
   const { onCommandMenuDropdownOpened } = useRecordTableBodyContextOrThrow();
@@ -35,6 +35,14 @@ export const RecordTableCellDisplayMode = ({
         return;
       }
       current = current.parentElement;
+    }
+
+    // Clicking the record's name (label identifier) opens the record — the
+    // user expects a person's name to behave like a link to their profile.
+    // Cmd/Ctrl+click anywhere on a cell does the same.
+    if (isLabelIdentifier || event.metaKey || event.ctrlKey) {
+      openTableCell(undefined, true);
+      return;
     }
 
     if (!isFieldInputOnly && !isReadOnly) {

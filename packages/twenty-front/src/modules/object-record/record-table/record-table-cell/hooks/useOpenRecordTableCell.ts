@@ -105,7 +105,10 @@ export const useOpenRecordTableCell = (recordTableId: string) => {
         fieldValue,
       });
 
-      if ((isFirstColumnCell && !isEmpty) || isNavigating) {
+      // Navigate (open the record) for the first column or an explicit
+      // navigate request — but never for an empty cell: an empty value is
+      // better served by the editor so it can be filled in.
+      if ((isFirstColumnCell || isNavigating) && !isEmpty) {
         leaveTableFocus();
 
         const openRecordIn = store.get(recordIndexOpenRecordInState.atom);
