@@ -1,6 +1,7 @@
 import { CommandLink } from '@/command-menu-item/display/components/CommandLink';
 import { DeleteMultipleRecordsCommand } from '@/command-menu-item/record/multiple-records/components/DeleteMultipleRecordsCommand';
 import { DestroyMultipleRecordsCommand } from '@/command-menu-item/record/multiple-records/components/DestroyMultipleRecordsCommand';
+import { DialQueueMultipleRecordsCommand } from '@/command-menu-item/record/multiple-records/components/DialQueueMultipleRecordsCommand';
 import { ExportMultipleRecordsCommand } from '@/command-menu-item/record/multiple-records/components/ExportMultipleRecordsCommand';
 import { MergeMultipleRecordsCommand } from '@/command-menu-item/record/multiple-records/components/MergeMultipleRecordsCommand';
 import { RestoreMultipleRecordsCommand } from '@/command-menu-item/record/multiple-records/components/RestoreMultipleRecordsCommand';
@@ -59,6 +60,7 @@ import {
   IconLayout,
   IconLayoutDashboard,
   IconPencil,
+  IconPhone,
   IconPlus,
   IconRefresh,
   IconRotate2,
@@ -174,6 +176,35 @@ export const DEFAULT_RECORD_COMMAND_MENU_ITEMS_CONFIG: Record<
       false,
     availableOn: [CommandMenuItemViewType.INDEX_PAGE_BULK_SELECTION],
     component: <DeleteMultipleRecordsCommand />,
+  },
+  [MultipleRecordsCommandKeys.DIAL_QUEUE]: {
+    type: CommandMenuItemType.Standard,
+    scope: CommandMenuItemScope.RecordSelection,
+    key: MultipleRecordsCommandKeys.DIAL_QUEUE,
+    label: msg`Call queue — dial one by one`,
+    shortLabel: msg`Call queue`,
+    position: 33,
+    Icon: IconPhone,
+    accent: 'default',
+    isPinned: true,
+    // Impression fork: power-dialer for selected people (GHL-style). Only
+    // for objects that actually have a phones field (People).
+    shouldBeRegistered: ({
+      objectMetadataItem,
+      isRemote,
+      numberOfSelectedRecords,
+    }) =>
+      (!isRemote &&
+        isDefined(numberOfSelectedRecords) &&
+        numberOfSelectedRecords > 0 &&
+        numberOfSelectedRecords <= BACKEND_BATCH_REQUEST_MAX_COUNT &&
+        isDefined(objectMetadataItem) &&
+        objectMetadataItem.fields.some(
+          (field) => field.name === 'phones' && field.isActive !== false,
+        )) ??
+      false,
+    availableOn: [CommandMenuItemViewType.INDEX_PAGE_BULK_SELECTION],
+    component: <DialQueueMultipleRecordsCommand />,
   },
   [SingleRecordCommandKeys.RESTORE]: {
     type: CommandMenuItemType.Standard,
