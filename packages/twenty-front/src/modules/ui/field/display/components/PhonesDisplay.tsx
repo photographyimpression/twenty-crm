@@ -116,17 +116,16 @@ export const PhonesDisplay = ({
     callingCode: string,
     index: number,
   ) => {
-    const { parsedPhone, invalidPhone } =
-      parsePhoneNumberOrReturnInvalidValue(callingCode + number);
+    const { parsedPhone, invalidPhone } = parsePhoneNumberOrReturnInvalidValue(
+      callingCode + number,
+    );
     const fullNumber = callingCode + number;
 
     return (
       <StyledPhoneActions key={index}>
         <RoundedLink
           href="#"
-          label={
-            parsedPhone ? parsedPhone.formatInternational() : invalidPhone
-          }
+          label={parsedPhone ? parsedPhone.formatInternational() : invalidPhone}
           onClick={(event) => {
             if (onPhoneNumberClick) {
               onPhoneNumberClick(fullNumber, event);
@@ -142,9 +141,7 @@ export const PhonesDisplay = ({
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            const e164 = parsedPhone
-              ? parsedPhone.format('E.164')
-              : fullNumber;
+            const e164 = parsedPhone ? parsedPhone.format('E.164') : fullNumber;
 
             setSmsTarget(e164);
           }}

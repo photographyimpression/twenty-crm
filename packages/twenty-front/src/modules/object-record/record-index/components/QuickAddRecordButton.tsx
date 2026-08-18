@@ -131,8 +131,7 @@ export const QuickAddRecordButton = () => {
 
   const labelIdentifier =
     getLabelIdentifierFieldMetadataItem(objectMetadataItem);
-  const isFullNameLabel =
-    labelIdentifier?.type === FieldMetadataType.FULL_NAME;
+  const isFullNameLabel = labelIdentifier?.type === FieldMetadataType.FULL_NAME;
   const hasField = useCallback(
     (name: string) =>
       objectMetadataItem.fields.some(
@@ -146,7 +145,9 @@ export const QuickAddRecordButton = () => {
   const showTag = useMemo(() => hasField('ghlTags'), [hasField]);
 
   const isFullNameBlank =
-    isFullNameLabel && firstNameValue.trim() === '' && lastNameValue.trim() === '';
+    isFullNameLabel &&
+    firstNameValue.trim() === '' &&
+    lastNameValue.trim() === '';
   const isNameBlank = isFullNameLabel
     ? isFullNameBlank
     : nameValue.trim() === '';
@@ -203,8 +204,7 @@ export const QuickAddRecordButton = () => {
           normalizedPhone !== '' && {
             phones: { primaryPhoneNumber: normalizedPhone },
           }),
-        ...(showTag &&
-          tagValue.trim() !== '' && { ghlTags: tagValue.trim() }),
+        ...(showTag && tagValue.trim() !== '' && { ghlTags: tagValue.trim() }),
       });
 
       // Adding deliberately keeps you on the list, so the confirmation carries
