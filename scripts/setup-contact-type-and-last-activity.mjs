@@ -60,9 +60,6 @@ const personObject = async () => {
           node {
             id
             nameSingular
-            fields(paging: { first: 200 }) {
-              edges { node { id name type } }
-            }
           }
         }
       }
@@ -71,6 +68,23 @@ const personObject = async () => {
   const obj = data.objects.edges.find((e) => e.node.nameSingular === 'person');
   if (!obj) throw new Error('person object not found');
   return obj.node;
+};
+
+// Field lookup via the top-level `fields` query — the nested
+// objects.fields connection returns a partial list for workspaces with many
+// custom fields, which would break existence checks.
+const personFields = async (objectMetadataId) => {
+  const data = await post(
+    `
+    query FindFields($filter: FieldFilterInput) {
+      fields(filter: $filter, paging: { first: 200 }) {
+        edges { node { id name type isActive } }
+      }
+    }
+  `,
+    { filter: { objectMetadataId: { eq: objectMetadataId } } },
+  );
+  return data.fields.edges.map((e) => e.node);
 };
 
 const createField = async (objectMetadataId, field) => {
@@ -99,7 +113,9 @@ const deleteField = async (id) => {
 
 const run = async () => {
   const person = await personObject();
-  const existing = new Map(person.fields.edges.map((e) => [e.node.name, e.node]));
+  const allFields = await personFields(person.id);
+  const activeFields = allFields.filter((field) => field.isActive !== false);
+  const existing = new Map(activeFields.map((field) => [field.name, field]));
 
   if (mode === '--create') {
     if (!existing.has('contactType')) {

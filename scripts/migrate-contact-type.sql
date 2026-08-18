@@ -63,10 +63,12 @@ FROM :"WORKSPACE_SCHEMA".person WHERE "lastActivityAt" IS NOT NULL;
 --    tables; everything else (messages, edits, linked events) lands on
 --    timelineActivity with targetPersonId set. App-level changes fire these
 --    rows in the same transaction, so the touch rides along for free.
-CREATE OR REPLACE FUNCTION :"WORKSPACE_SCHEMA".fn_touch_person_last_activity()
+--    NB: the schema is hardcoded inside the function body on purpose — psql
+--    :variables don't substitute inside dollar-quoted bodies.
+CREATE OR REPLACE FUNCTION workspace_arem42qbur9jiys0e9bx25k0f.fn_touch_person_last_activity()
 RETURNS trigger AS $$
 BEGIN
-  UPDATE :"WORKSPACE_SCHEMA".person
+  UPDATE workspace_arem42qbur9jiys0e9bx25k0f.person
      SET "lastActivityAt" = now()
    WHERE id = NEW."targetPersonId";
   RETURN NEW;
@@ -78,18 +80,18 @@ CREATE TRIGGER trg_note_touch_person
 AFTER INSERT ON :"WORKSPACE_SCHEMA"."noteTarget"
 FOR EACH ROW
 WHEN (NEW."targetPersonId" IS NOT NULL)
-EXECUTE FUNCTION :"WORKSPACE_SCHEMA".fn_touch_person_last_activity();
+EXECUTE FUNCTION workspace_arem42qbur9jiys0e9bx25k0f.fn_touch_person_last_activity();
 
 DROP TRIGGER IF EXISTS trg_task_touch_person ON :"WORKSPACE_SCHEMA"."taskTarget";
 CREATE TRIGGER trg_task_touch_person
 AFTER INSERT ON :"WORKSPACE_SCHEMA"."taskTarget"
 FOR EACH ROW
 WHEN (NEW."targetPersonId" IS NOT NULL)
-EXECUTE FUNCTION :"WORKSPACE_SCHEMA".fn_touch_person_last_activity();
+EXECUTE FUNCTION workspace_arem42qbur9jiys0e9bx25k0f.fn_touch_person_last_activity();
 
 DROP TRIGGER IF EXISTS trg_timeline_touch_person ON :"WORKSPACE_SCHEMA"."timelineActivity";
 CREATE TRIGGER trg_timeline_touch_person
 AFTER INSERT ON :"WORKSPACE_SCHEMA"."timelineActivity"
 FOR EACH ROW
 WHEN (NEW."targetPersonId" IS NOT NULL)
-EXECUTE FUNCTION :"WORKSPACE_SCHEMA".fn_touch_person_last_activity();
+EXECUTE FUNCTION workspace_arem42qbur9jiys0e9bx25k0f.fn_touch_person_last_activity();
