@@ -80,7 +80,12 @@ type CallRecord = {
   durationMs: number | null;
   recordingUrl: string | null;
   transcription: string | null;
+  // Live (browser-side, mic) transcript posted by the dialer on hangup.
+  liveTranscript?: string | null;
   status: string;
+  // The timeline note created at hangup — kept so the late-arriving
+  // transcription can UPDATE that note instead of adding a duplicate.
+  timelineNoteId?: string | null;
 };
 
 type SmsRecord = {
@@ -109,6 +114,9 @@ const ECHO_LOOKBACK_MINUTES = 10;
 export class TelnyxWebhookService {
   private readonly logger = new Logger(TelnyxWebhookService.name);
   private readonly callRecords = new Map<string, CallRecord>();
+  // The in-browser dialer only knows the call CONTROL id, while records are
+  // keyed by session id — index both so live transcripts find their record.
+  private readonly callControlIdIndex = new Map<string, string>();
   private readonly smsRecords: SmsRecord[] = [];
   private readonly processedEvents = new Set<string>();
   // Tracks last auto-reply timestamp per inbound phone number (digits only)
@@ -244,10 +252,15 @@ export class TelnyxWebhookService {
           durationMs: null,
           recordingUrl: null,
           transcription: null,
+          liveTranscript: null,
+          timelineNoteId: null,
           status: 'initiated',
         };
 
         this.callRecords.set(sessionId, record);
+        if (payload.call_control_id && payload.call_control_id !== sessionId) {
+          this.callControlIdIndex.set(payload.call_control_id, sessionId);
+        }
         this.saveCallRecords();
         this.logger.log(
           `Call initiated: ${record.from} -> ${record.to} (${record.direction})`,
@@ -623,6 +636,8 @@ export class TelnyxWebhookService {
         durationMs: payload.duration_millis || null,
         recordingUrl,
         transcription: null,
+        liveTranscript: null,
+        timelineNoteId: null,
         status: 'recorded',
       };
 
@@ -691,6 +706,7 @@ export class TelnyxWebhookService {
             record.transcription = '(No speech detected)';
             record.status = 'transcribed';
             this.saveCallRecords();
+            await this.updateCallTimelineNote(record);
           }
 
           return;
@@ -702,6 +718,7 @@ export class TelnyxWebhookService {
           record.transcription = transcript;
           record.status = 'transcribed';
           this.saveCallRecords();
+          await this.updateCallTimelineNote(record);
         }
 
         this.logger.log(
@@ -826,6 +843,7 @@ export class TelnyxWebhookService {
           record.transcription = transcript;
           record.status = 'transcribed';
           this.saveCallRecords();
+          await this.updateCallTimelineNote(record);
         }
 
         this.logger.log(
@@ -1689,13 +1707,27 @@ export class TelnyxWebhookService {
     }
   }
 
-  // Create a timeline entry for a completed call
+  // Create a timeline entry for a completed call. Keeps the created note id on
+  // the record so the late-arriving transcription can update the SAME note.
   async logCallToTimeline(record: CallRecord): Promise<void> {
+    const noteId = await this.createOrSkipCallNote(record);
+
+    if (noteId) {
+      record.timelineNoteId = noteId;
+      this.saveCallRecords();
+    }
+  }
+
+  // Resolve the person for a call record and build its note, or null when no
+  // person matches (unknown number).
+  private async createOrSkipCallNote(
+    record: CallRecord,
+  ): Promise<string | null> {
     const isIncoming =
       record.direction === 'incoming' || record.direction === 'inbound';
     const contactPhone = isIncoming ? record.from : record.to;
 
-    if (!contactPhone) return;
+    if (!contactPhone) return null;
 
     const personId = await this.findPersonByPhone(contactPhone);
 
@@ -1704,9 +1736,15 @@ export class TelnyxWebhookService {
         `No person found for phone ${contactPhone}, skipping timeline`,
       );
 
-      return;
+      return null;
     }
 
+    return this.createTimelineNote(personId, this.callNoteTitle(record), this.callNoteBody(record));
+  }
+
+  private callNoteTitle(record: CallRecord): string {
+    const isIncoming =
+      record.direction === 'incoming' || record.direction === 'inbound';
     const durationSec = record.durationMs
       ? Math.round(record.durationMs / 1000)
       : 0;
@@ -1715,8 +1753,17 @@ export class TelnyxWebhookService {
         ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`
         : 'N/A';
 
-    const directionIcon = isIncoming ? '📥' : '📤';
-    const title = `${directionIcon} Phone Call (${durationStr})`;
+    return `${isIncoming ? '📥' : '📤'} Phone Call (${durationStr})`;
+  }
+
+  private callNoteBody(record: CallRecord): string {
+    const durationSec = record.durationMs
+      ? Math.round(record.durationMs / 1000)
+      : 0;
+    const durationStr =
+      durationSec > 0
+        ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`
+        : 'N/A';
 
     let body = `Direction: ${record.direction}\nDuration: ${durationStr}\n`;
     body += `From: ${record.from}\nTo: ${record.to}\n`;
@@ -1728,9 +1775,112 @@ export class TelnyxWebhookService {
 
     if (record.transcription) {
       body += `\n\n📝 Transcription:\n${record.transcription}`;
+    } else if (record.liveTranscript) {
+      // The recording-based transcription hadn't landed yet — show the live
+      // mic transcript so the note is useful immediately.
+      body += `\n\n📝 Transcription (live, your side):\n${record.liveTranscript}`;
     }
 
-    await this.createTimelineNote(personId, title, body);
+    return body;
+  }
+
+  // Re-write the call's timeline note with whatever transcription is now on
+  // the record. Called after a transcription completes (async, well after the
+  // hangup note was created) or when a live transcript arrives.
+  async updateCallTimelineNote(record: CallRecord): Promise<void> {
+    try {
+      if (record.timelineNoteId) {
+        await this.updateTimelineNoteBody(
+          record.timelineNoteId,
+          this.callNoteBody(record),
+        );
+
+        return;
+      }
+
+      // No note yet (hangup raced ahead or person didn't match then) — create
+      // one now that we have something extra to say.
+      const noteId = await this.createOrSkipCallNote(record);
+
+      if (noteId) {
+        record.timelineNoteId = noteId;
+        this.saveCallRecords();
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(
+        `Failed to update call timeline note: ${errorMessage}`,
+      );
+    }
+  }
+
+  // Store the browser-side (mic) transcript posted by the dialer on hangup.
+  async saveLiveTranscript(sessionId: string, transcript: string | null) {
+    const record =
+      this.callRecords.get(sessionId) ??
+      (this.callControlIdIndex.has(sessionId)
+        ? this.callRecords.get(this.callControlIdIndex.get(sessionId) ?? '')
+        : undefined);
+
+    if (!record) {
+      this.logger.warn(
+        `Live transcript for unknown call session ${sessionId}`,
+      );
+
+      return;
+    }
+
+    const text = (transcript ?? '').trim();
+
+    if (!text) return;
+
+    record.liveTranscript = text;
+    this.saveCallRecords();
+    await this.updateCallTimelineNote(record);
+  }
+
+  async updateTimelineNoteBody(noteId: string, body: string): Promise<void> {
+    const workspaceId = await this.getWorkspaceId();
+
+    if (!workspaceId) return;
+
+    const authContext = buildSystemAuthContext(workspaceId);
+
+    try {
+      await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          const noteRepository =
+            await this.globalWorkspaceOrmManager.getRepository(
+              workspaceId,
+              NoteWorkspaceEntity,
+              { shouldBypassPermissionChecks: true },
+            );
+
+          await noteRepository.update(
+            { id: noteId } as any,
+            {
+              bodyV2: {
+                type: 'doc',
+                content: [
+                  {
+                    type: 'paragraph',
+                    content: [{ type: 'text', text: body }],
+                  },
+                ],
+              },
+            } as any,
+          );
+        },
+        authContext,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`Failed to update timeline note: ${errorMessage}`);
+    }
   }
 
   // Create a timeline entry for an SMS

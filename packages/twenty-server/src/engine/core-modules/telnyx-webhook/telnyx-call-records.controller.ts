@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   Logger,
   Param,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -36,6 +38,25 @@ export class TelnyxCallRecordsController {
     }
 
     return { data: record };
+  }
+
+  // The in-CRM dialer's live (mic-side) transcript, posted when the call
+  // ends so it can be saved onto the person's timeline note.
+  @Post('transcript')
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async saveLiveTranscript(
+    @Body() body: { sessionId?: string; transcript?: string },
+  ) {
+    if (!body?.sessionId) {
+      return { data: null, error: 'sessionId is required' };
+    }
+
+    await this.telnyxWebhookService.saveLiveTranscript(
+      body.sessionId,
+      body.transcript ?? null,
+    );
+
+    return { data: 'ok' };
   }
 }
 

@@ -1,5 +1,5 @@
 import styled from '@emotion/styled';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { useCallContext } from '../contexts/CallProvider';
 import { useCallTranscription } from '../hooks/useCallTranscription';
@@ -146,6 +146,7 @@ export const WebRTCDialerWidget: React.FC = () => {
     inCall,
     activeNumber,
     callStartTime,
+    callSessionId,
     hangup,
     answer,
     clearError,
@@ -158,6 +159,7 @@ export const WebRTCDialerWidget: React.FC = () => {
     isTranscribing,
     isSupported,
     clearTranscript,
+    getFullTranscript,
   } = useCallTranscription(inCall);
 
   const [elapsed, setElapsed] = useState(0);
@@ -176,6 +178,41 @@ export const WebRTCDialerWidget: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [inCall, callStartTime]);
+
+  // When the call ends, ship the live transcript to the server so it lands
+  // on the person's timeline note. Fire-and-forget: never blocks hangup, and
+  // the server-side recording transcript (when it arrives) takes precedence.
+  const postedTranscriptRef = useRef(false);
+  useEffect(() => {
+    if (inCall) {
+      postedTranscriptRef.current = false;
+
+      return;
+    }
+
+    if (postedTranscriptRef.current) return;
+    postedTranscriptRef.current = true;
+
+    const fullTranscript = getFullTranscript();
+
+    if (!fullTranscript || !callSessionId) return;
+
+    const serverUrl =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (import.meta as any).env?.REACT_APP_SERVER_BASE_URL ||
+      window.location.origin;
+
+    void fetch(`${serverUrl}/telnyx/call-records/transcript`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: callSessionId,
+        transcript: fullTranscript,
+      }),
+    }).catch(() => {
+      // Best-effort — the server-side recording transcript is the backup.
+    });
+  }, [inCall, callSessionId, getFullTranscript]);
 
   if (!isRinging && !inCall && !error) {
     return null;
