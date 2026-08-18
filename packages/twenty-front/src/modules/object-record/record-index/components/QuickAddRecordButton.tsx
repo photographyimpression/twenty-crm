@@ -1,8 +1,8 @@
 /* eslint-disable lingui/no-unlocalized-strings */
 // Impression fork: "+ Add person" button in the index header that opens a small
 // pop-up form. Replaces reaching for the add row at the BOTTOM of the list —
-// on a 17k-row People view that meant scrolling forever. Type a full name (it
-// auto-splits into first/last), optionally an email and phone, and save.
+// on a 17k-row People view that meant scrolling forever. Fill in first/last
+// name (when the object uses a full-name label), email, phone and tag.
 import { styled } from '@linaria/react';
 import { useCallback, useMemo, useState } from 'react';
 import { IconPlus, IconX } from 'twenty-ui/display';
@@ -52,6 +52,15 @@ const StyledField = styled.div`
   gap: ${themeCssVariables.spacing[1]};
 `;
 
+const StyledNameRow = styled.div`
+  display: flex;
+  gap: ${themeCssVariables.spacing[2]};
+
+  > ${StyledField} {
+    flex: 1;
+  }
+`;
+
 const StyledLabel = styled.div`
   color: ${themeCssVariables.font.color.light};
   font-size: ${themeCssVariables.font.size.xs};
@@ -79,13 +88,6 @@ const StyledFooter = styled.div`
   gap: ${themeCssVariables.spacing[2]};
   padding: ${themeCssVariables.spacing[3]} ${themeCssVariables.spacing[4]};
 `;
-
-// Keep any trailing words as the last name ("Mary Jane Watson" -> "Mary" /
-// "Jane Watson").
-const splitTypedName = (fullName: string) => {
-  const parts = fullName.trim().split(/\s+/);
-  return { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' ') };
-};
 
 // The CRM rejects a phone it can't parse, which would fail the whole save, and
 // people type phones however they like. Normalize to E.164, or drop it.
@@ -119,13 +121,18 @@ export const QuickAddRecordButton = () => {
   });
 
   const [isOpen, setIsOpen] = useState(false);
+  const [firstNameValue, setFirstNameValue] = useState('');
+  const [lastNameValue, setLastNameValue] = useState('');
   const [nameValue, setNameValue] = useState('');
   const [emailValue, setEmailValue] = useState('');
   const [phoneValue, setPhoneValue] = useState('');
+  const [tagValue, setTagValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const labelIdentifier =
     getLabelIdentifierFieldMetadataItem(objectMetadataItem);
+  const isFullNameLabel =
+    labelIdentifier?.type === FieldMetadataType.FULL_NAME;
   const hasField = useCallback(
     (name: string) =>
       objectMetadataItem.fields.some(
@@ -135,6 +142,17 @@ export const QuickAddRecordButton = () => {
   );
   const showEmail = useMemo(() => hasField('emails'), [hasField]);
   const showPhone = useMemo(() => hasField('phones'), [hasField]);
+  // "Tag" is the GHL-imported free-text tag field on People (comma-separated).
+  const showTag = useMemo(() => hasField('ghlTags'), [hasField]);
+
+  const isFullNameBlank =
+    isFullNameLabel && firstNameValue.trim() === '' && lastNameValue.trim() === '';
+  const isNameBlank = isFullNameLabel
+    ? isFullNameBlank
+    : nameValue.trim() === '';
+  const displayName = isFullNameLabel
+    ? `${firstNameValue.trim()} ${lastNameValue.trim()}`.trim()
+    : nameValue.trim();
 
   const canQuickAdd =
     objectPermissions.canUpdateObjectRecords &&
@@ -148,27 +166,30 @@ export const QuickAddRecordButton = () => {
   };
 
   const handleClose = useCallback(() => {
+    setFirstNameValue('');
+    setLastNameValue('');
     setNameValue('');
     setEmailValue('');
     setPhoneValue('');
+    setTagValue('');
     setIsSaving(false);
     closeModal(QUICK_ADD_MODAL_ID);
     setIsOpen(false);
   }, [closeModal]);
 
   const save = async (shouldKeepOpen: boolean) => {
-    const trimmedName = nameValue.trim();
-
-    if (trimmedName === '' || isSaving) {
+    if (isNameBlank || isSaving) {
       return;
     }
     setIsSaving(true);
 
     const fieldName = labelIdentifier?.name;
-    const titleValue =
-      labelIdentifier?.type === FieldMetadataType.FULL_NAME
-        ? splitTypedName(trimmedName)
-        : trimmedName;
+    const titleValue = isFullNameLabel
+      ? {
+          firstName: firstNameValue.trim(),
+          lastName: lastNameValue.trim(),
+        }
+      : nameValue.trim();
     const normalizedPhone = toE164(phoneValue);
 
     try {
@@ -182,13 +203,15 @@ export const QuickAddRecordButton = () => {
           normalizedPhone !== '' && {
             phones: { primaryPhoneNumber: normalizedPhone },
           }),
+        ...(showTag &&
+          tagValue.trim() !== '' && { ghlTags: tagValue.trim() }),
       });
 
       // Adding deliberately keeps you on the list, so the confirmation carries
       // the one click through to the record just created.
       enqueueSuccessSnackBar({
         // eslint-disable-next-line lingui/no-unlocalized-strings
-        message: `Added ${trimmedName}`,
+        message: `Added ${displayName}`,
         options: {
           // eslint-disable-next-line lingui/no-unlocalized-strings
           actionText: 'Open',
@@ -202,16 +225,19 @@ export const QuickAddRecordButton = () => {
       if (shouldKeepOpen) {
         // "Save and add another": clear the form but stay put so a batch of
         // contacts can be entered without reopening the pop-up each time.
+        setFirstNameValue('');
+        setLastNameValue('');
         setNameValue('');
         setEmailValue('');
         setPhoneValue('');
+        setTagValue('');
         setIsSaving(false);
       } else {
         handleClose();
       }
     } catch (error) {
       enqueueErrorSnackBar({
-        message: `Couldn't add "${trimmedName}" — ${
+        message: `Couldn't add "${displayName}" — ${
           error instanceof Error ? error.message : 'please try again.'
         }`,
       });
@@ -248,29 +274,59 @@ export const QuickAddRecordButton = () => {
             <IconButton Icon={IconX} onClick={handleClose} size="small" />
           </StyledHeader>
           <StyledContent>
-            <StyledField>
-              <StyledLabel>
-                {labelIdentifier?.type === FieldMetadataType.FULL_NAME
-                  ? 'Name — type the full name'
-                  : 'Name'}
-              </StyledLabel>
-              <StyledInput
-                autoFocus
-                value={nameValue}
-                placeholder="Sarah Cohen"
-                onChange={(event) => setNameValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void save(false);
-                  }
-                }}
-              />
-            </StyledField>
+            {isFullNameLabel ? (
+              <StyledNameRow>
+                <StyledField>
+                  <StyledLabel>First name</StyledLabel>
+                  <StyledInput
+                    autoFocus
+                    value={firstNameValue}
+                    placeholder="Sarah"
+                    onChange={(event) => setFirstNameValue(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void save(false);
+                      }
+                    }}
+                  />
+                </StyledField>
+                <StyledField>
+                  <StyledLabel>Last name</StyledLabel>
+                  <StyledInput
+                    value={lastNameValue}
+                    placeholder="Cohen"
+                    onChange={(event) => setLastNameValue(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void save(false);
+                      }
+                    }}
+                  />
+                </StyledField>
+              </StyledNameRow>
+            ) : (
+              <StyledField>
+                <StyledLabel>Name</StyledLabel>
+                <StyledInput
+                  autoFocus
+                  value={nameValue}
+                  placeholder="Sarah Cohen"
+                  onChange={(event) => setNameValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void save(false);
+                    }
+                  }}
+                />
+              </StyledField>
+            )}
 
             {showEmail && (
               <StyledField>
-                <StyledLabel>Email (optional)</StyledLabel>
+                <StyledLabel>Email</StyledLabel>
                 <StyledInput
                   type="email"
                   value={emailValue}
@@ -288,11 +344,28 @@ export const QuickAddRecordButton = () => {
 
             {showPhone && (
               <StyledField>
-                <StyledLabel>Phone (optional)</StyledLabel>
+                <StyledLabel>Phone</StyledLabel>
                 <StyledInput
                   value={phoneValue}
                   placeholder="(514) 555-0199"
                   onChange={(event) => setPhoneValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void save(false);
+                    }
+                  }}
+                />
+              </StyledField>
+            )}
+
+            {showTag && (
+              <StyledField>
+                <StyledLabel>Tag</StyledLabel>
+                <StyledInput
+                  value={tagValue}
+                  placeholder="e.g. usagehas"
+                  onChange={(event) => setTagValue(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
@@ -309,14 +382,14 @@ export const QuickAddRecordButton = () => {
               variant="primary"
               accent="blue"
               justify="center"
-              disabled={nameValue.trim() === '' || isSaving}
+              disabled={isNameBlank || isSaving}
               onClick={() => void save(false)}
             />
             <Button
               title="Save and add another"
               variant="secondary"
               justify="center"
-              disabled={nameValue.trim() === '' || isSaving}
+              disabled={isNameBlank || isSaving}
               onClick={() => void save(true)}
             />
           </StyledFooter>
