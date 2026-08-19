@@ -78,6 +78,20 @@
       .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
       .recipient { color: var(--muted); font-size: 13px; }
       .recipient b { color: var(--text); }
+      /* From line + BCC-me toggle: the sender is now always the real mailbox
+         the send will use, and the copy-to-me option sits right under it. */
+      .from-line { color: var(--muted); font-size: 13px; margin-top: 2px; }
+      .from-line b { color: #9cc1f7; }
+      .bcc-toggle {
+        display: flex; align-items: center; gap: 8px; margin-top: 10px;
+        color: var(--muted); font-size: 13px; cursor: pointer; user-select: none;
+      }
+      .bcc-toggle input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+      /* Lead names deep-link into the person's CRM profile. */
+      .lead-link, a.lead-link { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--muted); }
+      a.lead-link:hover { color: #9cc1f7; border-bottom-color: #9cc1f7; }
+      .week-row .lead-link, .dash-table .lead-link { color: #9cc1f7; border-bottom: none; }
+      .week-row .lead-link:hover, .dash-table .lead-link:hover { text-decoration: underline; }
       .subject {
         font-size: 20px; font-weight: 700; margin: 18px 0 10px; padding-bottom: 12px;
         border-bottom: 1px solid var(--border);
@@ -364,6 +378,7 @@
       .week-row .week-subject { color: #d7dce6; font-size: 13.5px; margin-top: 3px;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .week-row .week-to { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .week-row .week-to .week-from { margin-left: 10px; }
       .week-row .week-pill {
         flex-shrink: 0; align-self: flex-start; background: rgba(59,130,246,0.14);
         border: 1px solid rgba(59,130,246,0.45); color: #9cc1f7; border-radius: 999px;

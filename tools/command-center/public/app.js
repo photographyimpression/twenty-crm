@@ -40,6 +40,33 @@
     }[c]));
   }
 
+  // Lead name -> clickable deep-link into the person's CRM profile. The CC is
+  // embedded in an iframe inside the CRM, so target="_top" makes the whole app
+  // navigate (the frame's sandbox allows top navigation on user clicks).
+  // Without a resolved personId the name stays plain text.
+  function leadLink(name, personId) {
+    const label = esc(name || '—') || '—';
+    if (!name || !personId) return label;
+    return `<a class="lead-link" href="/object/person/${encodeURIComponent(personId)}" target="_top" rel="noopener">${label}</a>`;
+  }
+
+  // "BCC me" toggle for sequence sends. Default ON — Moshe wants to see what
+  // the client sees, at least for the beginning. Sticky across sessions.
+  function getBccMe() {
+    try {
+      return localStorage.getItem('ccBccMe') !== 'off';
+    } catch (_e) {
+      return true;
+    }
+  }
+  function setBccMe(on) {
+    try {
+      localStorage.setItem('ccBccMe', on ? 'on' : 'off');
+    } catch (_e) {
+      /* private mode — toggle still works for this session */
+    }
+  }
+
   let toastTimer = null;
   function toast(message, isError) {
     const t = el('toast');
@@ -158,7 +185,7 @@
       mount.innerHTML = `
         <div class="card">
           <span class="pill">${seqLabel(a)} · Touch ${esc(a.touchNumber)} of ${seqTotal(a)} · editing</span>
-          <div class="lead-name">${esc(a.leadName) || 'Unknown lead'}</div>
+          <div class="lead-name">${leadLink(a.leadName || 'Unknown lead', a.personId)}</div>
           <div class="company">${esc(a.companyName) || ''}</div>
           <label class="recipient">Subject</label>
           <input class="edit-field" id="editSubject" value="${esc(a.emailSubject)}" />
@@ -184,10 +211,14 @@
           ${a.productType ? `<span class="pill">${esc(a.productType)}</span>` : ''}
           ${dueLabel ? `<span class="pill">due ${esc(dueLabel)}</span>` : ''}
         </div>
-        <div class="lead-name">${esc(a.leadName) || 'Unknown lead'}</div>
+        <div class="lead-name">${leadLink(a.leadName || 'Unknown lead', a.personId)}</div>
         <div class="company">${esc(a.companyName) || ''}</div>
         <div class="recipient">To: <b>${esc(a.recipientEmail)}</b></div>
-        <div class="recipient">From: <b>${esc(a.fromEmail || '')}</b>${a.bcc ? ` &middot; Bcc: <b>${esc(a.bcc)}</b>` : ''}</div>
+        <div class="from-line">From: <b>${esc(a.fromEmail || '')}</b></div>
+        <label class="bcc-toggle" title="Send a copy to my email so I see exactly what the client sees">
+          <input type="checkbox" id="bccMe" ${getBccMe() ? 'checked' : ''}>
+          <span>BCC me — see exactly what the client sees</span>
+        </label>
         <div class="subject">${esc(a.emailSubject) || '(no subject)'}</div>
         <div class="body">${esc(a.emailBody) || '(empty body)'}</div>
         <div class="card-tools">
@@ -200,6 +231,7 @@
         </div>
       </div>`;
 
+    el('bccMe').addEventListener('change', (ev) => setBccMe(ev.target.checked));
     el('sendBtn').addEventListener('click', onSend);
     el('skipBtn').addEventListener('click', onSkip);
     el('editBtn').addEventListener('click', () => { editing = true; renderTriage(); });
@@ -217,9 +249,9 @@
           <span class="pill">Touch ${esc(a.touchNumber)} of ${seqTotal(a)}</span>
           <span class="pill">final preview</span>
         </div>
-        <div class="lead-name">${esc(a.leadName) || 'Unknown lead'}</div>
+        <div class="lead-name">${leadLink(a.leadName || 'Unknown lead', a.personId)}</div>
         <div class="recipient">To: <b>${esc(a.recipientEmail)}</b></div>
-        <div class="recipient">From: <b>${esc(a.fromEmail || '')}</b>${a.bcc ? ` &middot; Bcc: <b>${esc(a.bcc)}</b>` : ''}</div>
+        <div class="from-line">From: <b>${esc(a.fromEmail || '')}</b></div>
         <div id="previewBody">
           <div class="state"><div class="spinner"></div><p>Building exact email…</p></div>
         </div>
@@ -354,8 +386,8 @@
     if (!id) return;
     setBusy(true);
     try {
-      await apiPost(`/approval/${id}/send`, {});
-      toast('Sent ✓');
+      await apiPost(`/approval/${id}/send`, { bcc: getBccMe() });
+      toast(`Sent ✓${getBccMe() ? ' — copy to your inbox' : ''}`);
       advance();
     } catch (e) {
       // Keep the existing 422-placeholder handling: show the toast + open editor.
@@ -582,7 +614,7 @@
       .map(
         (r) => `
         <tr>
-          <td>${esc(r.leadName || '—')}</td>
+          <td>${leadLink(r.leadName, r.personId)}</td>
           <td>${esc(r.companyName || '')}</td>
           <td>${r.sent ? '✅' : '<span style="color:var(--muted)">—</span>'}</td>
           <td>${r.clicked ? `🔥 ${esc(r.clickCount)}` : '<span style="color:var(--muted)">—</span>'}</td>
@@ -872,18 +904,20 @@
   }
 
   function weekRow(item) {
-    const lead = esc(item.leadName) || esc(item.recipientEmail) || 'Unknown lead';
+    const lead = leadLink(item.leadName || item.recipientEmail || 'Unknown lead', item.personId);
     const company = item.companyName ? ` <span class="week-company">· ${esc(item.companyName)}</span>` : '';
     const subject = item.emailSubject ? esc(item.emailSubject) : '(no subject)';
     const to = item.recipientEmail ? `To: ${esc(item.recipientEmail)}` : '';
+    const from = item.fromEmail ? `<span class="week-from">From: ${esc(item.fromEmail)}</span>` : '';
     const seq = esc(SEQ_LABELS[item.sequenceKey] || item.sequenceKey || 'Pre-Phone');
     const pill = `${seq} · Touch ${esc(item.touchNumber)} of ${esc(item.sequenceTotal || 12)}`;
+    const metaLine = to || from ? `<div class="week-to">${to}${from}</div>` : '';
     return `
       <div class="week-row">
         <div class="week-main">
           <div class="week-lead">${lead}${company}</div>
           <div class="week-subject">${subject}</div>
-          ${to ? `<div class="week-to">${to}</div>` : ''}
+          ${metaLine}
         </div>
         <span class="week-pill">${pill}</span>
       </div>`;
@@ -1000,7 +1034,7 @@
   function callRow(c) {
     const due = c.dueAt ? new Date(c.dueAt).toISOString().slice(0, 10) : '';
     let sub = '';
-    if (c.personName) sub += esc(c.personName);
+    if (c.personName) sub += leadLink(c.personName, c.personId);
     if (c.phone) {
       const tel = c.phone.replace(/[^\d+]/g, '');
       sub += `${c.personName ? ' · ' : ''}<a href="tel:${esc(tel)}">${esc(c.phone)}</a>`;

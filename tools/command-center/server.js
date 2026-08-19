@@ -464,6 +464,41 @@ function resolveFromEmail(sendFromAccountId) {
   return ACCOUNT_HANDLES[sendFromAccountId] || DEFAULT_FROM_EMAIL;
 }
 
+// Batch resolve emails -> person record ids so the UI can deep-link a lead's
+// name straight into their CRM profile (/object/person/<id>). One query for
+// the whole list; on any failure the map stays empty and names simply render
+// as plain text (graceful, never blocks the queue).
+async function fetchPersonIdsByEmails(emails) {
+  const unique = [
+    ...new Set(
+      (emails || [])
+        .map((e) => String(e || '').trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  const map = new Map();
+  if (unique.length === 0) return map;
+  try {
+    const data = await gql(
+      `query PersonIds($emails: [String!]) {
+        people(first: 200, filter: { emails: { primaryEmail: { in: $emails } } }) {
+          edges { node { id emails { primaryEmail } } }
+        }
+      }`,
+      { emails: unique },
+    );
+    for (const e of (data.people && data.people.edges) || []) {
+      const email = String(
+        (e.node && e.node.emails && e.node.emails.primaryEmail) || '',
+      ).toLowerCase();
+      if (email && !map.has(email)) map.set(email, e.node.id);
+    }
+  } catch (e) {
+    console.error(`[people] batch person lookup failed: ${e.message}`);
+  }
+  return map;
+}
+
 async function fetchAllApprovals() {
   // Paginate through ALL approvals — a single 200 page silently dropped records
   // once a bulk campaign pushed the total past 200 (the cascade + queue went
@@ -1995,19 +2030,28 @@ api.get('/queue', async (_req, res) => {
         const dy = new Date(y.scheduledDate).getTime();
         if (dx !== dy) return dx - dy;
         return x.touchNumber - y.touchNumber;
-      })
-      .map((a) => ({
-        ...a,
-        sequenceKey: seqOf(a),
-        sequenceTotal: SEQUENCE_TOTALS[seqOf(a)] || SEQUENCE_TOTALS[DEFAULT_SEQUENCE],
-        fromEmail: resolveFromEmail(a.sendFromAccountId),
-        bcc: a.bccEmail || null,
-      }));
+      });
+
+    // Lead names deep-link into the CRM profile; resolve record ids in bulk.
+    const personIds = await fetchPersonIdsByEmails(due.map((a) => a.recipientEmail));
+
+    const dueItems = due.map((a) => ({
+      ...a,
+      sequenceKey: seqOf(a),
+      sequenceTotal: SEQUENCE_TOTALS[seqOf(a)] || SEQUENCE_TOTALS[DEFAULT_SEQUENCE],
+      // Show the mailbox the send WILL use — pickSendFromAccountId is exactly
+      // what the send endpoint stamps, so the card can't display a From the
+      // workflow then overrides (it used to fall back to the primary address
+      // while sends actually went out via the campaign mailbox).
+      fromEmail: resolveFromEmail(pickSendFromAccountId(a)),
+      bcc: a.bccEmail || null,
+      personId: personIds.get(String(a.recipientEmail || '').toLowerCase()) || null,
+    }));
 
     // `paused` mirrors the paused-state entries (email, sequenceKey, leadName,
     // repliedAt, snippet, pausedAt) so the UI can render a "Replied / paused"
     // section with a Resume button (POST /api/resume {email, sequenceKey}).
-    res.json({ due, count: due.length, paused: pausedList, reconcile: reconcileResult });
+    res.json({ due: dueItems, count: dueItems.length, paused: pausedList, reconcile: reconcileResult });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -2052,9 +2096,14 @@ api.post('/approval/:id/send', async (req, res) => {
     // "Send" = set APPROVED; the Twenty workflow does the actual send + flips
     // to COMPLETED. Pin the sending identity first (see pickSendFromAccountId).
     const sendFromAccountId = pickSendFromAccountId(current);
+    // Click-to-BCC toggle on the triage card: stamp (or clear) Moshe's address
+    // BEFORE approving so the workflow sends exactly what the card promised.
+    // Default ON — "copy me at least for the beginning"; one click turns it off.
+    const bccMe = !(req.body && req.body.bcc === false);
     const updated = await updateApproval(req.params.id, {
       approvalStatus: 'APPROVED',
       ...(sendFromAccountId && { sendFromAccountId }),
+      bccEmail: bccMe ? USER_EMAIL : null,
     });
     // Re-date the next touch for this lead right away.
     try {
@@ -2291,8 +2340,9 @@ api.post('/offer/enroll', async (req, res) => {
         approvalStatus: 'PENDING',
         sequenceKey: SEASONAL_OFFER_KEY,
         scheduledDate: touch.scheduledDate.toISOString(),
-        // Copy Moshe on every send, as asked.
-        bccEmail: USER_EMAIL,
+        // BCC is no longer hard-coded here — the triage card's "BCC me"
+        // toggle (default ON) stamps USER_EMAIL at send time instead, so
+        // Moshe keeps his copy but can turn it off per send.
       });
 
       // Now that the row exists, point the CTA at the per-approval redirect so
@@ -2322,8 +2372,11 @@ api.get('/campaign-board', async (req, res) => {
     const seq = (req.query.sequence || 'CASH_FLOW_CAMPAIGN').toString();
     const approvals = await fetchAllApprovals();
     const clicks = readCampaignClicks();
-    const rows = approvals
-      .filter((a) => (a.sequenceKey || '') === seq)
+    const seqApprovals = approvals.filter((a) => (a.sequenceKey || '') === seq);
+    const personIds = await fetchPersonIdsByEmails(
+      seqApprovals.map((a) => a.recipientEmail),
+    );
+    const rows = seqApprovals
       .map((a) => {
         const click = clicks[a.id];
         return {
@@ -2338,6 +2391,8 @@ api.get('/campaign-board', async (req, res) => {
           clicked: Boolean(click),
           clickedAt: click ? click.firstClickedAt : null,
           clickCount: click ? click.count : 0,
+          personId:
+            personIds.get(String(a.recipientEmail || '').toLowerCase()) || null,
         };
       })
       .sort((x, y) => Number(y.clicked) - Number(x.clicked) || Number(y.sent) - Number(x.sent));
@@ -2368,7 +2423,7 @@ api.get('/upcoming', async (_req, res) => {
     const startMs = startOfDayUTC(new Date());
     const windowEndMs = endOfDayTZ(new Date(startMs + 7 * 86400000));
 
-    const upcoming = approvals
+    const upcomingApprovals = approvals
       .filter(
         (a) =>
           a.approvalStatus === 'PENDING' &&
@@ -2382,18 +2437,27 @@ api.get('/upcoming', async (_req, res) => {
         const dy = new Date(y.scheduledDate).getTime();
         if (dx !== dy) return dx - dy;
         return x.touchNumber - y.touchNumber;
-      })
-      .map((a) => ({
-        id: a.id,
-        leadName: a.leadName || null,
-        companyName: a.companyName || null,
-        sequenceKey: seqOf(a),
-        touchNumber: a.touchNumber,
-        sequenceTotal: SEQUENCE_TOTALS[seqOf(a)] || SEQUENCE_TOTALS[DEFAULT_SEQUENCE],
-        emailSubject: a.emailSubject || null,
-        scheduledDate: a.scheduledDate,
-        recipientEmail: a.recipientEmail || null,
-      }));
+      });
+
+    // Same person lookup + honest From resolution as /queue so every view
+    // that names a lead can link into the CRM profile.
+    const personIds = await fetchPersonIdsByEmails(
+      upcomingApprovals.map((a) => a.recipientEmail),
+    );
+
+    const upcoming = upcomingApprovals.map((a) => ({
+      id: a.id,
+      leadName: a.leadName || null,
+      companyName: a.companyName || null,
+      sequenceKey: seqOf(a),
+      touchNumber: a.touchNumber,
+      sequenceTotal: SEQUENCE_TOTALS[seqOf(a)] || SEQUENCE_TOTALS[DEFAULT_SEQUENCE],
+      emailSubject: a.emailSubject || null,
+      scheduledDate: a.scheduledDate,
+      recipientEmail: a.recipientEmail || null,
+      fromEmail: resolveFromEmail(pickSendFromAccountId(a)),
+      personId: personIds.get(String(a.recipientEmail || '').toLowerCase()) || null,
+    }));
 
     res.json({ upcoming, count: upcoming.length, windowDays: 7 });
   } catch (e) {
@@ -2559,6 +2623,7 @@ api.get('/calls', async (_req, res) => {
             id title status dueAt
             taskTargets { edges { node {
               targetPerson {
+                id
                 name { firstName lastName }
                 phones { primaryPhoneNumber primaryPhoneCallingCode }
                 emails { primaryEmail }
@@ -2595,6 +2660,7 @@ api.get('/calls', async (_req, res) => {
           title: t.title,
           dueAt: t.dueAt,
           personName: displayName || null,
+          personId: (person && person.id) || null,
           phone,
         };
       })
