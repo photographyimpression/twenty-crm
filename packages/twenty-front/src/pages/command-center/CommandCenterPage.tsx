@@ -40,7 +40,9 @@ export const CommandCenterPage = () => (
           title={t`Command Center`}
           // Same-origin app of our own: allow-same-origin keeps its session
           // cookie working, and it needs scripts + forms to function at all.
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads"
+          // allow-top-navigation-by-user-activation lets lead-name links open
+          // the person's CRM profile in the top window (a click, not a script).
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-top-navigation-by-user-activation"
         />
       </StyledFrameWrapper>
     </MainContainerLayoutWithSidePanel>

@@ -37,6 +37,19 @@ const StyledTr = styled.div<{
   display: flex;
   flex-direction: row;
 
+  /* LOCAL-PATCH: salesmate-style list polish — soft full-row hover highlight.
+     The focused/active row keeps its own stronger treatment below. Sticky
+     cells need the color set on themselves or they stay transparent above
+     the row background while horizontally scrolled. */
+  &:not([data-focused='true']):not([data-active='true']):hover {
+    background-color: ${themeCssVariables.background.secondary};
+
+    div.table-cell:nth-of-type(1),
+    div.table-cell:nth-of-type(2) {
+      background-color: ${themeCssVariables.background.secondary};
+    }
+  }
+
   &[data-focused='true'],
   &[data-active='true'] {
     div.table-cell,

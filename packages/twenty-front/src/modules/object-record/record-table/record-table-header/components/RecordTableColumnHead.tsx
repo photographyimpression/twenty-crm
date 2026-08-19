@@ -18,7 +18,8 @@ const StyledTitle = styled.div<{ hideTitle?: boolean }>`
   align-items: center;
   display: flex;
   flex-direction: row;
-  font-weight: ${themeCssVariables.font.weight.medium};
+  /* LOCAL-PATCH: salesmate-style list polish — slightly stronger header text */
+  font-weight: ${themeCssVariables.font.weight.semiBold};
   gap: ${themeCssVariables.spacing[1]};
   height: ${themeCssVariables.spacing[8]};
   padding-left: ${themeCssVariables.spacing[2]};

@@ -6,7 +6,8 @@ import { useRecordFieldValue } from '@/object-record/record-store/hooks/useRecor
 import { FieldContext } from '@/object-record/record-field/ui/contexts/FieldContext';
 
 export const useFullNameFieldDisplay = () => {
-  const { recordId, fieldDefinition } = useContext(FieldContext);
+  const { recordId, fieldDefinition, isLabelIdentifier } =
+    useContext(FieldContext);
 
   const fieldName = fieldDefinition.metadata.fieldName;
 
@@ -19,5 +20,7 @@ export const useFullNameFieldDisplay = () => {
   return {
     fieldDefinition,
     fieldValue,
+    recordId,
+    isLabelIdentifier: isLabelIdentifier ?? false,
   };
 };
