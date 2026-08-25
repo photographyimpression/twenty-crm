@@ -191,12 +191,19 @@
           <input class="edit-field" id="editSubject" value="${esc(a.emailSubject)}" />
           <label class="recipient">Body</label>
           <textarea class="edit-field" id="editBody">${esc(a.emailBody)}</textarea>
+          <label class="bcc-toggle" title="Send a copy to my email so I see exactly what the client sees">
+            <input type="checkbox" id="bccMe" ${getBccMe() ? 'checked' : ''}>
+            <span>BCC me — see exactly what the client sees</span>
+          </label>
           <div class="actions">
+            <button class="btn btn-send" id="editSendBtn" style="flex:1;">Send ✓</button>
             <button class="btn btn-secondary" id="saveBtn" style="flex:1;">Save changes</button>
             <button class="btn btn-skip" id="cancelEdit">Cancel</button>
           </div>
         </div>`;
+      el('editSendBtn').addEventListener('click', onEditSend);
       el('saveBtn').addEventListener('click', onSaveEdit);
+      el('bccMe').addEventListener('change', (ev) => setBccMe(ev.target.checked));
       el('cancelEdit').addEventListener('click', () => { editing = false; renderTriage(); });
       return;
     }
@@ -438,6 +445,37 @@
       toast('Save failed: ' + e.message, true);
       busy = false;
       el('saveBtn').disabled = false;
+    }
+  }
+
+  // Send straight from the editor (Moshe's ask, 2026-08-25: "instead of
+  // clicking save changes I want to be able to actually send it"): save the
+  // edit, drop back to the card, then run the SAME 5-second undo grace the
+  // card's Send button uses. Placeholders are checked up-front so an
+  // unfilled [TEMPLATE] field never reaches the send path.
+  async function onEditSend() {
+    if (busy || graceTimer) return;
+    const a = queue[cursor];
+    const emailSubject = el('editSubject').value;
+    const emailBody = el('editBody').value;
+    const hit = `${emailSubject}\n${emailBody}`.match(PLACEHOLDER_RE);
+    if (hit) {
+      toast(`Fill in ${hit[0]} before sending`, true);
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await apiPost(`/approval/${a.id}/edit`, { emailSubject, emailBody });
+      a.emailSubject = r.approval.emailSubject;
+      a.emailBody = r.approval.emailBody;
+      editing = false;
+      renderTriage();
+      startGrace(a);
+    } catch (e) {
+      // Keep the user's typed text: re-enable the buttons without re-render.
+      toast('Save failed: ' + e.message, true);
+      busy = false;
+      document.querySelectorAll('#triageMount .btn').forEach((b) => (b.disabled = false));
     }
   }
 
