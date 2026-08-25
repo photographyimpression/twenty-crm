@@ -7,18 +7,20 @@ resolve those hunks deliberately.
 
 ## What it is
 
-A four-icon strip in the CRM's record-index top bar (next to Filter / Sort /
-options, left of them), mirroring the Feedback Board's own header lights:
+A four-icon strip at the END of `PageHeader`'s action row (top-right of EVERY
+page — Command Center included; it replaced the old feedback bulb button and
+the separate record-index mounting), mirroring the Feedback Board's own header
+lights and the Zrizes app's strip, icon order included:
 
 | Icon | Lit state | Meaning | Action |
 | --- | --- | --- | --- |
-| RED `message-square-plus` | always red | quick request | opens a popup (text + ⚡ urgent) that POSTs to the board's public submit endpoint. **Never pulses.** |
+| RED `message-square-plus` | always red | quick request | opens the Quick-request popup (✨Feature/🐞Bug toggle, goal/idea, paste screenshots, ⚡ urgent, "Build everything waiting — now") that POSTs to the board's public submit endpoint. **Never pulses.** |
 | AMBER `circle-help` | amber while any card is in `discussion` | cards waiting for the owner's decision | hover lists titles; link opens the board |
 | GREEN `hammer` (~55% opacity) | dim green while `inbox`/`tobuild` cards exist | build queue | hover lists them urgent-first (⚡) |
 | GREEN `arrow-down-to-line` | solid green, pulsing ONLY when a newer build is live | update ready | click = **reload to apply**; when up-to-date, click opens the board changelog |
 
 Code: `packages/twenty-front/src/modules/status-strip/components/StatusStrip.tsx`
-(mounted once in `packages/twenty-front/src/modules/views/components/ViewBar.tsx`).
+(mounted once in `packages/twenty-front/src/modules/ui/layout/page/components/PageHeader.tsx`).
 
 ## How it talks to the board — token-in-URL ONLY
 
@@ -28,7 +30,12 @@ is the board's only access control, by design — see `tools/feedback-board/READ
 
 - `GET  /board-<TOKEN>/api/cards` — full board (drives amber + hammer lights)
 - `POST /board-<TOKEN>/api/cards` — create a card in Inbox (the red popup;
-  multipart `type=feature`, `goal=<text>`, `urgent=true|false`)
+  multipart `type=feature|bug`, `goal`, `idea`, `urgent=true|false`,
+  `screenshots` files — pasted images are downscaled client-side to
+  max 1400px JPEG)
+- `POST /board-<TOKEN>/api/build-now` — the popup's two-click "Build
+  everything waiting — now" trigger (owner action, URL-secret gated like the
+  other browser endpoints; the build agent reads + clears the flag)
 
 The URL is baked into the frontend at build time via
 `REACT_APP_FEEDBACK_BOARD_URL`. The **BOARD_SECRET is never involved** — it
@@ -86,7 +93,8 @@ workflow (~12 min build).** Verify:
 # on the OVH box
 docker compose -f /opt/twenty/docker-compose.yml ps   # fresh image, healthy
 curl -s https://crm.impressionphotography.ca/crm-version.json
-# then hard-reload the CRM — the strip should sit left of "Filter" in the top bar
+# then hard-reload the CRM — the strip sits at the far right of the page
+# header on every page (red request icon first)
 ```
 
 ### One-time server setup (nginx location for the version file)
@@ -137,9 +145,11 @@ expected outside the box.
   `LOCAL-PATCH: status strip (update loop)` — grep for it after any upstream
   merge and re-apply deliberately.
 - Files touched: `src/modules/status-strip/components/StatusStrip.tsx` (new),
-  `src/modules/views/components/ViewBar.tsx`, `packages/twenty-front/.env.example`,
+  `src/modules/ui/layout/page/components/PageHeader.tsx` (strip mounts at the
+  end of the action row; the old `src/modules/feedback/` bulb-button + modal
+  were removed — superseded by the strip's popup), `packages/twenty-front/.env.example`,
   `packages/twenty-docker/twenty/Dockerfile`, `.github/workflows/deploy.yml`,
   `scripts/publish-crm-version.sh`, `scripts/nginx-crm-version.conf`, this doc.
 - The strip is one self-contained component (no app state, no new deps,
   inline lucide-path SVGs, Linaria styling) — it should survive upstream
-  churn as long as `ViewBar`'s `rightComponent` exists.
+  churn as long as `PageHeader`'s action container exists.

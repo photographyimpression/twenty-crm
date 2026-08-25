@@ -88,9 +88,9 @@ export const NavigationDrawerOtherSection = () => {
           to={AppPath.CommandCenterPage}
           active={location.pathname === AppPath.CommandCenterPage}
         />
-        {/* Feedback is not in this list on purpose: it's the sparkles icon at
-            the top-right of every page (FeedbackHeaderButton, rendered by
-            PageHeader) so it's one click, not buried here. */}
+        {/* Feedback is not in this list on purpose: it's the red icon of the
+            four-icon status strip at the top-right of every page (StatusStrip,
+            rendered by PageHeader) so it's one click, not buried here. */}
         <NavigationDrawerItem
           label={t`Inbox`}
           Icon={IconMail}

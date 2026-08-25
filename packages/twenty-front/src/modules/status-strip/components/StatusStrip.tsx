@@ -1,10 +1,12 @@
 // LOCAL-PATCH: status strip (update loop)
 //
-// Local fork-only patch (not for upstream). Four-icon status strip mounted in
-// the record-index top bar (ViewBar), mirroring the Feedback Board's header
-// lights (tools/feedback-board). It talks to the board's PUBLIC browser
-// endpoints only — token-in-URL via REACT_APP_FEEDBACK_BOARD_URL — and never
-// sends the BOARD_SECRET (that stays server-only).
+// Local fork-only patch (not for upstream). Four-icon status strip mounted at
+// the END of PageHeader's action row (top-right of EVERY page — Command
+// Center included), mirroring the Feedback Board's header lights
+// (tools/feedback-board) and the Zrizes app's sidebar strip, icon order
+// included: RED first (leftmost), update arrow last. It talks to the board's
+// PUBLIC browser endpoints only — token-in-URL via REACT_APP_FEEDBACK_BOARD_URL
+// — and never sends the BOARD_SECRET (that stays server-only).
 //
 //   RED     message-square-plus — opens the quick-request popup (POSTs to the
 //                                 board's public submit endpoint). Never pulses.
@@ -17,6 +19,11 @@
 //                                 Click reloads to apply when pulsing, opens
 //                                 the board changelog otherwise.
 //
+// The popup matches the Zrizes QuickRequestDialog: ✨Feature/🐞Bug toggle
+// (bug = a single "What's wrong?" box), goal/idea, paste screenshots anywhere
+// (downscaled client-side, sent as multipart), ⚡ urgent, and the two-click
+// "Build everything waiting — now" trigger (POST /api/build-now).
+//
 // Version comparison: prefers the build-time-injected REACT_APP_GIT_SHA
 // (export it when building — see scripts/deploy-status-strip.md). Without it,
 // falls back to the FIRST /crm-version.json observed this page-load, kept in a
@@ -28,6 +35,8 @@
 // Linaria styling like the rest of the top bar. Update detection intentionally
 // avoids localStorage/sessionStorage (they survive location.reload() — the
 // very action this strip performs — and would leave the arrow stuck pulsing).
+// The urgent + bcc-style preferences below are the exception: they never
+// influence the update arrow, and surviving a reload is what the user wants.
 
 import { styled } from '@linaria/react';
 import {
@@ -73,8 +82,13 @@ type CrmVersion = {
 
 type PopoverKey = 'discussion' | 'queue' | 'update';
 
+type RequestType = 'feature' | 'bug';
+
+type Attachment = { id: string; file: File; previewUrl: string };
+
 // --- inline lucide-path icons (message-square-plus, circle-help, hammer,
-// arrow-down-to-line) — no icon-library dependency, stroke = currentColor ----
+// arrow-down-to-line, sparkles, bug, zap, hammer-mini, x) — no icon-library
+// dependency, stroke = currentColor -------------------------------------------
 
 const IconMessageSquarePlus = () => (
   <svg
@@ -145,6 +159,39 @@ const IconArrowDownToLine = () => (
     <path d="M12 17V3" />
     <path d="m6 11 6 6 6-6" />
     <path d="M19 21H5" />
+  </svg>
+);
+
+const IconXSmall = ({ size = 10 }: { size?: number }) => (
+  <svg
+    aria-hidden="true"
+    fill="none"
+    height={size}
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth="2.5"
+    viewBox="0 0 24 24"
+    width={size}
+  >
+    <path d="M18 6 6 18" />
+    <path d="m6 6 12 12" />
+  </svg>
+);
+
+const IconZap = () => (
+  <svg
+    aria-hidden="true"
+    fill="none"
+    height="12"
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth="2"
+    viewBox="0 0 24 24"
+    width="12"
+  >
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
   </svg>
 );
 
@@ -261,6 +308,8 @@ const StyledPopoverLink = styled.button`
   }
 `;
 
+// --- quick-request popup ------------------------------------------------------
+
 const StyledOverlay = styled.div`
   align-items: center;
   background: ${themeCssVariables.background.overlayPrimary};
@@ -280,14 +329,71 @@ const StyledPopupCard = styled.div`
   display: flex;
   flex-direction: column;
   font-size: 13px;
+  max-height: 85vh;
+  overflow-y: auto;
   padding: 16px;
-  width: 360px;
+  width: 380px;
+`;
+
+const StyledPopupHeader = styled.div`
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 10px;
 `;
 
 const StyledPopupTitle = styled.p`
   font-size: 14px;
   font-weight: ${themeCssVariables.font.weight.semiBold};
-  margin: 0 0 10px;
+  margin: 0;
+`;
+
+const StyledPopupClose = styled.button`
+  background: none;
+  border: none;
+  color: ${themeCssVariables.font.color.tertiary};
+  cursor: pointer;
+  display: flex;
+  padding: 2px;
+
+  &:hover {
+    color: ${themeCssVariables.font.color.primary};
+  }
+`;
+
+const StyledToggle = styled.div`
+  background: ${themeCssVariables.background.transparent.lighter};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.md};
+  display: flex;
+  gap: ${themeCssVariables.spacing[1]};
+  margin-bottom: 10px;
+  padding: ${themeCssVariables.spacing[1]};
+`;
+
+const StyledToggleButton = styled.button<{ isActive: boolean }>`
+  background: ${({ isActive }) =>
+    isActive ? themeCssVariables.color.blue : 'transparent'};
+  border: none;
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${({ isActive }) =>
+    isActive
+      ? themeCssVariables.grayScale.gray1
+      : themeCssVariables.font.color.secondary};
+  cursor: pointer;
+  flex: 1;
+  font-family: ${themeCssVariables.font.family};
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  padding: ${themeCssVariables.spacing[2]};
+`;
+
+const StyledPopupLabel = styled.label`
+  color: ${themeCssVariables.font.color.tertiary};
+  display: block;
+  font-size: 11px;
+  font-weight: ${themeCssVariables.font.weight.semiBold};
+  margin: 0 0 4px;
 `;
 
 const StyledPopupTextarea = styled.textarea`
@@ -297,23 +403,106 @@ const StyledPopupTextarea = styled.textarea`
   color: ${themeCssVariables.font.color.primary};
   font-family: inherit;
   font-size: 13px;
-  min-height: 72px;
+  min-height: 56px;
   padding: 8px;
   resize: vertical;
+  width: 100%;
 
   &:focus {
     outline: 1px solid ${themeCssVariables.color.blue};
   }
 `;
 
-const StyledUrgentLabel = styled.label`
+const StyledThumbs = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: ${themeCssVariables.spacing[2]};
+  margin-top: 8px;
+`;
+
+const StyledThumb = styled.div`
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  cursor: zoom-in;
+  height: 48px;
+  overflow: hidden;
+  position: relative;
+  width: 48px;
+`;
+
+const StyledThumbImage = styled.img`
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+`;
+
+const StyledThumbRemove = styled.button`
   align-items: center;
-  color: ${themeCssVariables.font.color.secondary};
+  background: ${themeCssVariables.background.transparent.strong};
+  border: none;
+  border-radius: 50%;
+  color: ${themeCssVariables.grayScale.gray1};
+  cursor: pointer;
+  display: flex;
+  height: 16px;
+  justify-content: center;
+  padding: 0;
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 16px;
+`;
+
+const StyledUrgentLabel = styled.label<{ isChecked: boolean }>`
+  align-items: center;
+  background: ${({ isChecked }) =>
+    isChecked ? `${themeCssVariables.color.amber}1a` : 'transparent'};
+  border: 1px solid
+    ${({ isChecked }) =>
+      isChecked
+        ? themeCssVariables.color.amber
+        : themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.md};
+  color: ${({ isChecked }) =>
+    isChecked
+      ? themeCssVariables.font.color.primary
+      : themeCssVariables.font.color.secondary};
   cursor: pointer;
   display: flex;
   font-size: 12px;
   gap: 6px;
   margin: 10px 0 0;
+  padding: 6px 10px;
+`;
+
+const StyledUrgentZap = styled.span<{ isChecked: boolean }>`
+  align-items: center;
+  color: ${({ isChecked }) =>
+    isChecked
+      ? themeCssVariables.color.amber
+      : themeCssVariables.font.color.tertiary};
+  display: flex;
+`;
+
+const StyledBuildNow = styled.button`
+  background: none;
+  border: none;
+  color: ${themeCssVariables.font.color.tertiary};
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: ${themeCssVariables.font.weight.medium};
+  margin: 8px 0 0;
+  padding: 0;
+  text-align: left;
+
+  &:hover {
+    color: ${themeCssVariables.color.blue};
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
 `;
 
 const StyledPopupError = styled.p`
@@ -333,6 +522,7 @@ const StyledSubmitButton = styled.button`
   font-weight: ${themeCssVariables.font.weight.medium};
   margin-top: 10px;
   padding: 8px 0;
+  width: 100%;
 
   &:disabled {
     cursor: default;
@@ -340,10 +530,44 @@ const StyledSubmitButton = styled.button`
   }
 `;
 
-const StyledPopupHint = styled.p`
+const StyledPopupFooter = styled.div`
+  align-items: center;
   color: ${themeCssVariables.font.color.tertiary};
+  display: flex;
   font-size: 11px;
+  justify-content: space-between;
   margin: 8px 0 0;
+`;
+
+const StyledBoardLink = styled.a`
+  align-items: center;
+  color: ${themeCssVariables.color.blue};
+  display: inline-flex;
+  gap: 3px;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
+const StyledZoomOverlay = styled.div`
+  align-items: center;
+  background: ${themeCssVariables.background.overlayPrimary};
+  cursor: zoom-out;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 1002;
+`;
+
+const StyledZoomImage = styled.img`
+  border-radius: ${themeCssVariables.border.radius.md};
+  box-shadow: ${themeCssVariables.boxShadow.superHeavy};
+  max-height: 90vh;
+  max-width: 90vw;
+  object-fit: contain;
 `;
 
 // --- helpers -----------------------------------------------------------------
@@ -362,6 +586,54 @@ const sortUrgentFirst = (cards: BoardCard[]) =>
 const openBoard = () => {
   window.open(`${FEEDBACK_BOARD_URL}/`, '_blank', 'noopener');
 };
+
+// Pasted screenshots can be huge retina PNGs; shrink to max 1400px JPEG before
+// upload (same policy as the Zrizes app) so multipart bodies stay small. GIFs
+// pass through untouched — canvas re-encode would kill the animation.
+const downscaleImage = (file: File): Promise<File> =>
+  new Promise((resolve, reject) => {
+    if (file.type === 'image/gif') {
+      resolve(file);
+      return;
+    }
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      const max = 1400;
+      let { width, height } = image;
+      if (width > max || height > max) {
+        const scale = Math.min(max / width, max / height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        reject(new Error('no canvas context'));
+        return;
+      }
+      context.drawImage(image, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('encode failed'));
+            return;
+          }
+          resolve(new File([blob], 'screenshot.jpg', { type: 'image/jpeg' }));
+        },
+        'image/jpeg',
+        0.82,
+      );
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('could not read image'));
+    };
+    image.src = url;
+  });
 
 const PopoverList = ({ cards }: { cards: BoardCard[] }) => (
   <>
@@ -386,11 +658,20 @@ export const StatusStrip = () => {
   const [crmVersion, setCrmVersion] = useState<CrmVersion | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
   const [popupOpen, setPopupOpen] = useState(false);
-  const [requestText, setRequestText] = useState('');
+  const [requestType, setRequestType] = useState<RequestType>('feature');
+  const [goal, setGoal] = useState('');
+  const [idea, setIdea] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [requestUrgent, setRequestUrgent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [justSubmitted, setJustSubmitted] = useState(false);
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null);
+  // "Build everything waiting — now": armed → "Sure?" (auto-disarm 5s) → fires.
+  const [buildArmed, setBuildArmed] = useState(false);
+  const [buildPending, setBuildPending] = useState(false);
+  const [buildDone, setBuildDone] = useState(false);
+  const [buildError, setBuildError] = useState('');
   const [pinnedPopover, setPinnedPopover] = useState<PopoverKey | null>(null);
   const [hoveredPopover, setHoveredPopover] = useState<PopoverKey | null>(null);
 
@@ -451,15 +732,89 @@ export const StatusStrip = () => {
     };
   }, [refreshCards, refreshVersion]);
 
-  // Escape closes the quick-request popup.
+  const addAttachmentFiles = useCallback(async (files: File[]) => {
+    const images = files.filter((file) => file.type.startsWith('image/'));
+    for (const image of images.slice(0, 8)) {
+      try {
+        const prepared = await downscaleImage(image);
+        setAttachments((current) =>
+          current.length >= 8
+            ? current
+            : [
+                ...current,
+                {
+                  id: `${image.name}-${image.size}-${image.lastModified}-${current.length}`,
+                  file: prepared,
+                  previewUrl: URL.createObjectURL(prepared),
+                },
+              ],
+        );
+      } catch {
+        setSubmitError('Could not read a pasted screenshot.');
+      }
+    }
+  }, []);
+
+  // "Paste screenshots anywhere in this popup" — a document-level listener
+  // (only while open) catches image pastes regardless of which field has focus.
+  // Text pastes into the textareas are untouched: we only act on image items.
+  useEffect(() => {
+    if (!popupOpen) {
+      return;
+    }
+    const handlePaste = (event: ClipboardEvent) => {
+      const imageFiles = Array.from(event.clipboardData?.items ?? [])
+        .filter((item) => item.type.startsWith('image/'))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null);
+      if (imageFiles.length > 0) {
+        event.preventDefault();
+        void addAttachmentFiles(imageFiles);
+      }
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [popupOpen, addAttachmentFiles]);
+
+  const closePopup = useCallback(() => {
+    attachments.forEach((attachment) =>
+      URL.revokeObjectURL(attachment.previewUrl),
+    );
+    setPopupOpen(false);
+    setRequestType('feature');
+    setGoal('');
+    setIdea('');
+    setAttachments([]);
+    setRequestUrgent(false);
+    setSubmitError('');
+    setSubmitting(false);
+    setJustSubmitted(false);
+    setZoomUrl(null);
+    setBuildArmed(false);
+    setBuildError('');
+  }, [attachments]);
+
+  // Escape closes the zoom first, then the popup. Auto-disarm the
+  // build-now confirm when its 5s window lapses.
   useEffect(() => {
     if (!popupOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setPopupOpen(false);
+      if (event.key !== 'Escape') return;
+      if (zoomUrl) {
+        setZoomUrl(null);
+        return;
+      }
+      closePopup();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [popupOpen]);
+  }, [popupOpen, zoomUrl, closePopup]);
+
+  useEffect(() => {
+    if (!buildArmed) return;
+    const timer = window.setTimeout(() => setBuildArmed(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [buildArmed]);
 
   const discussionCards = useMemo(
     () =>
@@ -483,10 +838,30 @@ export const StatusStrip = () => {
     [cards],
   );
 
+  const removeAttachment = (id: string) => {
+    setAttachments((current) => {
+      const match = current.find((attachment) => attachment.id === id);
+      if (match) {
+        URL.revokeObjectURL(match.previewUrl);
+      }
+      return current.filter((attachment) => attachment.id !== id);
+    });
+  };
+
+  const canSubmit =
+    !submitting &&
+    (goal.trim().length > 0 ||
+      idea.trim().length > 0 ||
+      attachments.length > 0);
+
   const submitRequest = async () => {
-    const text = requestText.trim();
-    if (!text || submitting) {
-      setSubmitError(text ? '' : 'Say what you want first.');
+    const trimmedGoal = goal.trim();
+    const trimmedIdea = idea.trim();
+    if (submitting) {
+      return;
+    }
+    if (!trimmedGoal && !trimmedIdea && attachments.length === 0) {
+      setSubmitError('Say what you want first.');
       return;
     }
     setSubmitting(true);
@@ -495,15 +870,25 @@ export const StatusStrip = () => {
       // Public token-in-URL endpoint — multipart like the board's own popup.
       // No auth header is ever attached.
       const formData = new FormData();
-      formData.append('type', 'feature');
-      formData.append('goal', text);
+      formData.append('type', requestType);
+      if (trimmedGoal) {
+        formData.append('goal', trimmedGoal);
+      }
+      if (trimmedIdea) {
+        formData.append('idea', trimmedIdea);
+      }
       formData.append('urgent', requestUrgent ? 'true' : 'false');
+      attachments.forEach((attachment) =>
+        formData.append('screenshots', attachment.file, attachment.file.name),
+      );
       const response = await fetch(`${FEEDBACK_BOARD_URL}/api/cards`, {
         body: formData,
         method: 'POST',
       });
       if (!response.ok) {
-        const data = await response.json().catch(() => null);
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
         throw new Error(data?.error || 'Failed to create card.');
       }
       setJustSubmitted(true);
@@ -511,15 +896,42 @@ export const StatusStrip = () => {
       // Auto-close after showing the confirmation. If the strip unmounted in
       // the meantime, these set-states are harmless no-ops (React 18).
       setTimeout(() => {
-        setPopupOpen(false);
-        setRequestText('');
-        setRequestUrgent(false);
-        setJustSubmitted(false);
+        closePopup();
       }, 1400);
     } catch (error) {
       setSubmitError((error as Error).message || 'Failed to create card.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Two-click "Build everything waiting — now": raises the board's build-now
+  // flag; the build agent clears it when it picks the queue up.
+  const triggerBuildNow = async () => {
+    if (buildPending) return;
+    if (!buildArmed) {
+      setBuildArmed(true); // disarm timer armed in the effect above
+      return;
+    }
+    setBuildArmed(false);
+    setBuildPending(true);
+    setBuildError('');
+    try {
+      const response = await fetch(`${FEEDBACK_BOARD_URL}/api/build-now`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(data?.error || 'Failed to trigger build.');
+      }
+      setBuildDone(true);
+      setTimeout(() => setBuildDone(false), 4000);
+    } catch (error) {
+      setBuildError((error as Error).message || 'Failed to trigger build.');
+    } finally {
+      setBuildPending(false);
     }
   };
 
@@ -545,6 +957,18 @@ export const StatusStrip = () => {
 
   return (
     <StyledStrip>
+      {/* RED — quick request. Never pulses; always ready. FIRST, like the
+          other apps' strips. */}
+      <StyledIconWrap>
+        <StyledIconButton
+          onClick={() => setPopupOpen(true)}
+          style={{ color: themeCssVariables.color.red }}
+          title="Request a feature / report a bug"
+        >
+          <IconMessageSquarePlus />
+        </StyledIconButton>
+      </StyledIconWrap>
+
       {/* AMBER — cards parked in discussion waiting for the owner's call */}
       <StyledIconWrap
         onMouseEnter={() => setHoveredPopover('discussion')}
@@ -698,64 +1122,170 @@ export const StatusStrip = () => {
         )}
       </StyledIconWrap>
 
-      {/* RED — quick request. Never pulses; always ready. */}
-      <StyledIconWrap>
-        <StyledIconButton
-          onClick={() => setPopupOpen(true)}
-          style={{ color: themeCssVariables.color.red }}
-          title="Quick request — send straight to the Feedback Board"
-        >
-          <IconMessageSquarePlus />
-        </StyledIconButton>
-      </StyledIconWrap>
-
       {popupOpen ? (
         <StyledOverlay
           onClick={(event) => {
-            if (event.target === event.currentTarget) setPopupOpen(false);
+            if (event.target === event.currentTarget) closePopup();
           }}
         >
           <StyledPopupCard>
             {justSubmitted ? (
               <>
                 <StyledPopupTitle>Added ✅</StyledPopupTitle>
-                <StyledPopupHint>
+                <StyledPopupFooter>
                   Your request is on the board — closing…
-                </StyledPopupHint>
+                </StyledPopupFooter>
               </>
             ) : (
               <>
-                <StyledPopupTitle>✨ Quick request</StyledPopupTitle>
-                <StyledPopupTextarea
-                  autoFocus
-                  onChange={(event) => setRequestText(event.target.value)}
-                  placeholder="What do you want? The first line becomes the card title."
-                  value={requestText}
-                />
-                <StyledUrgentLabel>
+                <StyledPopupHeader>
+                  <StyledPopupTitle>Quick request</StyledPopupTitle>
+                  <StyledPopupClose
+                    aria-label="Close"
+                    onClick={closePopup}
+                    type="button"
+                  >
+                    <IconXSmall size={14} />
+                  </StyledPopupClose>
+                </StyledPopupHeader>
+
+                <StyledToggle>
+                  <StyledToggleButton
+                    isActive={requestType === 'feature'}
+                    onClick={() => setRequestType('feature')}
+                    type="button"
+                  >
+                    ✨ Feature
+                  </StyledToggleButton>
+                  <StyledToggleButton
+                    isActive={requestType === 'bug'}
+                    onClick={() => setRequestType('bug')}
+                    type="button"
+                  >
+                    🐞 Bug
+                  </StyledToggleButton>
+                </StyledToggle>
+
+                {requestType === 'bug' ? (
+                  // A bug report is just "what's wrong" — no goal/idea framing.
+                  <>
+                    <StyledPopupLabel>What&apos;s wrong?</StyledPopupLabel>
+                    <StyledPopupTextarea
+                      autoFocus
+                      onChange={(event) => setGoal(event.target.value)}
+                      placeholder="Describe what's not working…"
+                      value={goal}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <StyledPopupLabel>
+                      Goal — what you want to achieve (optional)
+                    </StyledPopupLabel>
+                    <StyledPopupTextarea
+                      autoFocus
+                      onChange={(event) => setGoal(event.target.value)}
+                      placeholder="The outcome you're after…"
+                      value={goal}
+                    />
+                    <StyledPopupLabel style={{ marginTop: 8 }}>
+                      Idea — how it could work (optional)
+                    </StyledPopupLabel>
+                    <StyledPopupTextarea
+                      onChange={(event) => setIdea(event.target.value)}
+                      placeholder="Your rough approach…"
+                      value={idea}
+                    />
+                  </>
+                )}
+
+                {attachments.length > 0 && (
+                  <StyledThumbs>
+                    {attachments.map((attachment) => (
+                      <StyledThumb
+                        key={attachment.id}
+                        onClick={() => setZoomUrl(attachment.previewUrl)}
+                      >
+                        <StyledThumbImage
+                          alt="screenshot"
+                          src={attachment.previewUrl}
+                        />
+                        <StyledThumbRemove
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeAttachment(attachment.id);
+                          }}
+                          type="button"
+                        >
+                          <IconXSmall />
+                        </StyledThumbRemove>
+                      </StyledThumb>
+                    ))}
+                  </StyledThumbs>
+                )}
+
+                <StyledUrgentLabel isChecked={requestUrgent}>
                   <input
                     checked={requestUrgent}
-                    onChange={(event) =>
-                      setRequestUrgent(event.target.checked)
-                    }
+                    onChange={(event) => setRequestUrgent(event.target.checked)}
                     type="checkbox"
                   />
-                  <span>⚡ Urgent — build this now</span>
+                  <StyledUrgentZap isChecked={requestUrgent}>
+                    <IconZap />
+                  </StyledUrgentZap>
+                  <span>Urgent — build this now</span>
                 </StyledUrgentLabel>
+
+                <StyledBuildNow
+                  disabled={buildPending}
+                  onClick={triggerBuildNow}
+                  type="button"
+                >
+                  {buildDone
+                    ? '✅ Queued — the builder will pick it up.'
+                    : buildPending
+                      ? 'Queuing…'
+                      : buildArmed
+                        ? '⚠ Sure? Build everything waiting now'
+                        : '🔨 Build everything waiting — now'}
+                </StyledBuildNow>
+                {buildError ? (
+                  <StyledPopupError>{buildError}</StyledPopupError>
+                ) : null}
+
                 <StyledPopupError>{submitError}</StyledPopupError>
                 <StyledSubmitButton
-                  disabled={submitting}
+                  disabled={!canSubmit}
                   onClick={submitRequest}
+                  type="button"
                 >
                   {submitting ? 'Adding…' : 'Add request'}
                 </StyledSubmitButton>
-                <StyledPopupHint>
-                  Goes straight to the Requests column of the Feedback Board.
-                </StyledPopupHint>
+                <StyledPopupFooter>
+                  <span>Paste screenshots anywhere in this popup</span>
+                  <StyledBoardLink
+                    href={`${FEEDBACK_BOARD_URL}/`}
+                    onClick={(event) => event.stopPropagation()}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    Open the full board ↗
+                  </StyledBoardLink>
+                </StyledPopupFooter>
               </>
             )}
           </StyledPopupCard>
         </StyledOverlay>
+      ) : null}
+
+      {zoomUrl ? (
+        <StyledZoomOverlay onClick={() => setZoomUrl(null)}>
+          <StyledZoomImage
+            alt="screenshot full size"
+            onClick={(event) => event.stopPropagation()}
+            src={zoomUrl}
+          />
+        </StyledZoomOverlay>
       ) : null}
     </StyledStrip>
   );

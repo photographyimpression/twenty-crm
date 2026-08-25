@@ -1,8 +1,8 @@
 import { styled } from '@linaria/react';
 import { type ReactNode, useContext } from 'react';
 
-import { FeedbackHeaderButton } from '@/feedback/components/FeedbackHeaderButton';
 import { NavigationDrawerCollapseButton } from '@/ui/navigation/navigation-drawer/components/NavigationDrawerCollapseButton';
+import { StatusStrip } from '@/status-strip/components/StatusStrip';
 
 import { PAGE_ACTION_CONTAINER_CLICK_OUTSIDE_ID } from '@/ui/layout/page/constants/PageActionContainerClickOutsideId';
 import { PAGE_BAR_MIN_HEIGHT } from '@/ui/layout/page/constants/PageBarMinHeight';
@@ -143,12 +143,12 @@ export const PageHeader = ({
           data-click-outside-id={PAGE_ACTION_CONTAINER_CLICK_OUTSIDE_ID}
         >
           {children}
-          {/* Impression fork: feedback lives at the END of the top-right action
-              row on every page. It used to be a position:fixed bubble, but
-              fixed placement either covered page content (bottom-right) or the
-              header's own buttons (top-right) — laying it out here is the only
-              way "upper right" can't collide with anything. */}
-          <FeedbackHeaderButton />
+          {/* Impression fork: the four-icon status strip (quick request,
+              decisions, build queue, update arrow) lives at the END of the
+              top-right action row on EVERY page — Command Center included.
+              It used to be a position:fixed bubble (covered content) and then
+              a single feedback bulb button; the strip supersedes both. */}
+          <StatusStrip />
         </StyledPageActionContainer>
       </StyledTopBarContainer>
     </AnimatePresence>
