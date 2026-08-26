@@ -12,6 +12,7 @@
 //   POST /api/task/:id/done       -> set task status DONE
 //   GET  /api/replies      -> leads detected as having replied (sequence auto-paused)
 //   POST /api/resume       -> {email, sequenceKey} clear a pause so the sequence resumes
+//   POST /api/dismiss      -> {email, sequenceKey} END a sequence: clear pause + reject pending touches
 //   GET  /api/dashboard    -> per-sequence + overall metrics for the home cards
 //   GET  /api/workflow-health -> active workflows whose published version has broken steps
 //   GET  /api/roadmap      -> list of future ideas
@@ -397,6 +398,14 @@ const SEQUENCE_TOTALS = {
 // so the cascade must not recompute/collapse them back to enrollment day.
 const FIXED_SCHEDULE_SEQUENCES = new Set(['CASH_FLOW_CAMPAIGN', SEASONAL_OFFER_KEY]);
 
+// Sequences that exist only while the person's `sequenceTag` says so: the
+// enrollment workflows trigger on person.updated watching sequenceTag, so
+// these approvals are alive IFF the tag still names them. Used by the
+// auto-unenroll pass in reconcile() — see unenrollStaleTagSequences().
+// CASH_FLOW_CAMPAIGN / seasonal-offer enrollments are NOT tag-driven (they're
+// created directly by /offer/enroll etc.) and are deliberately excluded.
+const TAG_DRIVEN_SEQUENCES = new Set(['PRE_PHONE_EMAIL', 'POST_QUOTE_FOLLOWUP']);
+
 function seqOf(approval) {
   return approval.sequenceKey || DEFAULT_SEQUENCE;
 }
@@ -468,7 +477,13 @@ function resolveFromEmail(sendFromAccountId) {
 // name straight into their CRM profile (/object/person/<id>). One query for
 // the whole list; on any failure the map stays empty and names simply render
 // as plain text (graceful, never blocks the queue).
-async function fetchPersonIdsByEmails(emails) {
+// Batch resolve emails -> person context (record id, niche, sequenceTag,
+// contactType) so the UI can deep-link a lead's name straight into their CRM
+// profile (/object/person/<id>), show the signature the send will use, and the
+// reconcile can honour tag/contact-type unenrollment. One query for the whole
+// list; on any failure the map stays empty and callers degrade gracefully
+// (names render as plain text, no signature pill, no auto-unenroll).
+async function fetchPersonContextByEmails(emails) {
   const unique = [
     ...new Set(
       (emails || [])
@@ -480,9 +495,9 @@ async function fetchPersonIdsByEmails(emails) {
   if (unique.length === 0) return map;
   try {
     const data = await gql(
-      `query PersonIds($emails: [String!]) {
+      `query PersonContext($emails: [String!]) {
         people(first: 200, filter: { emails: { primaryEmail: { in: $emails } } }) {
-          edges { node { id emails { primaryEmail } } }
+          edges { node { id niche sequenceTag contactType emails { primaryEmail } } }
         }
       }`,
       { emails: unique },
@@ -491,11 +506,25 @@ async function fetchPersonIdsByEmails(emails) {
       const email = String(
         (e.node && e.node.emails && e.node.emails.primaryEmail) || '',
       ).toLowerCase();
-      if (email && !map.has(email)) map.set(email, e.node.id);
+      if (email && !map.has(email)) {
+        map.set(email, {
+          id: e.node.id,
+          niche: normalizeNiche(e.node.niche),
+          sequenceTag: e.node.sequenceTag || null,
+          contactType: e.node.contactType || null,
+        });
+      }
     }
   } catch (e) {
     console.error(`[people] batch person lookup failed: ${e.message}`);
   }
+  return map;
+}
+
+async function fetchPersonIdsByEmails(emails) {
+  const context = await fetchPersonContextByEmails(emails);
+  const map = new Map();
+  for (const [email, value] of context) map.set(email, value.id);
   return map;
 }
 
@@ -1217,6 +1246,73 @@ async function generatePendingOpeners(approvals) {
 
 let reconcileInFlight = null;
 
+// Auto-unenroll (Moshe's asks, 2026-08-25): clearing a person's Sequence tag
+// or marking their Contact Type as "Customer" must actually END the sequence —
+// until now the already-created pending touches kept the person on the
+// sequence views ("I come back to the sequence page and I see that they are
+// still there"). Runs inside reconcile (every queue load + every 5 min):
+//   - tag-driven sequence (Pre-Phone / Post-Quote) pendings are rejected when
+//     the person's sequenceTag no longer names that sequence (cleared OR
+//     switched to the other playbook), and
+//   - ALL tag-driven pendings are rejected once contactType is CUSTOMER.
+// Persons that can't be matched by email are left untouched. Returns the
+// number of approvals rejected. Failures are contained by the caller.
+async function unenrollStaleTagSequences(approvals) {
+  const pendingByLeadSeq = new Map(); // email -> Map(seq -> [approval...])
+  for (const a of approvals) {
+    if (a.approvalStatus !== 'PENDING') continue;
+    const seq = seqOf(a);
+    if (!TAG_DRIVEN_SEQUENCES.has(seq)) continue;
+    const email = String(a.recipientEmail || '').trim().toLowerCase();
+    if (!email) continue;
+    if (!pendingByLeadSeq.has(email)) pendingByLeadSeq.set(email, new Map());
+    const bySeq = pendingByLeadSeq.get(email);
+    if (!bySeq.has(seq)) bySeq.set(seq, []);
+    bySeq.get(seq).push(a);
+  }
+  if (pendingByLeadSeq.size === 0) return 0;
+
+  const personContext = await fetchPersonContextByEmails([...pendingByLeadSeq.keys()]);
+
+  const state = readState();
+  let pausedChanged = false;
+  let rejected = 0;
+
+  for (const [email, bySeq] of pendingByLeadSeq) {
+    const person = personContext.get(email);
+    if (!person) continue; // no match — never guess
+    const isCustomer = person.contactType === 'CUSTOMER';
+    for (const [seq, list] of bySeq) {
+      const tagGone = person.sequenceTag !== seq;
+      if (!isCustomer && !tagGone) continue;
+      const reason = isCustomer
+        ? 'contact type is Customer'
+        : `sequence tag is ${person.sequenceTag ? person.sequenceTag : '(none)'}`;
+      for (const a of list) {
+        console.log(
+          `[reconcile] auto-unenroll: rejecting ${seq} touch ${a.touchNumber} for ${email} (${reason})`
+        );
+        await updateApproval(a.id, { approvalStatus: 'REJECTED' });
+        rejected += 1;
+      }
+      // A dead sequence can't be paused — drop the pause so the replied banner
+      // doesn't linger for a sequence that no longer exists.
+      const key = pausedKey(email, seq);
+      if (state.paused.some((p) => pausedKey(p.email, p.sequenceKey) === key)) {
+        state.paused = state.paused.filter(
+          (p) => pausedKey(p.email, p.sequenceKey) !== key
+        );
+        state.resumed = (state.resumed || []).filter(
+          (r) => pausedKey(r.email, r.sequenceKey) !== key
+        );
+        pausedChanged = true;
+      }
+    }
+  }
+  if (pausedChanged) writeState(state);
+  return rejected;
+}
+
 async function reconcile() {
   // Coalesce concurrent reconciles (page-load + timer) into one run.
   if (reconcileInFlight) return reconcileInFlight;
@@ -1242,6 +1338,15 @@ async function reconcile() {
       await updateApproval(w.id, { scheduledDate: w.scheduledDate });
     }
 
+    // Tag/contact-type auto-unenroll (contained: a failure here must not break
+    // scheduling — the next pass retries).
+    let unenrolled = 0;
+    try {
+      unenrolled = await unenrollStaleTagSequences(approvals);
+    } catch (e) {
+      console.error('[reconcile] auto-unenroll pass failed (continuing):', e.message);
+    }
+
     // Lazy, best-effort AI-opener fill for Pre-Phone touches 4-6. Fully
     // isolated: any failure here must never break scheduling/queue. Uses the
     // post-scheduling approvals snapshot (fine — needsOpener only reads body).
@@ -1259,6 +1364,7 @@ async function reconcile() {
       paused: pausedSet.size,
       newlyPaused: replyResult.pausedNow.length,
       openersPatched,
+      unenrolled,
     };
   })();
   try {
@@ -1331,21 +1437,22 @@ async function getSignaturesByNiche() {
 // person.niche lookup). Returns null if not a known person / no niche.
 async function fetchPersonNiche(email) {
   if (!email) return null;
-  try {
-    const data = await gql(
-      `query PersonNiche($email: String!) {
-        people(first: 1, filter: { emails: { primaryEmail: { ilike: $email } } }) {
-          edges { node { id niche name { firstName lastName } } }
-        }
-      }`,
-      { email }
-    );
-    const node = (((data.people || {}).edges || [])[0] || {}).node;
-    return node ? normalizeNiche(node.niche) : null;
-  } catch (e) {
-    console.error(`[preview] person niche lookup failed for ${email}: ${e.message}`);
-    return null;
+  const context = await fetchPersonContextByEmails([email]);
+  const entry = context.get(String(email).trim().toLowerCase());
+  return entry ? entry.niche : null;
+}
+
+// Resolve the signature row the real send would use for an approval: the
+// recipient person's niche first, then the approval's productType, then the
+// PRODUCT catch-all (mirrors /approval/:id/preview and the composer).
+function resolveSignatureRow(approval, personNiche, byNiche) {
+  const niche =
+    personNiche || normalizeNiche(approval.productType) || DEFAULT_NICHE;
+  let sig = byNiche[niche] || null;
+  if (!sig && niche !== DEFAULT_NICHE) {
+    sig = byNiche[DEFAULT_NICHE] || null;
   }
+  return { niche, sig };
 }
 
 // The real composer appends the signature to the rendered HTML body. Approvals
@@ -2033,20 +2140,31 @@ api.get('/queue', async (_req, res) => {
       });
 
     // Lead names deep-link into the CRM profile; resolve record ids in bulk.
-    const personIds = await fetchPersonIdsByEmails(due.map((a) => a.recipientEmail));
+    // The same lookup carries each person's niche so the card can show WHICH
+    // signature the send will append (Moshe's ask, 2026-08-25: "I should be
+    // able to see which type of signature this client is gonna get").
+    const personContext = await fetchPersonContextByEmails(
+      due.map((a) => a.recipientEmail),
+    );
+    const byNiche = await getSignaturesByNiche();
 
-    const dueItems = due.map((a) => ({
-      ...a,
-      sequenceKey: seqOf(a),
-      sequenceTotal: SEQUENCE_TOTALS[seqOf(a)] || SEQUENCE_TOTALS[DEFAULT_SEQUENCE],
-      // Show the mailbox the send WILL use — pickSendFromAccountId is exactly
-      // what the send endpoint stamps, so the card can't display a From the
-      // workflow then overrides (it used to fall back to the primary address
-      // while sends actually went out via the campaign mailbox).
-      fromEmail: resolveFromEmail(pickSendFromAccountId(a)),
-      bcc: a.bccEmail || null,
-      personId: personIds.get(String(a.recipientEmail || '').toLowerCase()) || null,
-    }));
+    const dueItems = due.map((a) => {
+      const person = personContext.get(String(a.recipientEmail || '').toLowerCase());
+      const { sig } = resolveSignatureRow(a, person ? person.niche : null, byNiche);
+      return {
+        ...a,
+        sequenceKey: seqOf(a),
+        sequenceTotal: SEQUENCE_TOTALS[seqOf(a)] || SEQUENCE_TOTALS[DEFAULT_SEQUENCE],
+        // Show the mailbox the send WILL use — pickSendFromAccountId is exactly
+        // what the send endpoint stamps, so the card can't display a From the
+        // workflow then overrides (it used to fall back to the primary address
+        // while sends actually went out via the campaign mailbox).
+        fromEmail: resolveFromEmail(pickSendFromAccountId(a)),
+        bcc: a.bccEmail || null,
+        personId: person ? person.id : null,
+        signatureName: sig ? sig.name : null,
+      };
+    });
 
     // `paused` mirrors the paused-state entries (email, sequenceKey, leadName,
     // repliedAt, snippet, pausedAt) so the UI can render a "Replied / paused"
@@ -2493,13 +2611,10 @@ api.get('/approval/:id/preview', async (req, res) => {
     if (!niche) niche = DEFAULT_NICHE;
 
     const byNiche = await getSignaturesByNiche();
-    let sig = byNiche[niche] || null;
-    // If the resolved niche has no signature row, fall back to PRODUCT so the
+    // Same resolution as the queue's signatureName pill (resolveSignatureRow):
+    // if the resolved niche has no signature row, fall back to PRODUCT so the
     // preview still shows the catch-all the recipient would actually get.
-    if (!sig && niche !== DEFAULT_NICHE) {
-      sig = byNiche[DEFAULT_NICHE] || null;
-      if (sig) nicheSource += '->default-sig';
-    }
+    const { sig } = resolveSignatureRow(approval, personNiche, byNiche);
 
     const signatureHtml = sig ? sig.signatureHtml : '';
     res.json({
@@ -2581,6 +2696,65 @@ api.post('/resume', async (req, res) => {
       /* non-fatal */
     }
     res.json({ ok: true, resumed: { email, sequenceKey, resumedThrough }, paused: state.paused });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/dismiss { email, sequenceKey } -> END the sequence for this lead:
+// clear the pause (if any) and reject every PENDING touch, so nothing more is
+// scheduled or sent and the lead leaves the CRM sequence views. This is the
+// "they replied and I'm done" button next to Resume, and the same endpoint
+// powers the triage card's "Unenroll" ("the client says they're not interested
+// or whatever other reason" — Moshe, 2026-08-25). A dismissed sequence can be
+// re-started later by setting the person's Sequence tag again.
+api.post('/dismiss', async (req, res) => {
+  try {
+    const email = (req.body.email || '').toString().trim().toLowerCase();
+    const sequenceKey = (req.body.sequenceKey || '').toString().trim();
+    if (!email || !sequenceKey) {
+      return res.status(400).json({ error: 'email and sequenceKey are required' });
+    }
+
+    const approvals = await fetchAllApprovals();
+    const key = pausedKey(email, sequenceKey);
+    const targets = approvals.filter(
+      (a) =>
+        a.approvalStatus === 'PENDING' &&
+        seqOf(a) === sequenceKey &&
+        String(a.recipientEmail || '').trim().toLowerCase() === email
+    );
+    for (const a of targets) {
+      await updateApproval(a.id, { approvalStatus: 'REJECTED' });
+    }
+
+    // Drop the pause + resume watermark so the replied banner goes away and a
+    // stale watermark can't mask a future re-enrollment's replies.
+    const state = readState();
+    const before = state.paused.length;
+    state.paused = state.paused.filter((p) => pausedKey(p.email, p.sequenceKey) !== key);
+    state.resumed = (state.resumed || []).filter(
+      (r) => pausedKey(r.email, r.sequenceKey) !== key
+    );
+    if (state.paused.length !== before || (state.resumed || []).length !== (state.resumed || []).length) {
+      writeState(state);
+    }
+
+    // Re-date everything else right away.
+    try {
+      await reconcile();
+    } catch (_e) {
+      /* non-fatal */
+    }
+    console.log(
+      `[dismiss] ${email} ${sequenceKey}: rejected ${targets.length} pending touch(es)`
+    );
+    res.json({
+      ok: true,
+      dismissed: { email, sequenceKey },
+      rejected: targets.length,
+      paused: state.paused,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

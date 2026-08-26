@@ -73,6 +73,11 @@
         background: rgba(59, 130, 246, 0.14); border-color: rgba(59, 130, 246, 0.45);
         color: #9cc1f7;
       }
+      /* Signature badge: green-tinted — WHICH signature the send appends. */
+      .card .pill-sig {
+        background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.4);
+        color: #6ee7b7;
+      }
       .lead-name { font-size: 30px; font-weight: 800; margin: 14px 0 2px; line-height: 1.1; }
       .company { color: var(--muted); font-size: 16px; margin-bottom: 18px; }
       .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
@@ -274,20 +279,6 @@
         padding: 1px 6px; font-size: 11px; font-family: inherit; color: var(--text); margin: 0 1px;
       }
 
-      /* Undo-on-send overlay */
-      .send-grace {
-        margin-top: 26px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.5);
-        border-radius: 14px; padding: 18px 20px; display: flex; align-items: center;
-        justify-content: space-between; gap: 14px; flex-wrap: wrap;
-      }
-      .send-grace .grace-text { font-size: 16px; font-weight: 700; color: #fbbf24; }
-      .send-grace .grace-text b { font-size: 22px; color: var(--text); }
-      .btn-undo {
-        background: var(--amber); color: #1b1300; border: none; border-radius: 12px;
-        padding: 14px 28px; font-size: 16px; font-weight: 800; cursor: pointer; flex-shrink: 0;
-      }
-      .btn-undo:hover { background: #fbbf24; }
-
       /* Final-email preview (rendered inside the card) */
       .preview-frame {
         background: #fff; color: #111; border-radius: 12px; padding: 20px 22px; margin: 16px 0 6px;
@@ -314,8 +305,18 @@
       .paused-row .paused-snip { color: var(--muted); font-size: 13px; margin-top: 3px;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .paused-row .paused-when { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+      .paused-actions { display: flex; gap: 8px; flex-shrink: 0; }
       .btn-resume { background: var(--accent); flex-shrink: 0; padding: 11px 18px; font-size: 14px; }
       .btn-resume:hover:not(:disabled) { background: var(--accent-hover); }
+      /* Ending a sequence is destructive-ish — muted red, visually distinct
+         from the accent-blue Resume. */
+      .btn-dismiss, .btn-unenroll {
+        background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.45);
+        color: #fca5a5; flex-shrink: 0; padding: 11px 18px; font-size: 14px;
+      }
+      .btn-dismiss:hover:not(:disabled), .btn-unenroll:hover:not(:disabled) {
+        background: rgba(239, 68, 68, 0.26);
+      }
 
       /* Dashboard */
       .dash-grid {
@@ -401,12 +402,11 @@
         .actions .btn-send { order: -1; }
         .card-tools { justify-content: stretch; }
         .btn-preview { width: 100%; min-height: 42px; }
-        .send-grace { flex-direction: column; align-items: stretch; text-align: center; }
-        .btn-undo { width: 100%; min-height: 48px; }
         .dash-grid { grid-template-columns: repeat(2, 1fr); }
         .stat .stat-num { font-size: 22px; }
         .paused-row { flex-wrap: wrap; }
-        .btn-resume { width: 100%; min-height: 44px; }
+        .paused-actions { width: 100%; }
+        .btn-resume, .btn-dismiss { flex: 1; min-height: 44px; }
         .row { flex-wrap: wrap; }
         .row .row-actions { width: 100%; }
         .row .row-actions .btn { flex: 1; min-height: 44px; }
@@ -470,7 +470,7 @@
           <div class="state"><div class="spinner"></div><p>Loading your queue…</p></div>
         </div>
         <div class="shortcut-hint" id="shortcutHint" style="display:none;">
-          <kbd>Enter</kbd>/<kbd>y</kbd> send · <kbd>e</kbd> edit · <kbd>s</kbd> skip · <kbd>u</kbd> undo
+          <kbd>Enter</kbd>/<kbd>y</kbd> send · <kbd>e</kbd> edit · <kbd>s</kbd> skip
         </div>
       </section>
 

@@ -22,11 +22,13 @@
   let busy = false;
   let paused = [];
   let previewing = false; // showing the rendered final-email preview for the current card
-  // Undo-on-send grace window state. While active, the card is locked and a
-  // countdown runs; the real /send only fires if it reaches 0 without an Undo.
-  let graceTimer = null;
-  let graceInterval = null;
-  let graceApprovalId = null;
+  // NOTE (2026-08-26): the 5-second Undo grace window is gone — Moshe found the
+  // countdown slowed every send down ("I don't need the annoying countdown").
+  // It also had a silent-failure mode: any re-render/loadQueue mid-countdown
+  // (tab click, Resume refresh, background-tab timer throttling) cancelled the
+  // send with no feedback — the "I click send but it doesn't send" bug. Send
+  // now fires the API call on click; the card stays put on failure with a
+  // toast, so a failed send is always visible and retryable.
 
   // ---- helpers -------------------------------------------------------------
 
@@ -185,6 +187,7 @@
       mount.innerHTML = `
         <div class="card">
           <span class="pill">${seqLabel(a)} · Touch ${esc(a.touchNumber)} of ${seqTotal(a)} · editing</span>
+          ${a.signatureName ? `<span class="pill pill-sig">✍ ${esc(a.signatureName)}</span>` : ''}
           <div class="lead-name">${leadLink(a.leadName || 'Unknown lead', a.personId)}</div>
           <div class="company">${esc(a.companyName) || ''}</div>
           <label class="recipient">Subject</label>
@@ -210,12 +213,19 @@
 
     const due = a.scheduledDate ? new Date(a.scheduledDate) : null;
     const dueLabel = due ? due.toISOString().slice(0, 10) : '';
+    // Which signature the send will append (resolved server-side from the
+    // recipient's niche, same as the real send path). Moshe's ask, 2026-08-25:
+    // "I should be able to see which type of signature this client is gonna get."
+    const sigPill = a.signatureName
+      ? `<span class="pill pill-sig" title="The email signature that will be appended when you hit Send">✍ ${esc(a.signatureName)}</span>`
+      : '';
     mount.innerHTML = `
       <div class="card">
         <div class="meta-row">
           <span class="pill pill-seq">${seqLabel(a)}</span>
           <span class="pill">Touch ${esc(a.touchNumber)} of ${seqTotal(a)}</span>
           ${a.productType ? `<span class="pill">${esc(a.productType)}</span>` : ''}
+          ${sigPill}
           ${dueLabel ? `<span class="pill">due ${esc(dueLabel)}</span>` : ''}
         </div>
         <div class="lead-name">${leadLink(a.leadName || 'Unknown lead', a.personId)}</div>
@@ -235,6 +245,7 @@
           <button class="btn btn-send" id="sendBtn">Send ✓</button>
           <button class="btn btn-edit" id="editBtn">Edit</button>
           <button class="btn btn-skip" id="skipBtn">Skip</button>
+          <button class="btn btn-unenroll" id="unenrollBtn" title="End this lead's whole sequence — for not-interested leads. Skip only postpones this one touch.">Unenroll</button>
         </div>
       </div>`;
 
@@ -243,6 +254,7 @@
     el('skipBtn').addEventListener('click', onSkip);
     el('editBtn').addEventListener('click', () => { editing = true; renderTriage(); });
     el('previewBtn').addEventListener('click', () => { previewing = true; renderTriage(); });
+    el('unenrollBtn').addEventListener('click', onUnenroll);
   }
 
   // ---- final-email preview (rendered, signature included) ------------------
@@ -321,11 +333,12 @@
   // Matches unfilled template placeholders like [PORTFOLIO_LINK].
   const PLACEHOLDER_RE = /\[[A-Z0-9_]{2,}\]/;
 
-  // Clicking Send does NOT fire the request. It opens a 5-second grace window
-  // with a prominent Undo; only when the countdown reaches 0 do we POST /send.
-  // This makes a misclick fully recoverable — nothing leaves until 0.
-  function onSend() {
-    if (busy || graceTimer) return;
+  // Clicking Send fires the request immediately. A pre-check jumps straight
+  // into Edit when a [PLACEHOLDER] is still unfilled (the server enforces the
+  // same rule regardless); on any failure the toast shows and the card stays
+  // so the send can be retried.
+  async function onSend() {
+    if (busy) return;
     const a = queue[cursor];
     // Pre-check locally for a nicer flow: jump straight into Edit instead of
     // a failed request. The server enforces the same rule regardless.
@@ -337,60 +350,12 @@
       renderTriage();
       return;
     }
-    startGrace(a);
+    await commitSend(a.id);
   }
 
-  const GRACE_SECONDS = 5;
-
-  function startGrace(a) {
-    graceApprovalId = a.id;
-    // Lock every button on the card so nothing else can be triggered mid-grace.
-    document.querySelectorAll('#triageMount .btn, #triageMount .btn-preview').forEach((b) => {
-      if (b.id !== 'undoBtn') b.disabled = true;
-    });
-    const actions = document.querySelector('#triageMount .actions');
-    if (actions) {
-      const grace = document.createElement('div');
-      grace.className = 'send-grace';
-      grace.id = 'sendGrace';
-      grace.innerHTML =
-        `<div class="grace-text">Sending in <b id="graceNum">${GRACE_SECONDS}</b>…</div>` +
-        '<button class="btn-undo" id="undoBtn">Undo</button>';
-      actions.parentNode.insertBefore(grace, actions.nextSibling);
-      el('undoBtn').addEventListener('click', cancelGrace);
-    }
-    let left = GRACE_SECONDS;
-    graceInterval = setInterval(() => {
-      left -= 1;
-      const n = el('graceNum');
-      if (n) n.textContent = String(Math.max(left, 0));
-    }, 1000);
-    graceTimer = setTimeout(commitSend, GRACE_SECONDS * 1000);
-  }
-
-  function clearGrace() {
-    if (graceTimer) clearTimeout(graceTimer);
-    if (graceInterval) clearInterval(graceInterval);
-    graceTimer = null;
-    graceInterval = null;
-    graceApprovalId = null;
-    const g = el('sendGrace');
-    if (g) g.remove();
-  }
-
-  // Undo: cancel the timer, nothing was sent, restore the card untouched.
-  function cancelGrace() {
-    if (!graceTimer && !graceInterval) return;
-    clearGrace();
-    toast('Cancelled — nothing sent');
-    renderTriage();
-  }
-
-  // Countdown reached 0: now actually approve/send and advance.
-  async function commitSend() {
-    const id = graceApprovalId;
-    clearGrace();
-    if (!id) return;
+  // Approve/send and advance. Shared by the card's Send button and the
+  // editor's Send ✓ (which saves the edit first).
+  async function commitSend(id) {
     setBusy(true);
     try {
       await apiPost(`/approval/${id}/send`, { bcc: getBccMe() });
@@ -413,7 +378,7 @@
   }
 
   async function onSkip() {
-    if (busy || graceTimer) return;
+    if (busy) return;
     const a = queue[cursor];
     setBusy(true);
     try {
@@ -424,6 +389,46 @@
       toast('Skip failed: ' + e.message, true);
       setBusy(false);
     }
+  }
+
+  // Unenroll straight from the card: end the lead's whole sequence (reject all
+  // pending touches) — "the client says they're not interested or whatever
+  // other reason" (Moshe, 2026-08-25). Two-click confirm, same pattern as
+  // Dismiss on the replied rows.
+  async function onUnenroll(ev) {
+    if (busy) return;
+    const btn = ev.currentTarget;
+    if (btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1';
+      btn.textContent = 'Sure? End sequence';
+      setTimeout(() => {
+        if (btn.isConnected) {
+          btn.dataset.armed = '';
+          btn.textContent = 'Unenroll';
+        }
+      }, 4000);
+      return;
+    }
+    const a = queue[cursor];
+    setBusy(true);
+    try {
+      const r = await apiPost('/dismiss', {
+        email: a.recipientEmail,
+        sequenceKey: seqOfCard(a),
+      });
+      toast(`Unenrolled — ${r.rejected} upcoming touch${r.rejected === 1 ? '' : 'es'} cancelled`);
+      advance();
+      await loadQueue();
+    } catch (e) {
+      toast('Unenroll failed: ' + e.message, true);
+      setBusy(false);
+    }
+  }
+
+  // sequenceKey as the SERVER sees it (seqOf): fall back to the default for
+  // legacy rows that predate the field.
+  function seqOfCard(a) {
+    return a.sequenceKey || 'PRE_PHONE_EMAIL';
   }
 
   async function onSaveEdit() {
@@ -450,11 +455,11 @@
 
   // Send straight from the editor (Moshe's ask, 2026-08-25: "instead of
   // clicking save changes I want to be able to actually send it"): save the
-  // edit, drop back to the card, then run the SAME 5-second undo grace the
-  // card's Send button uses. Placeholders are checked up-front so an
-  // unfilled [TEMPLATE] field never reaches the send path.
+  // edit, drop back to the card, then send immediately (the countdown-free
+  // path, 2026-08-26). Placeholders are checked up-front so an unfilled
+  // [TEMPLATE] field never reaches the send path.
   async function onEditSend() {
-    if (busy || graceTimer) return;
+    if (busy) return;
     const a = queue[cursor];
     const emailSubject = el('editSubject').value;
     const emailBody = el('editBody').value;
@@ -470,7 +475,7 @@
       a.emailBody = r.approval.emailBody;
       editing = false;
       renderTriage();
-      startGrace(a);
+      await commitSend(a.id);
     } catch (e) {
       // Keep the user's typed text: re-enable the buttons without re-render.
       toast('Save failed: ' + e.message, true);
@@ -490,7 +495,6 @@
       editing = false;
       previewing = false;
       busy = false;
-      clearGrace();
       renderTriage();
     } catch (e) {
       el('triageMount').innerHTML =
@@ -522,7 +526,10 @@
             <div class="paused-snip">“${snip}”</div>
             ${when ? `<div class="paused-when">replied ${esc(when)}</div>` : ''}
           </div>
-          <button class="btn btn-resume" data-resume-email="${esc(p.email)}" data-resume-seq="${esc(p.sequenceKey)}">Resume</button>
+          <div class="paused-actions">
+            <button class="btn btn-resume" data-resume-email="${esc(p.email)}" data-resume-seq="${esc(p.sequenceKey)}">Resume</button>
+            <button class="btn btn-dismiss" data-dismiss-email="${esc(p.email)}" data-dismiss-seq="${esc(p.sequenceKey)}" title="End the sequence for this lead — no more touches will be scheduled or sent">Dismiss</button>
+          </div>
         </div>`;
     }).join('');
     mount.innerHTML =
@@ -530,6 +537,11 @@
     mount.querySelectorAll('[data-resume-email]').forEach((btn) => {
       btn.addEventListener('click', () =>
         onResume(btn.getAttribute('data-resume-email'), btn.getAttribute('data-resume-seq'), btn)
+      );
+    });
+    mount.querySelectorAll('[data-dismiss-email]').forEach((btn) => {
+      btn.addEventListener('click', () =>
+        onDismiss(btn.getAttribute('data-dismiss-email'), btn.getAttribute('data-dismiss-seq'), btn)
       );
     });
   }
@@ -543,6 +555,35 @@
     } catch (e) {
       toast('Resume failed: ' + e.message, true);
       if (btn) btn.disabled = false;
+    }
+  }
+
+  // Dismiss = "I'm done with this lead's sequence": end it (reject pending
+  // touches) instead of just resuming it. Ask before ending a whole playbook.
+  async function onDismiss(email, sequenceKey, btn) {
+    if (btn && btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1';
+      btn.textContent = 'Sure? End it';
+      setTimeout(() => {
+        if (btn.isConnected) {
+          btn.dataset.armed = '';
+          btn.textContent = 'Dismiss';
+        }
+      }, 4000);
+      return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      const r = await apiPost('/dismiss', { email, sequenceKey });
+      toast(`Dismissed — ${r.rejected} upcoming touch${r.rejected === 1 ? '' : 'es'} cancelled`);
+      await loadQueue();
+    } catch (e) {
+      toast('Dismiss failed: ' + e.message, true);
+      if (btn) {
+        btn.disabled = false;
+        btn.dataset.armed = '';
+        btn.textContent = 'Dismiss';
+      }
     }
   }
 
@@ -1008,7 +1049,7 @@
 
   // ---- KEYBOARD SHORTCUTS --------------------------------------------------
   // Only in the triage view, and never while typing in a field. Enter/y = send,
-  // e = edit, s = skip, u = undo (during the grace window).
+  // e = edit, s = skip.
   document.addEventListener('keydown', (ev) => {
     if (!inTriageView()) return;
     const t = ev.target;
@@ -1016,14 +1057,6 @@
     if (tag === 'input' || tag === 'textarea' || (t && t.isContentEditable)) return;
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
 
-    // During the grace window only Undo is meaningful.
-    if (graceTimer) {
-      if (ev.key === 'u' || ev.key === 'U' || ev.key === 'Escape') {
-        ev.preventDefault();
-        cancelGrace();
-      }
-      return;
-    }
     if (editing || previewing) return; // let Back/Cancel buttons handle those modes
     if (busy) return;
     if (cursor >= queue.length || queue.length === 0) return;
