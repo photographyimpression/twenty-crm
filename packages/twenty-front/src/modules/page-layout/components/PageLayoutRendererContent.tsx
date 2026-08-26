@@ -3,6 +3,14 @@ import { PageLayoutLeftPanel } from '@/page-layout/components/PageLayoutLeftPane
 import { PageLayoutTabList } from '@/page-layout/components/PageLayoutTabList';
 import { PageLayoutTabListEffect } from '@/page-layout/components/PageLayoutTabListEffect';
 import { PAGE_LAYOUT_LEFT_PANEL_CONTAINER_WIDTH } from '@/page-layout/constants/PageLayoutLeftPanelContainerWidth';
+// LOCAL-PATCH: Salesmate-style right-hand context rail on record pages.
+import {
+  PAGE_LAYOUT_CONTEXT_RAIL_MIN_VIEWPORT_WIDTH,
+  PAGE_LAYOUT_CONTEXT_RAIL_WIDTH,
+} from '@/page-layout/constants/PageLayoutContextRailWidth';
+import { RecordShowContextRail } from '@/object-record/record-show/components/RecordShowContextRail';
+import { isSidePanelOpenedState } from '@/side-panel/states/isSidePanelOpenedState';
+import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { useCreatePageLayoutTab } from '@/page-layout/hooks/useCreatePageLayoutTab';
 import { useCurrentPageLayout } from '@/page-layout/hooks/useCurrentPageLayout';
 import { useReorderPageLayoutTabs } from '@/page-layout/hooks/useReorderPageLayoutTabs';
@@ -26,14 +34,39 @@ import { SidePanelPages } from 'twenty-shared/types';
 import { isDefined } from 'twenty-shared/utils';
 import { useIsMobile } from 'twenty-ui/utilities';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
+import { PageLayoutType } from '~/generated-metadata/graphql';
 
-const StyledContainer = styled.div<{ hasPinnedTab: boolean }>`
+const StyledContainer = styled.div<{
+  hasPinnedTab: boolean;
+  hasContextRail: boolean;
+}>`
   display: grid;
-  grid-template-columns: ${({ hasPinnedTab }) =>
-    hasPinnedTab ? `${PAGE_LAYOUT_LEFT_PANEL_CONTAINER_WIDTH}px 1fr` : '1fr'};
+  grid-template-columns: ${({ hasPinnedTab, hasContextRail }) =>
+    [
+      hasPinnedTab ? `${PAGE_LAYOUT_LEFT_PANEL_CONTAINER_WIDTH}px` : null,
+      '1fr',
+      hasContextRail ? `${PAGE_LAYOUT_CONTEXT_RAIL_WIDTH}px` : null,
+    ]
+      .filter(Boolean)
+      .join(' ')};
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
   width: 100%;
+
+  /* Narrow windows keep the timeline readable and drop the rail instead. */
+  @media (max-width: ${PAGE_LAYOUT_CONTEXT_RAIL_MIN_VIEWPORT_WIDTH}px) {
+    grid-template-columns: ${({ hasPinnedTab }) =>
+      hasPinnedTab ? `${PAGE_LAYOUT_LEFT_PANEL_CONTAINER_WIDTH}px 1fr` : '1fr'};
+  }
+`;
+
+const StyledContextRailContainer = styled.div`
+  height: 100%;
+  min-height: 0;
+
+  @media (max-width: ${PAGE_LAYOUT_CONTEXT_RAIL_MIN_VIEWPORT_WIDTH}px) {
+    display: none;
+  }
 `;
 
 const StyledTabsAndDashboardContainer = styled.div`
@@ -70,6 +103,10 @@ export const PageLayoutRendererContent = () => {
   const { navigatePageLayoutSidePanel } = useNavigatePageLayoutSidePanel();
 
   const isMobile = useIsMobile();
+
+  // The record side panel eats the same horizontal room the rail needs, and it
+  // always wins: it holds whatever the user just clicked into.
+  const isSidePanelOpened = useAtomStateValue(isSidePanelOpenedState);
 
   if (!isDefined(currentPageLayout)) {
     return null;
@@ -114,8 +151,20 @@ export const PageLayoutRendererContent = () => {
 
   const sortedTabs = sortTabsByPosition(tabsToRenderInTabList);
 
+  // The rail only makes sense next to a record, on a full page, with room for
+  // it — never on dashboards, in the side panel, or on mobile.
+  const hasContextRail =
+    currentPageLayout.type === PageLayoutType.RECORD_PAGE &&
+    !isInSidePanel &&
+    !isMobile &&
+    !isSidePanelOpened &&
+    isDefined(targetRecordIdentifier);
+
   return (
-    <StyledContainer hasPinnedTab={isDefined(pinnedLeftTab)}>
+    <StyledContainer
+      hasPinnedTab={isDefined(pinnedLeftTab)}
+      hasContextRail={hasContextRail}
+    >
       {isDefined(pinnedLeftTab) && (
         <PageLayoutLeftPanel pinnedLeftTabId={pinnedLeftTab.id} />
       )}
@@ -156,6 +205,15 @@ export const PageLayoutRendererContent = () => {
           </ScrollWrapper>
         </StyledScrollWrapperContainer>
       </StyledTabsAndDashboardContainer>
+
+      {hasContextRail && isDefined(targetRecordIdentifier) && (
+        <StyledContextRailContainer>
+          <RecordShowContextRail
+            objectNameSingular={targetRecordIdentifier.targetObjectNameSingular}
+            objectRecordId={targetRecordIdentifier.id}
+          />
+        </StyledContextRailContainer>
+      )}
     </StyledContainer>
   );
 };

@@ -1,10 +1,23 @@
 import { styled } from '@linaria/react';
+import { useMemo, useState } from 'react';
 
 import { CustomResolverFetchMoreLoader } from '@/activities/components/CustomResolverFetchMoreLoader';
 import { SkeletonLoader } from '@/activities/components/SkeletonLoader';
 import { EventList } from '@/activities/timeline-activities/components/EventList';
+// LOCAL-PATCH: Salesmate-style unified timeline — filter pills + Upcoming block.
+import {
+  TimelineFilterPills,
+  type TimelineFilter,
+} from '@/activities/timeline-activities/components/TimelineFilterPills';
+import { TimelineUpcomingSection } from '@/activities/timeline-activities/components/TimelineUpcomingSection';
 import { useTimelineActivities } from '@/activities/timeline-activities/hooks/useTimelineActivities';
+import {
+  TIMELINE_EVENT_CATEGORIES,
+  getTimelineEventCategory,
+  type TimelineEventCategory,
+} from '@/activities/timeline-activities/utils/getTimelineEventCategory';
 import { useOpenCreateActivityDrawer } from '@/activities/hooks/useOpenCreateActivityDrawer';
+import { useObjectMetadataItems } from '@/object-metadata/hooks/useObjectMetadataItems';
 import { useLayoutRenderingContext } from '@/ui/layout/contexts/LayoutRenderingContext';
 import { useTargetRecord } from '@/ui/layout/contexts/useTargetRecord';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
@@ -49,9 +62,19 @@ const StyledSidePanelPlaceholderWrapper = styled.div`
   }
 `;
 
-const StyledQuickActionsBar = styled.div`
+const StyledToolbar = styled.div`
+  align-items: flex-start;
   display: flex;
   gap: ${themeCssVariables.spacing[2]};
+  justify-content: space-between;
+  width: 100%;
+`;
+
+// Lets the pill row wrap inside itself instead of pushing the button onto a
+// line of its own.
+const StyledToolbarPills = styled.div`
+  flex: 1 1 0;
+  min-width: 0;
 `;
 
 export const TimelineCard = () => {
@@ -59,10 +82,57 @@ export const TimelineCard = () => {
   const { isInSidePanel } = useLayoutRenderingContext();
   const { timelineActivities, loading, fetchMoreRecords } =
     useTimelineActivities(targetRecord);
+  const { objectMetadataItems } = useObjectMetadataItems();
+
+  const [activeFilter, setActiveFilter] = useState<TimelineFilter>('all');
 
   const openCreateActivity = useOpenCreateActivityDrawer({
     activityObjectNameSingular: CoreObjectNameSingular.Note,
   });
+
+  const linkedObjectNameSingularById = useMemo(
+    () =>
+      Object.fromEntries(
+        objectMetadataItems.map((objectMetadataItem) => [
+          objectMetadataItem.id,
+          objectMetadataItem.nameSingular,
+        ]),
+      ),
+    [objectMetadataItems],
+  );
+
+  const categoryByEventId = useMemo(
+    () =>
+      new Map(
+        timelineActivities.map((event) => [
+          event.id,
+          getTimelineEventCategory({ event, linkedObjectNameSingularById }),
+        ]),
+      ),
+    [timelineActivities, linkedObjectNameSingularById],
+  );
+
+  const countsByCategory = useMemo(() => {
+    const counts = Object.fromEntries(
+      TIMELINE_EVENT_CATEGORIES.map((category) => [category, 0]),
+    ) as Record<TimelineEventCategory, number>;
+
+    for (const category of categoryByEventId.values()) {
+      counts[category] += 1;
+    }
+
+    return counts;
+  }, [categoryByEventId]);
+
+  const filteredActivities = useMemo(
+    () =>
+      activeFilter === 'all'
+        ? timelineActivities
+        : timelineActivities.filter(
+            (event) => categoryByEventId.get(event.id) === activeFilter,
+          ),
+    [activeFilter, timelineActivities, categoryByEventId],
+  );
 
   const isTimelineActivitiesEmpty = timelineActivities.length === 0;
 
@@ -109,7 +179,18 @@ export const TimelineCard = () => {
 
   return (
     <StyledMainContainer>
-      <StyledQuickActionsBar>
+      {!isInSidePanel && (
+        <TimelineUpcomingSection targetableObject={targetRecord} />
+      )}
+      <StyledToolbar>
+        <StyledToolbarPills>
+          <TimelineFilterPills
+            activeFilter={activeFilter}
+            onFilterChange={setActiveFilter}
+            countsByCategory={countsByCategory}
+            totalCount={timelineActivities.length}
+          />
+        </StyledToolbarPills>
         <Button
           Icon={IconPlus}
           title={t`Add note`}
@@ -121,11 +202,11 @@ export const TimelineCard = () => {
             })
           }
         />
-      </StyledQuickActionsBar>
+      </StyledToolbar>
       <EventList
         targetableObject={targetRecord}
         title={t`All`}
-        events={timelineActivities ?? []}
+        events={filteredActivities}
       />
       <CustomResolverFetchMoreLoader
         loading={loading}

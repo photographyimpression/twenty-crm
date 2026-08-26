@@ -1,4 +1,5 @@
-import { SummaryCard } from '@/object-record/record-show/components/SummaryCard';
+// LOCAL-PATCH: Salesmate-style identity card replaces the stock SummaryCard here.
+import { RecordShowIdentityCard } from '@/object-record/record-show/components/RecordShowIdentityCard';
 import { PageLayoutContent } from '@/page-layout/components/PageLayoutContent';
 import { PageLayoutContentProvider } from '@/page-layout/contexts/PageLayoutContentContext';
 import { useCurrentPageLayout } from '@/page-layout/hooks/useCurrentPageLayout';
@@ -46,7 +47,7 @@ export const PageLayoutLeftPanel = ({
 
   return (
     <StyledContainer>
-      <SummaryCard
+      <RecordShowIdentityCard
         objectNameSingular={targetRecordIdentifier.targetObjectNameSingular}
         objectRecordId={targetRecordIdentifier.id}
         isInSidePanel={isInSidePanel}
