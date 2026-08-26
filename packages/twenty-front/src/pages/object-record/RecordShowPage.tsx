@@ -5,6 +5,8 @@ import { CommandMenuComponentInstanceContext } from '@/command-menu/states/conte
 import { TimelineActivityContext } from '@/activities/timeline-activities/contexts/TimelineActivityContext';
 import { MAIN_CONTEXT_STORE_INSTANCE_ID } from '@/context-store/constants/MainContextStoreInstanceId';
 import { ContextStoreComponentInstanceContext } from '@/context-store/states/contexts/ContextStoreComponentInstanceContext';
+// LOCAL-PATCH: ✨ AI briefing button on person pages (see the component header).
+import { AiSummarySidePanel } from '@/ai-assistant/components/AiSummarySidePanel';
 import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
 import { RecordComponentInstanceContextsWrapper } from '@/object-record/components/RecordComponentInstanceContextsWrapper';
 import { PageLayoutRecordPageRenderer } from '@/object-record/record-show/components/PageLayoutRecordPageRenderer';
@@ -50,6 +52,9 @@ export const RecordShowPage = () => {
               objectRecordId={objectRecordId}
             >
               <RecordShowCommandMenu />
+              {objectNameSingular === 'person' ? (
+                <AiSummarySidePanel personId={objectRecordId} />
+              ) : null}
               <PageHeaderToggleSidePanelButton />
             </RecordShowPageHeader>
             <MainContainerLayoutWithSidePanel>

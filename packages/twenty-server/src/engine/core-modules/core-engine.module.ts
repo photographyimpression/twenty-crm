@@ -51,6 +51,7 @@ import { PublicDomainModule } from 'src/engine/core-modules/public-domain/public
 import { RedisClientModule } from 'src/engine/core-modules/redis-client/redis-client.module';
 import { RedisClientService } from 'src/engine/core-modules/redis-client/redis-client.service';
 import { SearchModule } from 'src/engine/core-modules/search/search.module';
+import { AiAssistantModule } from 'src/engine/core-modules/ai-assistant/ai-assistant.module';
 import { logicFunctionModuleFactory } from 'src/engine/core-modules/logic-function/logic-function-drivers/factories/logic-function-module.factory';
 import { LogicFunctionModule } from 'src/engine/core-modules/logic-function/logic-function.module';
 import { WorkspaceSSOModule } from 'src/engine/core-modules/sso/sso.module';
@@ -90,6 +91,7 @@ import { FileModule } from './file/file.module';
     BillingModule,
     BillingWebhookModule,
     TelnyxWebhookModule,
+    AiAssistantModule,
     ClientConfigModule,
     FeatureFlagModule,
     FileModule,
