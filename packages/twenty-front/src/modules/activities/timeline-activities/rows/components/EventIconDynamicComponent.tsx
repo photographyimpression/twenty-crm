@@ -18,6 +18,7 @@ const NOTE_TYPE_ICONS = {
   email: IconMail,
   sms: IconMessage,
   call: IconPhone,
+  message: IconMessage,
   aiSummary: IconSparkles,
   note: IconNotes,
 } as const;
@@ -37,9 +38,7 @@ export const EventIconDynamicComponent = ({
     linkedObjectMetadataItem?.nameSingular === 'note' &&
     (eventLinkedObject === 'linked-note' || eventAction === 'linked')
   ) {
-    const classification = classifyNoteActivity(
-      event.linkedRecordCachedName,
-    );
+    const classification = classifyNoteActivity(event.linkedRecordCachedName);
     const NoteIcon = NOTE_TYPE_ICONS[classification.activityType];
     return <NoteIcon />;
   }

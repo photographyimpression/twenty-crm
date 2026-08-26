@@ -28,6 +28,8 @@ const StyledTypeBadge = styled.span<{ activityType: string }>`
         return themeCssVariables.color.green3;
       case 'call':
         return themeCssVariables.color.orange3;
+      case 'message':
+        return themeCssVariables.color.turquoise3;
       case 'aiSummary':
         return themeCssVariables.color.purple3;
       default:
@@ -43,6 +45,8 @@ const StyledTypeBadge = styled.span<{ activityType: string }>`
         return themeCssVariables.color.green;
       case 'call':
         return themeCssVariables.color.orange;
+      case 'message':
+        return themeCssVariables.color.turquoise;
       case 'aiSummary':
         return themeCssVariables.color.purple;
       default:
@@ -90,6 +94,7 @@ const TYPE_LABELS: Record<string, string> = {
   email: 'Email',
   sms: 'SMS',
   call: 'Call',
+  message: 'Message',
   aiSummary: 'AI Summary',
   note: 'Note',
 };
@@ -120,15 +125,11 @@ export const EventCardNotePreview = ({
           </StyledDirectionBadge>
         )}
         {classification.duration && (
-          <StyledDirectionBadge>
-            {classification.duration}
-          </StyledDirectionBadge>
+          <StyledDirectionBadge>{classification.duration}</StyledDirectionBadge>
         )}
       </StyledHeaderRow>
 
-      {truncatedBody && (
-        <StyledBodyPreview>{truncatedBody}</StyledBodyPreview>
-      )}
+      {truncatedBody && <StyledBodyPreview>{truncatedBody}</StyledBodyPreview>}
 
       <StyledViewDetails
         onClick={() =>

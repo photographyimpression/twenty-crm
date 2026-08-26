@@ -8707,6 +8707,7 @@ msgstr "Синхронизација порука није доступна је
 
 #. js-lingui-id: t7TeQU
 #: src/pages/settings/ai/SettingsAgentTurnDetail.tsx
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Messages"
 msgstr "Поруке"
 

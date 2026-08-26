@@ -8707,6 +8707,7 @@ msgstr "Synchronizace zpráv není dostupná, protože služba nefunguje"
 
 #. js-lingui-id: t7TeQU
 #: src/pages/settings/ai/SettingsAgentTurnDetail.tsx
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Messages"
 msgstr "Zprávy"
 

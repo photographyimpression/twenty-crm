@@ -8707,6 +8707,7 @@ msgstr "메시지 동기화가 불가능합니다, 서비스가 중단되었습�
 
 #. js-lingui-id: t7TeQU
 #: src/pages/settings/ai/SettingsAgentTurnDetail.tsx
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Messages"
 msgstr "메시지"
 

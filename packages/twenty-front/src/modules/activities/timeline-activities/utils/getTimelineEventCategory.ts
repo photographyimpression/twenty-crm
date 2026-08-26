@@ -13,6 +13,7 @@ export const TIMELINE_EVENT_CATEGORIES = [
   'emails',
   'texts',
   'calls',
+  'messages',
   'files',
   'updates',
 ] as const;
@@ -42,6 +43,8 @@ export const getTimelineEventCategory = ({
         return 'calls';
       case 'sms':
         return 'texts';
+      case 'message':
+        return 'messages';
       default:
         return 'notes';
     }

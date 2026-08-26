@@ -73,6 +73,8 @@ const getCategoryLabel = (category: TimelineEventCategory): string => {
       return t`Texts`;
     case 'calls':
       return t`Calls`;
+    case 'messages':
+      return t`Messages`;
     case 'files':
       return t`Files`;
     case 'updates':

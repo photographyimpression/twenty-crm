@@ -3,9 +3,7 @@ import { useState } from 'react';
 
 import { EventCard } from '@/activities/timeline-activities/rows/components/EventCard';
 import { EventCardToggleButton } from '@/activities/timeline-activities/rows/components/EventCardToggleButton';
-import {
-  type EventRowDynamicComponentProps,
-} from '@/activities/timeline-activities/rows/components/EventRowDynamicComponent';
+import { type EventRowDynamicComponentProps } from '@/activities/timeline-activities/rows/components/EventRowDynamicComponent';
 import { EventCardNotePreview } from '@/activities/timeline-activities/rows/activity/components/EventCardNotePreview';
 import { classifyNoteActivity } from '@/activities/timeline-activities/utils/classifyNoteActivity';
 import { isTimelineActivityWithLinkedRecord } from '@/activities/timeline-activities/types/TimelineActivity';
@@ -80,6 +78,8 @@ const StyledTypeIcon = styled.div<{ activityType: string }>`
         return themeCssVariables.color.green;
       case 'call':
         return themeCssVariables.color.orange;
+      case 'message':
+        return themeCssVariables.color.turquoise;
       case 'aiSummary':
         return themeCssVariables.color.purple;
       default:
@@ -98,6 +98,7 @@ const ACTIVITY_TYPE_ICONS = {
   email: IconMail,
   sms: IconMessage,
   call: IconPhone,
+  message: IconMessage,
   aiSummary: IconSparkles,
   note: IconNotes,
 } as const;
@@ -159,9 +160,7 @@ export const EventRowActivity = ({
               })
             }
           >
-            <OverflowingTextWithTooltip
-              text={classification.displaySummary}
-            />
+            <OverflowingTextWithTooltip text={classification.displaySummary} />
           </StyledLinkedActivity>
           <EventCardToggleButton isOpen={isOpen} setIsOpen={setIsOpen} />
         </StyledRow>

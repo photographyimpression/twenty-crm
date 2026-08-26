@@ -204,7 +204,8 @@ export const RecordShowContextRail = ({
       if (
         (category === 'emails' ||
           category === 'calls' ||
-          category === 'texts') &&
+          category === 'texts' ||
+          category === 'messages') &&
         !isDefined(lastCommunication)
       ) {
         lastCommunication = event.createdAt;
