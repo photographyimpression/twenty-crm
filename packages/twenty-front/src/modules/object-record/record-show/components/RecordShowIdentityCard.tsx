@@ -9,12 +9,14 @@ import { useCallContext } from '@/calls/contexts/CallProvider';
 import { getPrimaryPhoneE164 } from '@/calls/utils/getPrimaryPhoneE164';
 import { useLabelIdentifierFieldMetadataItem } from '@/object-metadata/hooks/useLabelIdentifierFieldMetadataItem';
 import { useObjectMetadataItem } from '@/object-metadata/hooks/useObjectMetadataItem';
+import { type ObjectMetadataItem } from '@/object-metadata/types/ObjectMetadataItem';
 import { useIsRecordFieldReadOnly } from '@/object-record/read-only/hooks/useIsRecordFieldReadOnly';
 import { FieldContext } from '@/object-record/record-field/ui/contexts/FieldContext';
 import { usePersonAvatarUpload } from '@/object-record/record-show/hooks/usePersonAvatarUpload';
 import { useRecordShowContainerActions } from '@/object-record/record-show/hooks/useRecordShowContainerActions';
 import { useRecordShowContainerData } from '@/object-record/record-show/hooks/useRecordShowContainerData';
 import { recordStoreFamilyState } from '@/object-record/record-store/states/recordStoreFamilyState';
+import { type ObjectRecord } from '@/object-record/types/ObjectRecord';
 import { recordStoreIdentifierFamilySelector } from '@/object-record/record-store/states/selectors/recordStoreIdentifierFamilySelector';
 import { RecordTitleCell } from '@/object-record/record-title-cell/components/RecordTitleCell';
 import { RecordTitleCellContainerType } from '@/object-record/record-title-cell/types/RecordTitleCellContainerType';
@@ -45,6 +47,7 @@ import {
   IconWorld,
   type IconComponent,
 } from 'twenty-ui/display';
+import { type ThemeColor } from 'twenty-ui/theme';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 import { FieldMetadataType } from '~/generated-metadata/graphql';
 
@@ -209,6 +212,31 @@ type RecordShowIdentityCardProps = {
 const asNonEmptyString = (value: unknown): string | null =>
   isNonEmptyString(value) ? value : null;
 
+// Resolves a SELECT field's stored value to the option's label and colour.
+// Returns null when the field is absent, empty, or not a SELECT on this
+// workspace — the chip is then simply not rendered.
+const getSelectOptionChip = (
+  objectMetadataItem: ObjectMetadataItem,
+  fieldName: string,
+  record: ObjectRecord | null | undefined,
+): { label: string; color: ThemeColor } | null => {
+  const storedValue = asNonEmptyString(record?.[fieldName]);
+
+  if (!isDefined(storedValue)) {
+    return null;
+  }
+
+  const option = objectMetadataItem.fields
+    .find((field) => field.name === fieldName)
+    ?.options?.find((fieldOption) => fieldOption.value === storedValue);
+
+  if (!isDefined(option)) {
+    return null;
+  }
+
+  return { label: option.label, color: option.color };
+};
+
 type LinksValue = {
   primaryLinkUrl?: string | null;
   primaryLinkLabel?: string | null;
@@ -292,11 +320,13 @@ export const RecordShowIdentityCard = ({
   const companyId = asNonEmptyString(company?.id);
   const companyName = asNonEmptyString(company?.name);
 
-  // "Contact Type" is the GHL-imported field the whole book is segmented on;
-  // sequenceTag is the fallback for people who only ever got enrolled.
-  const typeChipText =
-    asNonEmptyString(recordStore?.ghlContactType) ??
-    asNonEmptyString(recordStore?.sequenceTag);
+  // Contact Type is what the book is segmented on; Sequence is the fallback for
+  // people who have only ever been enrolled. Both are SELECTs, so the record
+  // holds the raw option value ("PRE_PHONE_EMAIL") — the human label and the
+  // chip colour have to come from the field metadata.
+  const typeChip =
+    getSelectOptionChip(objectMetadataItem, 'contactType', recordStore) ??
+    getSelectOptionChip(objectMetadataItem, 'sequenceTag', recordStore);
 
   const createdBy = recordStore?.createdBy as
     | { name?: string | null }
@@ -383,9 +413,14 @@ export const RecordShowIdentityCard = ({
 
   return (
     <StyledCard>
-      {isDefined(typeChipText) && (
+      {isDefined(typeChip) && (
         <StyledChipRow>
-          <Tag color="blue" text={typeChipText} weight="medium" preventShrink />
+          <Tag
+            color={typeChip.color}
+            text={typeChip.label}
+            weight="medium"
+            preventShrink
+          />
         </StyledChipRow>
       )}
 
