@@ -400,6 +400,7 @@ const StyledPopupTextarea = styled.textarea`
   background: ${themeCssVariables.background.secondary};
   border: 1px solid ${themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.sm};
+  box-sizing: border-box;
   color: ${themeCssVariables.font.color.primary};
   font-family: inherit;
   font-size: 13px;
@@ -463,6 +464,7 @@ const StyledUrgentLabel = styled.label<{ isChecked: boolean }>`
         ? themeCssVariables.color.amber
         : themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.md};
+  box-sizing: border-box;
   color: ${({ isChecked }) =>
     isChecked
       ? themeCssVariables.font.color.primary
@@ -473,6 +475,7 @@ const StyledUrgentLabel = styled.label<{ isChecked: boolean }>`
   gap: 6px;
   margin: 10px 0 0;
   padding: 6px 10px;
+  width: 100%;
 `;
 
 const StyledUrgentZap = styled.span<{ isChecked: boolean }>`
@@ -516,6 +519,7 @@ const StyledSubmitButton = styled.button`
   background: ${themeCssVariables.color.blue};
   border: none;
   border-radius: ${themeCssVariables.border.radius.sm};
+  box-sizing: border-box;
   color: ${themeCssVariables.font.color.inverted};
   cursor: pointer;
   font-size: 13px;
@@ -776,11 +780,22 @@ export const StatusStrip = () => {
     return () => document.removeEventListener('paste', handlePaste);
   }, [popupOpen, addAttachmentFiles]);
 
+  // Closing the popup KEEPS the draft — text, pasted screenshots, type and
+  // urgent all survive, so the flow Moshe asked for works: open the popup,
+  // paste a screenshot, close it, go take ANOTHER screenshot, come back —
+  // the first one (and any typed text) is still there. Same behavior as his
+  // other apps. Only a successful submit clears the draft (resetDraft).
   const closePopup = useCallback(() => {
+    setPopupOpen(false);
+    setZoomUrl(null);
+    setBuildArmed(false);
+    setBuildError('');
+  }, []);
+
+  const resetDraft = useCallback(() => {
     attachments.forEach((attachment) =>
       URL.revokeObjectURL(attachment.previewUrl),
     );
-    setPopupOpen(false);
     setRequestType('feature');
     setGoal('');
     setIdea('');
@@ -789,9 +804,6 @@ export const StatusStrip = () => {
     setSubmitError('');
     setSubmitting(false);
     setJustSubmitted(false);
-    setZoomUrl(null);
-    setBuildArmed(false);
-    setBuildError('');
   }, [attachments]);
 
   // Escape closes the zoom first, then the popup. Auto-disarm the
@@ -893,10 +905,12 @@ export const StatusStrip = () => {
       }
       setJustSubmitted(true);
       refreshCards();
-      // Auto-close after showing the confirmation. If the strip unmounted in
-      // the meantime, these set-states are harmless no-ops (React 18).
+      // Auto-close after showing the confirmation, then clear the draft so
+      // the next request starts fresh. If the strip unmounted in the
+      // meantime, these set-states are harmless no-ops (React 18).
       setTimeout(() => {
         closePopup();
+        resetDraft();
       }, 1400);
     } catch (error) {
       setSubmitError((error as Error).message || 'Failed to create card.');
@@ -961,7 +975,10 @@ export const StatusStrip = () => {
           other apps' strips. */}
       <StyledIconWrap>
         <StyledIconButton
-          onClick={() => setPopupOpen(true)}
+          onClick={() => {
+            setSubmitError('');
+            setPopupOpen(true);
+          }}
           style={{ color: themeCssVariables.color.red }}
           title="Request a feature / report a bug"
         >
@@ -1262,7 +1279,10 @@ export const StatusStrip = () => {
                   {submitting ? 'Adding…' : 'Add request'}
                 </StyledSubmitButton>
                 <StyledPopupFooter>
-                  <span>Paste screenshots anywhere in this popup</span>
+                  <span>
+                    Paste screenshots anywhere · your draft is kept if you close
+                    this
+                  </span>
                   <StyledBoardLink
                     href={`${FEEDBACK_BOARD_URL}/`}
                     onClick={(event) => event.stopPropagation()}

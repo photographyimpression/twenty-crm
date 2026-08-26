@@ -5,7 +5,6 @@
 // origin, so its CRM single sign-on and cookies work untouched, but it now
 // lives inside the normal shell with the nav, the header and the feedback icon.
 import { styled } from '@linaria/react';
-import { t } from '@lingui/core/macro';
 import { IconListCheck } from 'twenty-ui/display';
 
 import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
@@ -31,13 +30,20 @@ const StyledFrameWrapper = styled.div`
 
 export const CommandCenterPage = () => (
   <PageContainer>
-    <PageTitle title={t`Command Center`} />
-    <PageHeader title={t`Command Center`} Icon={IconListCheck} />
+    {/* Plain string (not the t`` macro): "Command Center" isn't in the
+        compiled Lingui catalog, so the macro renders the message id
+        ("Nf5ZtG") as the browser TAB TITLE — which is exactly what Moshe
+        flagged on the board ("with the word tab name NF5ZG, I have no clue
+        what this means"). Same treatment as the nav drawer item. */}
+    {/* eslint-disable-next-line lingui/no-unlocalized-strings */}
+    <PageTitle title="Command Center" />
+    {/* eslint-disable-next-line lingui/no-unlocalized-strings */}
+    <PageHeader title="Command Center" Icon={IconListCheck} />
     <MainContainerLayoutWithSidePanel>
       <StyledFrameWrapper>
         <StyledFrame
           src="/command-center/"
-          title={t`Command Center`}
+          title="Command Center"
           // Same-origin app of our own: allow-same-origin keeps its session
           // cookie working, and it needs scripts + forms to function at all.
           // allow-top-navigation-by-user-activation lets lead-name links open
