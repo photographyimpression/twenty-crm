@@ -33,7 +33,9 @@ const StyledCard = styled.div`
 const MAX_UPCOMING_TASKS = 5;
 
 const getDueTime = (task: Task): number =>
-  isDefined(task.dueAt) ? new Date(task.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
+  isDefined(task.dueAt)
+    ? new Date(task.dueAt).getTime()
+    : Number.MAX_SAFE_INTEGER;
 
 export const TimelineUpcomingSection = ({
   targetableObject,

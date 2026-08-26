@@ -150,7 +150,10 @@ export const RecordShowContextRail = ({
   objectNameSingular: string;
   objectRecordId: string;
 }) => {
-  const record = useAtomFamilyStateValue(recordStoreFamilyState, objectRecordId);
+  const recordStore = useAtomFamilyStateValue(
+    recordStoreFamilyState,
+    objectRecordId,
+  );
   const { objectMetadataItems } = useObjectMetadataItems();
   const { localeCatalog } = useAtomStateValue(dateLocaleState);
 
@@ -217,7 +220,7 @@ export const RecordShowContextRail = ({
   const overviewRows: OverviewRow[] = [
     {
       label: t`Created`,
-      value: beautify(record?.createdAt),
+      value: beautify(recordStore?.createdAt),
     },
     {
       label: t`Last communication`,
@@ -227,7 +230,7 @@ export const RecordShowContextRail = ({
     { label: t`Last call`, value: beautify(lastDates.lastCall) },
   ];
 
-  const company = record?.company as
+  const company = recordStore?.company as
     | { id?: string; name?: string | null }
     | null
     | undefined;
@@ -279,7 +282,10 @@ export const RecordShowContextRail = ({
             <StyledEmpty>{t`No deals yet`}</StyledEmpty>
           ) : (
             deals.map((deal) => (
-              <StyledDealRow key={deal.id} to={`/object/opportunity/${deal.id}`}>
+              <StyledDealRow
+                key={deal.id}
+                to={`/object/opportunity/${deal.id}`}
+              >
                 <StyledDealName>
                   {asNonEmptyString(deal.name) ?? t`Untitled`}
                 </StyledDealName>

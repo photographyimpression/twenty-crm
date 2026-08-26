@@ -18,19 +18,23 @@ const StyledLabel = styled.span`
   margin-right: ${themeCssVariables.spacing[1]};
 `;
 
+// The selected pill uses the tag palette rather than a solid fill: those are
+// the only tokens with a background/text pair that stays legible in both themes.
 const StyledPill = styled.button<{ isActive: boolean }>`
   background: ${({ isActive }) =>
     isActive
-      ? themeCssVariables.color.blue
+      ? themeCssVariables.tag.background.blue
       : themeCssVariables.background.transparent.lighter};
   border: 1px solid
     ${({ isActive }) =>
-      isActive ? themeCssVariables.color.blue : themeCssVariables.border.color.medium};
+      isActive
+        ? themeCssVariables.color.blue
+        : themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.pill};
-  /* The active pill stays blue in both themes, so its label has to stay white
-     in both — font.color.inverted flips to near-black in dark mode. */
   color: ${({ isActive }) =>
-    isActive ? '#fff' : themeCssVariables.font.color.secondary};
+    isActive
+      ? themeCssVariables.tag.text.blue
+      : themeCssVariables.font.color.secondary};
   cursor: pointer;
   font-family: inherit;
   font-size: ${themeCssVariables.font.size.sm};

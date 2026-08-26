@@ -186,7 +186,9 @@ const StyledActionButton = styled.button<{ isDisabled: boolean }>`
 
   &:hover {
     background: ${({ isDisabled }) =>
-      isDisabled ? 'transparent' : themeCssVariables.background.transparent.light};
+      isDisabled
+        ? 'transparent'
+        : themeCssVariables.background.transparent.light};
   }
 `;
 
@@ -221,7 +223,10 @@ export const RecordShowIdentityCard = ({
     objectRecordId,
   });
 
-  const record = useAtomFamilyStateValue(recordStoreFamilyState, objectRecordId);
+  const recordStore = useAtomFamilyStateValue(
+    recordStoreFamilyState,
+    objectRecordId,
+  );
 
   const allowRequestsToTwentyIcons = useAtomStateValue(
     allowRequestsToTwentyIconsState,
@@ -277,10 +282,10 @@ export const RecordShowIdentityCard = ({
     return null;
   }
 
-  const jobTitle = asNonEmptyString(record?.jobTitle);
-  const city = asNonEmptyString(record?.city);
+  const jobTitle = asNonEmptyString(recordStore?.jobTitle);
+  const city = asNonEmptyString(recordStore?.city);
 
-  const company = record?.company as
+  const company = recordStore?.company as
     | { id?: string; name?: string | null }
     | null
     | undefined;
@@ -290,25 +295,33 @@ export const RecordShowIdentityCard = ({
   // "Contact Type" is the GHL-imported field the whole book is segmented on;
   // sequenceTag is the fallback for people who only ever got enrolled.
   const typeChipText =
-    asNonEmptyString(record?.ghlContactType) ??
-    asNonEmptyString(record?.sequenceTag);
+    asNonEmptyString(recordStore?.ghlContactType) ??
+    asNonEmptyString(recordStore?.sequenceTag);
 
-  const createdBy = record?.createdBy as { name?: string | null } | undefined;
+  const createdBy = recordStore?.createdBy as
+    | { name?: string | null }
+    | undefined;
   const createdByName = asNonEmptyString(createdBy?.name);
 
-  const primaryEmail = asNonEmptyString(record?.emails?.primaryEmail);
-  const primaryPhone = getPrimaryPhoneE164(record?.phones);
+  const primaryEmail = asNonEmptyString(recordStore?.emails?.primaryEmail);
+  const primaryPhone = getPrimaryPhoneE164(recordStore?.phones);
 
-  const linkedinUrl = (record?.linkedinLink as LinksValue)?.primaryLinkUrl;
-  const xUrl = (record?.xLink as LinksValue)?.primaryLinkUrl;
-  const domainName = (record?.domainName as LinksValue)?.primaryLinkUrl;
+  const linkedinUrl = (recordStore?.linkedinLink as LinksValue)?.primaryLinkUrl;
+  const xUrl = (recordStore?.xLink as LinksValue)?.primaryLinkUrl;
+  const domainName = (recordStore?.domainName as LinksValue)?.primaryLinkUrl;
 
   const socialLinks = [
-    { key: 'linkedin', url: asNonEmptyString(linkedinUrl), Icon: IconBrandLinkedin },
+    {
+      key: 'linkedin',
+      url: asNonEmptyString(linkedinUrl),
+      Icon: IconBrandLinkedin,
+    },
     { key: 'x', url: asNonEmptyString(xUrl), Icon: IconBrandX },
     { key: 'website', url: asNonEmptyString(domainName), Icon: IconWorld },
   ].filter(
-    (socialLink): socialLink is { key: string; url: string; Icon: IconComponent } =>
+    (
+      socialLink,
+    ): socialLink is { key: string; url: string; Icon: IconComponent } =>
       isDefined(socialLink.url),
   );
 
@@ -355,13 +368,18 @@ export const RecordShowIdentityCard = ({
       Icon: IconCalendarEvent,
       label: t`Book a meeting`,
       onClick: () =>
-        window.open('https://cal.impressionphotography.ca/moshe/30min', '_blank'),
+        window.open(
+          'https://cal.impressionphotography.ca/moshe/30min',
+          '_blank',
+        ),
     },
   ];
 
   const visibleActions = isPerson
     ? actions
-    : actions.filter((action) => action.key === 'note' || action.key === 'task');
+    : actions.filter(
+        (action) => action.key === 'note' || action.key === 'task',
+      );
 
   return (
     <StyledCard>

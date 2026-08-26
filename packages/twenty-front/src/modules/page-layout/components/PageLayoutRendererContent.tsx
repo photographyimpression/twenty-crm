@@ -4,10 +4,8 @@ import { PageLayoutTabList } from '@/page-layout/components/PageLayoutTabList';
 import { PageLayoutTabListEffect } from '@/page-layout/components/PageLayoutTabListEffect';
 import { PAGE_LAYOUT_LEFT_PANEL_CONTAINER_WIDTH } from '@/page-layout/constants/PageLayoutLeftPanelContainerWidth';
 // LOCAL-PATCH: Salesmate-style right-hand context rail on record pages.
-import {
-  PAGE_LAYOUT_CONTEXT_RAIL_MIN_VIEWPORT_WIDTH,
-  PAGE_LAYOUT_CONTEXT_RAIL_WIDTH,
-} from '@/page-layout/constants/PageLayoutContextRailWidth';
+import { PAGE_LAYOUT_CONTEXT_RAIL_MIN_VIEWPORT_WIDTH } from '@/page-layout/constants/PageLayoutContextRailMinViewportWidth';
+import { PAGE_LAYOUT_CONTEXT_RAIL_WIDTH } from '@/page-layout/constants/PageLayoutContextRailWidth';
 import { RecordShowContextRail } from '@/object-record/record-show/components/RecordShowContextRail';
 import { isSidePanelOpenedState } from '@/side-panel/states/isSidePanelOpenedState';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
