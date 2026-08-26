@@ -422,6 +422,11 @@ msgstr ""
 msgid "{totalFieldsCount} fields"
 msgstr ""
 
+#. js-lingui-id: bjHyyG
+#: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
+msgid "{unreadSmsCount} unread"
+msgstr ""
+
 #. js-lingui-id: ITVweg
 #: src/modules/object-record/object-options-dropdown/components/ObjectOptionsDropdownDefaultView.tsx
 #: src/modules/object-record/object-options-dropdown/components/ObjectOptionsDropdownCustomView.tsx
@@ -785,6 +790,11 @@ msgstr ""
 msgid "Active Sync"
 msgstr "Active Sync"
 
+#. js-lingui-id: 39ohdf
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Activities"
+msgstr ""
+
 #. js-lingui-id: m16xKo
 #: src/pages/settings/applications/tabs/SettingsApplicationRegistrationOAuthTab.tsx
 #: src/pages/settings/ai/components/SettingsAgentEvalsTab.tsx
@@ -980,6 +990,7 @@ msgid "Add node"
 msgstr "Ajouter un nœud"
 
 #. js-lingui-id: NeOuRn
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
 #: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/notes/components/NotesCard.tsx
@@ -1066,6 +1077,7 @@ msgid "Add SSO Identity Provider"
 msgstr "Ajouter un fournisseur d'identité SSO"
 
 #. js-lingui-id: hWkQMS
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
 #: src/modules/activities/tasks/components/AddTaskButton.tsx
 msgid "Add task"
 msgstr "Ajouter une tâche"
@@ -1351,6 +1363,7 @@ msgstr "Alerte"
 #: src/modules/settings/roles/role-permissions/object-level-permissions/components/SettingsRolePermissionsObjectLevelSeeFieldsValueForObject.tsx
 #: src/modules/settings/components/SettingsDatabaseEventsForm.tsx
 #: src/modules/object-record/record-board/record-board-column/utils/getAggregateOperationShortLabel.ts
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 #: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/notes/components/NotesCard.tsx
 #: src/modules/activities/files/components/FilesCard.tsx
@@ -2334,6 +2347,11 @@ msgstr "Facturation"
 msgid "Billing interval"
 msgstr "Intervalle de facturation"
 
+#. js-lingui-id: CJkEfx
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Block"
+msgstr ""
+
 #. js-lingui-id: K1172m
 #: src/modules/settings/accounts/components/SettingsAccountsBlocklistSection.tsx
 msgid "Blocklist"
@@ -2358,6 +2376,11 @@ msgstr "Saisie du corps"
 #: src/pages/onboarding/internal/ChooseYourPlanContent.tsx
 msgid "Book a Call"
 msgstr "Réserver un appel"
+
+#. js-lingui-id: ujZIY4
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
+msgid "Book a meeting"
+msgstr ""
 
 #. js-lingui-id: d/yr35
 #: src/pages/onboarding/BookCallDecision.tsx
@@ -2429,10 +2452,10 @@ msgstr ""
 msgid "by {author}"
 msgstr ""
 
-#. js-lingui-id: 8Pfllj
+#. js-lingui-id: 6cxKo4
 #: src/modules/auth/sign-in-up/components/FooterNote.tsx
-msgid "By using Twenty, you agree to the"
-msgstr "En utilisant Twenty, vous acceptez les"
+msgid "By using BSD, you agree to the"
+msgstr ""
 
 #. js-lingui-id: Yx41df
 #: src/modules/auth/sign-in-up/components/FooterNote.tsx
@@ -2525,9 +2548,29 @@ msgstr "Vue Calendrier"
 msgid "Calendars"
 msgstr "Calendriers"
 
+#. js-lingui-id: 8hvxGX
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
+msgid "Call"
+msgstr ""
+
+#. js-lingui-id: sBqvBo
+#: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
+msgid "Call queue"
+msgstr ""
+
+#. js-lingui-id: MDg/60
+#: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
+msgid "Call queue — dial one by one"
+msgstr ""
+
 #. js-lingui-id: qIlodj
 #: src/modules/object-record/record-field/ui/form-types/components/FormPhoneFieldInput.tsx
 msgid "Calling Code"
+msgstr ""
+
+#. js-lingui-id: 9rnFEa
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Calls"
 msgstr ""
 
 #. js-lingui-id: msssZq
@@ -2732,10 +2775,10 @@ msgstr "Vérifiez vos e-mails"
 msgid "Check your inbox to verify your new email address."
 msgstr "Vérifiez votre boîte de réception pour valider votre nouvelle adresse e-mail."
 
-#. js-lingui-id: SxwQE8
+#. js-lingui-id: +tvTOl
 #: src/modules/billing/hooks/useHandleCheckoutSession.ts
-msgid "Checkout session error. Please retry or contact Twenty team"
-msgstr "Erreur de session de paiement. Veuillez réessayer ou contacter l'équipe Twenty"
+msgid "Checkout session error. Please retry or contact BSD team"
+msgstr ""
 
 #. js-lingui-id: SviKkE
 #: src/pages/settings/profile/appearance/components/LocalePicker.tsx
@@ -3027,6 +3070,11 @@ msgstr "Vue compacte"
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
 msgid "Companies"
 msgstr "Entreprises"
+
+#. js-lingui-id: 7i8j3G
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "Company"
+msgstr ""
 
 #. js-lingui-id: 3WrMP5
 #: src/modules/settings/accounts/components/SettingsAccountsRowDropdownMenu.tsx
@@ -3726,6 +3774,7 @@ msgstr "Créer, éditer et supprimer des vues de l'espace de travail"
 
 #. js-lingui-id: d+F6q9
 #: src/modules/settings/components/SettingsDatabaseEventsForm.tsx
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
 #: src/modules/activities/calendar/components/CalendarEventDetails.tsx
 msgid "Created"
 msgstr "Créé"
@@ -4177,6 +4226,12 @@ msgstr "Désactiver le workflow"
 #: src/modules/settings/data-model/fields/forms/components/text/constants/TextDataModelSelectOptions.ts
 msgid "Deactivated"
 msgstr "Désactivé"
+
+#. js-lingui-id: ZlGycp
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Deals"
+msgstr ""
 
 #. js-lingui-id: Iotuxe
 #: src/modules/ai/components/RoutingDebugDisplay.tsx
@@ -5156,6 +5211,7 @@ msgstr "Domaines d'envoi d'e-mail"
 #: src/modules/settings/hooks/useSettingsNavigationItems.tsx
 #: src/modules/settings/accounts/components/SettingsAccountsSettingsSection.tsx
 #: src/modules/page-layout/constants/StandardPageLayoutTabTitleTranslations.ts
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Emails"
 msgstr "Courriels"
 
@@ -5673,10 +5729,10 @@ msgstr "Erreur lors de l'annulation du changement de niveau mesuré."
 msgid "Error while cancelling plan switching."
 msgstr "Erreur lors de l'annulation du changement de plan."
 
-#. js-lingui-id: QmR+2U
+#. js-lingui-id: 3RX15n
 #: src/modules/billing/hooks/useEndSubscriptionTrialPeriod.ts
-msgid "Error while ending trial period. Please contact Twenty team."
-msgstr "Erreur lors de la fin de la période d'essai. Veuillez contacter l'équipe Twenty."
+msgid "Error while ending trial period. Please contact BSD team."
+msgstr ""
 
 #. js-lingui-id: 5g78zo
 #: src/pages/settings/members/SettingsWorkspaceMember.tsx
@@ -6484,6 +6540,7 @@ msgstr ""
 
 #. js-lingui-id: sER+bs
 #: src/modules/page-layout/constants/StandardPageLayoutTabTitleTranslations.ts
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Files"
 msgstr ""
 
@@ -7370,6 +7427,7 @@ msgstr ""
 #: src/pages/inbox/InboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
+#: src/pages/inbox/InboxPage.tsx
 #: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "Inbox"
@@ -7955,6 +8013,21 @@ msgstr "Dernières 4 heures (du plus ancien au plus récent)"
 #: src/modules/settings/admin-panel/health-status/components/SettingsAdminWorkerMetricsGraph.tsx
 msgid "Last 7 Days (oldest → newest)"
 msgstr "Derniers 7 jours (du plus ancien au plus récent)"
+
+#. js-lingui-id: YTWmpy
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "Last call"
+msgstr ""
+
+#. js-lingui-id: nCbJHD
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "Last communication"
+msgstr ""
+
+#. js-lingui-id: HkehgM
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "Last email"
+msgstr ""
 
 #. js-lingui-id: c5zxSg
 #: src/modules/ai/components/internal/AIChatContextUsageButton.tsx
@@ -9291,6 +9364,11 @@ msgstr "Aucun changement détecté"
 msgid "No comment"
 msgstr ""
 
+#. js-lingui-id: UW//gA
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "No company linked"
+msgstr ""
+
 #. js-lingui-id: qTxPPY
 #: src/modules/settings/roles/role-permissions/object-level-permissions/record-level-permissions/components/SettingsRolePermissionsObjectLevelRecordLevelPermissionMeValueSelect.tsx
 msgid "No compatible fields"
@@ -9360,6 +9438,11 @@ msgstr "Aucune donnée trouvée"
 #: src/modules/views/view-picker/components/ViewPickerContentCreateMode.tsx
 msgid "No Date field"
 msgstr "Aucun champ de date"
+
+#. js-lingui-id: WJoEl5
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "No deals yet"
+msgstr ""
 
 #. js-lingui-id: P4KXUa
 #: src/modules/object-record/record-table/empty-state/components/RecordTableEmptyStateSoftDelete.tsx
@@ -9610,6 +9693,7 @@ msgstr "Aucun enregistrement correspondant aux critères de filtrage n'a été t
 #: src/modules/ui/input/components/internal/phone/components/PhoneCountryPickerDropdownSelect.tsx
 #: src/modules/ui/input/components/internal/currency/components/CurrencyPickerDropdownSelect.tsx
 #: src/modules/object-record/select/components/MultipleSelectDropdown.tsx
+#: src/modules/object-record/record-table/record-table-header/components/RecordTableColumnHeadDropdownMenu.tsx
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownOptionSelect.tsx
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownCurrencySelect.tsx
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownCountrySelect.tsx
@@ -9790,6 +9874,7 @@ msgstr ""
 #. js-lingui-id: 1DBGsz
 #: src/modules/page-layout/constants/StandardPageLayoutTabTitleTranslations.ts
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Notes"
 msgstr "Notes"
 
@@ -10274,6 +10359,7 @@ msgstr "Remplacer le brouillon"
 
 #. js-lingui-id: 6/dCYd
 #: src/pages/settings/data-model/SettingsObjectOverview.tsx
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
 msgid "Overview"
 msgstr "Vue d'ensemble"
 
@@ -10322,10 +10408,10 @@ msgstr "widget de mise en page"
 msgid "Page Name"
 msgstr ""
 
-#. js-lingui-id: NRvxzv
+#. js-lingui-id: Q8NaSe
 #: src/pages/not-found/NotFound.tsx
-msgid "Page Not Found | Twenty"
-msgstr "Page non trouvée | Twenty"
+msgid "Page Not Found | BSD"
+msgstr ""
 
 #. js-lingui-id: sF+Xp9
 #: src/pages/settings/security/event-logs/components/EventLogTableSelector.tsx
@@ -10946,9 +11032,9 @@ msgstr "Lire la documentation"
 msgid "Read your profile"
 msgstr ""
 
-#. js-lingui-id: tCXcL7
+#. js-lingui-id: aN/TWx
 #: src/pages/settings/ai/SettingsAIPrompts.tsx
-msgid "Read-only — managed by Twenty"
+msgid "Read-only — managed by BSD"
 msgstr ""
 
 #. js-lingui-id: W+ApAD
@@ -11702,6 +11788,11 @@ msgstr ""
 msgid "Search a custom tool..."
 msgstr ""
 
+#. js-lingui-id: 9gfDmT
+#: src/modules/object-record/record-table/record-table-header/components/RecordTableColumnHeadDropdownMenu.tsx
+msgid "Search a field"
+msgstr ""
+
 #. js-lingui-id: l1/uy2
 #: src/pages/settings/data-model/SettingsObjectFieldTable.tsx
 #: src/modules/settings/roles/role-permissions/object-level-permissions/field-permissions/components/SettingsRolePermissionsObjectLevelObjectFieldPermissionTable.tsx
@@ -12282,6 +12373,11 @@ msgstr ""
 msgid "Send an invite email to your team"
 msgstr "Envoyer un email d'invitation à votre équipe"
 
+#. js-lingui-id: 65dxv8
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
+msgid "Send email"
+msgstr ""
+
 #. js-lingui-id: i/TzEU
 #: src/modules/settings/roles/role-permissions/permission-flags/hooks/useActionRolePermissionFlagConfig.ts
 msgid "Send Email"
@@ -12537,6 +12633,11 @@ msgstr "Afficher uniquement les lignes avec des erreurs"
 msgid "Show value in center"
 msgstr ""
 
+#. js-lingui-id: ap8rCS
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Showing:"
+msgstr ""
+
 #. js-lingui-id: uVg8dY
 #: src/modules/object-record/object-options-dropdown/components/ObjectOptionsDropdownLayoutOpenInContent.tsx
 #: src/modules/object-record/object-options-dropdown/components/ObjectOptionsDropdownLayoutContent.tsx
@@ -12658,6 +12759,7 @@ msgid "Smart Model"
 msgstr ""
 
 #. js-lingui-id: TEERTx
+#: src/pages/sms-inbox/SmsInboxPage.tsx
 #: src/pages/sms-inbox/SmsInboxPage.tsx
 #: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
 msgid "SMS"
@@ -13122,10 +13224,10 @@ msgstr "Synchroniser avec Google"
 msgid "Sync with Outlook"
 msgstr "Synchroniser avec Outlook"
 
-#. js-lingui-id: +9x4tK
+#. js-lingui-id: nHQN9r
 #: src/pages/onboarding/SyncEmails.tsx
-msgid "Sync your Emails and Calendar with Twenty. Choose your privacy settings."
-msgstr "Synchronisez vos e-mails et votre calendrier avec Twenty. Choisissez vos paramètres de confidentialité."
+msgid "Sync your Emails and Calendar with BSD. Choose your privacy settings."
+msgstr ""
 
 #. js-lingui-id: N2FcBE
 #: src/modules/settings/accounts/components/SettingsAccountsConnectedAccountsRowRightContainer.tsx
@@ -13276,11 +13378,6 @@ msgstr ""
 msgid "Task title"
 msgstr "Titre de la tâche"
 
-#. js-lingui-id: pqXgqN
-#: src/modules/activities/notes/components/NoteTile.tsx
-msgid "Task Title"
-msgstr "Titre de la tâche"
-
 #. js-lingui-id: GtycJ/
 #: src/modules/page-layout/constants/StandardPageLayoutTabTitleTranslations.ts
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
@@ -13331,6 +13428,7 @@ msgstr "texte"
 
 #. js-lingui-id: xeiujy
 #: src/modules/workflow/workflow-steps/workflow-actions/http-request-action/components/BodyInput.tsx
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
 #: src/modules/ai/constants/OutputFieldTypeOptions.ts
 #: src/modules/advanced-text-editor/extensions/slash-command/DefaultSlashCommands.ts
 msgid "Text"
@@ -13350,6 +13448,11 @@ msgstr "Texte copié dans le presse-papiers"
 #: src/modules/object-record/record-field/ui/form-types/components/FormAdvancedTextFieldInput.tsx
 msgid "Text Editor"
 msgstr "Éditeur de texte"
+
+#. js-lingui-id: b5sq9Y
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Texts"
+msgstr ""
 
 #. js-lingui-id: 1xQkU9
 #: src/modules/settings/data-model/fields/forms/phones/components/SettingsDataModelFieldPhonesForm.tsx
@@ -14148,6 +14251,11 @@ msgstr ""
 msgid "Unable to Reach Back-end"
 msgstr "Impossible d'atteindre le serveur arrière"
 
+#. js-lingui-id: tuS5Jz
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Unblock"
+msgstr ""
+
 #. js-lingui-id: EbnX+O
 #: src/modules/settings/admin-panel/ai/components/SettingsAdminAI.tsx
 msgid "Unconfigured models"
@@ -14296,6 +14404,7 @@ msgstr ""
 #: src/modules/page-layout/components/PageLayoutRendererContent.tsx
 #: src/modules/object-record/record-title-cell/components/RecordTitleFullNameFieldDisplay.tsx
 #: src/modules/object-record/record-title-cell/components/RecordTitleCellTextFieldDisplay.tsx
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
 #: src/modules/object-record/components/RecordChip.tsx
 #: src/modules/object-record/components/RecordChip.tsx
 #: src/modules/mention/components/MentionRecordChip.tsx
@@ -14325,6 +14434,11 @@ msgstr "Role sans titre"
 #: src/modules/workflow/workflow-steps/workflow-actions/code-action/components/WorkflowEditActionCode.tsx
 msgid "Untitled Workflow"
 msgstr "Workflow sans titre"
+
+#. js-lingui-id: ia8YsC
+#: src/modules/activities/timeline-activities/components/TimelineUpcomingSection.tsx
+msgid "Upcoming"
+msgstr ""
 
 #. js-lingui-id: hmc//6
 #: src/modules/workflow/workflow-trigger/components/CronExpressionHelper.tsx
@@ -14385,6 +14499,7 @@ msgstr ""
 #: src/pages/settings/updates/SettingsUpdates.tsx
 #: src/pages/settings/updates/SettingsUpdates.tsx
 #: src/modules/settings/hooks/useSettingsNavigationItems.tsx
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Updates"
 msgstr "Mises à jour"
 
@@ -15009,9 +15124,9 @@ msgstr "Semaine"
 msgid "weeks"
 msgstr ""
 
-#. js-lingui-id: nTuObL
+#. js-lingui-id: b+LHTB
 #: src/pages/auth/SignInUp.tsx
-msgid "Welcome to Twenty"
+msgid "Welcome to BSD"
 msgstr ""
 
 #. js-lingui-id: t8ZvkC

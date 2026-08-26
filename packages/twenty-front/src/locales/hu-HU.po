@@ -422,6 +422,11 @@ msgstr ""
 msgid "{totalFieldsCount} fields"
 msgstr ""
 
+#. js-lingui-id: bjHyyG
+#: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
+msgid "{unreadSmsCount} unread"
+msgstr ""
+
 #. js-lingui-id: ITVweg
 #: src/modules/object-record/object-options-dropdown/components/ObjectOptionsDropdownDefaultView.tsx
 #: src/modules/object-record/object-options-dropdown/components/ObjectOptionsDropdownCustomView.tsx
@@ -785,6 +790,11 @@ msgstr ""
 msgid "Active Sync"
 msgstr "Aktív szinkron"
 
+#. js-lingui-id: 39ohdf
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Activities"
+msgstr ""
+
 #. js-lingui-id: m16xKo
 #: src/pages/settings/applications/tabs/SettingsApplicationRegistrationOAuthTab.tsx
 #: src/pages/settings/ai/components/SettingsAgentEvalsTab.tsx
@@ -980,6 +990,7 @@ msgid "Add node"
 msgstr "Csomópont hozzáadása"
 
 #. js-lingui-id: NeOuRn
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
 #: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/notes/components/NotesCard.tsx
@@ -1066,6 +1077,7 @@ msgid "Add SSO Identity Provider"
 msgstr "SSO Identitásszolgáltató hozzáadása"
 
 #. js-lingui-id: hWkQMS
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
 #: src/modules/activities/tasks/components/AddTaskButton.tsx
 msgid "Add task"
 msgstr "Feladat hozzáadása"
@@ -1351,6 +1363,7 @@ msgstr "Riasztás"
 #: src/modules/settings/roles/role-permissions/object-level-permissions/components/SettingsRolePermissionsObjectLevelSeeFieldsValueForObject.tsx
 #: src/modules/settings/components/SettingsDatabaseEventsForm.tsx
 #: src/modules/object-record/record-board/record-board-column/utils/getAggregateOperationShortLabel.ts
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 #: src/modules/activities/timeline-activities/components/TimelineCard.tsx
 #: src/modules/activities/notes/components/NotesCard.tsx
 #: src/modules/activities/files/components/FilesCard.tsx
@@ -2334,6 +2347,11 @@ msgstr "Számlázás"
 msgid "Billing interval"
 msgstr "Számlázási időköz"
 
+#. js-lingui-id: CJkEfx
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Block"
+msgstr ""
+
 #. js-lingui-id: K1172m
 #: src/modules/settings/accounts/components/SettingsAccountsBlocklistSection.tsx
 msgid "Blocklist"
@@ -2358,6 +2376,11 @@ msgstr "Törzs bevitele"
 #: src/pages/onboarding/internal/ChooseYourPlanContent.tsx
 msgid "Book a Call"
 msgstr "Hívás foglalása"
+
+#. js-lingui-id: ujZIY4
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
+msgid "Book a meeting"
+msgstr ""
 
 #. js-lingui-id: d/yr35
 #: src/pages/onboarding/BookCallDecision.tsx
@@ -2429,10 +2452,10 @@ msgstr ""
 msgid "by {author}"
 msgstr ""
 
-#. js-lingui-id: 8Pfllj
+#. js-lingui-id: 6cxKo4
 #: src/modules/auth/sign-in-up/components/FooterNote.tsx
-msgid "By using Twenty, you agree to the"
-msgstr "A Twenty használatával elfogadja a"
+msgid "By using BSD, you agree to the"
+msgstr ""
 
 #. js-lingui-id: Yx41df
 #: src/modules/auth/sign-in-up/components/FooterNote.tsx
@@ -2525,9 +2548,29 @@ msgstr "Naptár nézet"
 msgid "Calendars"
 msgstr "Naptárak"
 
+#. js-lingui-id: 8hvxGX
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
+msgid "Call"
+msgstr ""
+
+#. js-lingui-id: sBqvBo
+#: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
+msgid "Call queue"
+msgstr ""
+
+#. js-lingui-id: MDg/60
+#: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
+msgid "Call queue — dial one by one"
+msgstr ""
+
 #. js-lingui-id: qIlodj
 #: src/modules/object-record/record-field/ui/form-types/components/FormPhoneFieldInput.tsx
 msgid "Calling Code"
+msgstr ""
+
+#. js-lingui-id: 9rnFEa
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Calls"
 msgstr ""
 
 #. js-lingui-id: msssZq
@@ -2732,10 +2775,10 @@ msgstr "Ellenőrizze az e-mailjeit"
 msgid "Check your inbox to verify your new email address."
 msgstr "Ellenőrizze a beérkező leveleit az új e-mail-cím megerősítéséhez."
 
-#. js-lingui-id: SxwQE8
+#. js-lingui-id: +tvTOl
 #: src/modules/billing/hooks/useHandleCheckoutSession.ts
-msgid "Checkout session error. Please retry or contact Twenty team"
-msgstr "Fizetési munkamenet hiba. Kérem, próbálja újra, vagy vegye fel a kapcsolatot a Twenty csapatával"
+msgid "Checkout session error. Please retry or contact BSD team"
+msgstr ""
 
 #. js-lingui-id: SviKkE
 #: src/pages/settings/profile/appearance/components/LocalePicker.tsx
@@ -3027,6 +3070,11 @@ msgstr "Kompakt nézet"
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
 msgid "Companies"
 msgstr "Cégek"
+
+#. js-lingui-id: 7i8j3G
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "Company"
+msgstr ""
 
 #. js-lingui-id: 3WrMP5
 #: src/modules/settings/accounts/components/SettingsAccountsRowDropdownMenu.tsx
@@ -3726,6 +3774,7 @@ msgstr "Munkaterület nézetek létrehozása, szerkesztése és törlése"
 
 #. js-lingui-id: d+F6q9
 #: src/modules/settings/components/SettingsDatabaseEventsForm.tsx
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
 #: src/modules/activities/calendar/components/CalendarEventDetails.tsx
 msgid "Created"
 msgstr "Létrehozva"
@@ -4177,6 +4226,12 @@ msgstr "Munkafolyamat deaktiválása"
 #: src/modules/settings/data-model/fields/forms/components/text/constants/TextDataModelSelectOptions.ts
 msgid "Deactivated"
 msgstr "Deaktiválva"
+
+#. js-lingui-id: ZlGycp
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Deals"
+msgstr ""
 
 #. js-lingui-id: Iotuxe
 #: src/modules/ai/components/RoutingDebugDisplay.tsx
@@ -5156,6 +5211,7 @@ msgstr "Emailküldési Tartományok"
 #: src/modules/settings/hooks/useSettingsNavigationItems.tsx
 #: src/modules/settings/accounts/components/SettingsAccountsSettingsSection.tsx
 #: src/modules/page-layout/constants/StandardPageLayoutTabTitleTranslations.ts
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Emails"
 msgstr "Emailek"
 
@@ -5673,10 +5729,10 @@ msgstr "Hiba a mérőszint-váltás törlésekor."
 msgid "Error while cancelling plan switching."
 msgstr "Hiba a csomagváltás törlésekor."
 
-#. js-lingui-id: QmR+2U
+#. js-lingui-id: 3RX15n
 #: src/modules/billing/hooks/useEndSubscriptionTrialPeriod.ts
-msgid "Error while ending trial period. Please contact Twenty team."
-msgstr "Hiba a próbaidőszak befejezésekor. Kérjük, vegye fel a kapcsolatot a Twenty csapatával."
+msgid "Error while ending trial period. Please contact BSD team."
+msgstr ""
 
 #. js-lingui-id: 5g78zo
 #: src/pages/settings/members/SettingsWorkspaceMember.tsx
@@ -6484,6 +6540,7 @@ msgstr ""
 
 #. js-lingui-id: sER+bs
 #: src/modules/page-layout/constants/StandardPageLayoutTabTitleTranslations.ts
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Files"
 msgstr ""
 
@@ -7370,6 +7427,7 @@ msgstr ""
 #: src/pages/inbox/InboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
 #: src/pages/inbox/InboxPage.tsx
+#: src/pages/inbox/InboxPage.tsx
 #: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
 #: src/modules/activities/emails/components/EmailsCard.tsx
 msgid "Inbox"
@@ -7955,6 +8013,21 @@ msgstr "Elmúlt 4 óra (legrégebbi → legújabb)"
 #: src/modules/settings/admin-panel/health-status/components/SettingsAdminWorkerMetricsGraph.tsx
 msgid "Last 7 Days (oldest → newest)"
 msgstr "Elmúlt 7 nap (legrégebbi → legújabb)"
+
+#. js-lingui-id: YTWmpy
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "Last call"
+msgstr ""
+
+#. js-lingui-id: nCbJHD
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "Last communication"
+msgstr ""
+
+#. js-lingui-id: HkehgM
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "Last email"
+msgstr ""
 
 #. js-lingui-id: c5zxSg
 #: src/modules/ai/components/internal/AIChatContextUsageButton.tsx
@@ -9291,6 +9364,11 @@ msgstr "Nincs változás észlelve"
 msgid "No comment"
 msgstr ""
 
+#. js-lingui-id: UW//gA
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "No company linked"
+msgstr ""
+
 #. js-lingui-id: qTxPPY
 #: src/modules/settings/roles/role-permissions/object-level-permissions/record-level-permissions/components/SettingsRolePermissionsObjectLevelRecordLevelPermissionMeValueSelect.tsx
 msgid "No compatible fields"
@@ -9360,6 +9438,11 @@ msgstr "Nincs megadott adat"
 #: src/modules/views/view-picker/components/ViewPickerContentCreateMode.tsx
 msgid "No Date field"
 msgstr "Nincs Dátum mező"
+
+#. js-lingui-id: WJoEl5
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
+msgid "No deals yet"
+msgstr ""
 
 #. js-lingui-id: P4KXUa
 #: src/modules/object-record/record-table/empty-state/components/RecordTableEmptyStateSoftDelete.tsx
@@ -9610,6 +9693,7 @@ msgstr "A szűrési feltételeknek megfelelő rekordok nem találhatók."
 #: src/modules/ui/input/components/internal/phone/components/PhoneCountryPickerDropdownSelect.tsx
 #: src/modules/ui/input/components/internal/currency/components/CurrencyPickerDropdownSelect.tsx
 #: src/modules/object-record/select/components/MultipleSelectDropdown.tsx
+#: src/modules/object-record/record-table/record-table-header/components/RecordTableColumnHeadDropdownMenu.tsx
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownOptionSelect.tsx
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownCurrencySelect.tsx
 #: src/modules/object-record/object-filter-dropdown/components/ObjectFilterDropdownCountrySelect.tsx
@@ -9790,6 +9874,7 @@ msgstr ""
 #. js-lingui-id: 1DBGsz
 #: src/modules/page-layout/constants/StandardPageLayoutTabTitleTranslations.ts
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Notes"
 msgstr "Jegyzetek"
 
@@ -10274,6 +10359,7 @@ msgstr "Vázlat felülírása"
 
 #. js-lingui-id: 6/dCYd
 #: src/pages/settings/data-model/SettingsObjectOverview.tsx
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
 msgid "Overview"
 msgstr "Áttekintés"
 
@@ -10322,10 +10408,10 @@ msgstr "Oldalelrendezés widget"
 msgid "Page Name"
 msgstr ""
 
-#. js-lingui-id: NRvxzv
+#. js-lingui-id: Q8NaSe
 #: src/pages/not-found/NotFound.tsx
-msgid "Page Not Found | Twenty"
-msgstr "Az oldal nem található | Twenty"
+msgid "Page Not Found | BSD"
+msgstr ""
 
 #. js-lingui-id: sF+Xp9
 #: src/pages/settings/security/event-logs/components/EventLogTableSelector.tsx
@@ -10946,9 +11032,9 @@ msgstr "Dokumentáció olvasása"
 msgid "Read your profile"
 msgstr ""
 
-#. js-lingui-id: tCXcL7
+#. js-lingui-id: aN/TWx
 #: src/pages/settings/ai/SettingsAIPrompts.tsx
-msgid "Read-only — managed by Twenty"
+msgid "Read-only — managed by BSD"
 msgstr ""
 
 #. js-lingui-id: W+ApAD
@@ -11702,6 +11788,11 @@ msgstr ""
 msgid "Search a custom tool..."
 msgstr ""
 
+#. js-lingui-id: 9gfDmT
+#: src/modules/object-record/record-table/record-table-header/components/RecordTableColumnHeadDropdownMenu.tsx
+msgid "Search a field"
+msgstr ""
+
 #. js-lingui-id: l1/uy2
 #: src/pages/settings/data-model/SettingsObjectFieldTable.tsx
 #: src/modules/settings/roles/role-permissions/object-level-permissions/field-permissions/components/SettingsRolePermissionsObjectLevelObjectFieldPermissionTable.tsx
@@ -12282,6 +12373,11 @@ msgstr ""
 msgid "Send an invite email to your team"
 msgstr "Invitáló e-mail küldése a csapatnak"
 
+#. js-lingui-id: 65dxv8
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
+msgid "Send email"
+msgstr ""
+
 #. js-lingui-id: i/TzEU
 #: src/modules/settings/roles/role-permissions/permission-flags/hooks/useActionRolePermissionFlagConfig.ts
 msgid "Send Email"
@@ -12537,6 +12633,11 @@ msgstr "Csak a hibás sorokat jelenítse meg"
 msgid "Show value in center"
 msgstr ""
 
+#. js-lingui-id: ap8rCS
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Showing:"
+msgstr ""
+
 #. js-lingui-id: uVg8dY
 #: src/modules/object-record/object-options-dropdown/components/ObjectOptionsDropdownLayoutOpenInContent.tsx
 #: src/modules/object-record/object-options-dropdown/components/ObjectOptionsDropdownLayoutContent.tsx
@@ -12658,6 +12759,7 @@ msgid "Smart Model"
 msgstr ""
 
 #. js-lingui-id: TEERTx
+#: src/pages/sms-inbox/SmsInboxPage.tsx
 #: src/pages/sms-inbox/SmsInboxPage.tsx
 #: src/modules/navigation/components/NavigationDrawerOtherSection.tsx
 msgid "SMS"
@@ -13122,10 +13224,10 @@ msgstr "Szinkronizálás a Google-lel"
 msgid "Sync with Outlook"
 msgstr "Szinkronizálás az Outlook-kal"
 
-#. js-lingui-id: +9x4tK
+#. js-lingui-id: nHQN9r
 #: src/pages/onboarding/SyncEmails.tsx
-msgid "Sync your Emails and Calendar with Twenty. Choose your privacy settings."
-msgstr "Szinkronizálja e-mailjeit és naptárát a Twenty-vel. Válassza ki az adatvédelmi beállításait."
+msgid "Sync your Emails and Calendar with BSD. Choose your privacy settings."
+msgstr ""
 
 #. js-lingui-id: N2FcBE
 #: src/modules/settings/accounts/components/SettingsAccountsConnectedAccountsRowRightContainer.tsx
@@ -13276,11 +13378,6 @@ msgstr ""
 msgid "Task title"
 msgstr "Feladat címe"
 
-#. js-lingui-id: pqXgqN
-#: src/modules/activities/notes/components/NoteTile.tsx
-msgid "Task Title"
-msgstr "Feladat címe"
-
 #. js-lingui-id: GtycJ/
 #: src/modules/page-layout/constants/StandardPageLayoutTabTitleTranslations.ts
 #: src/modules/command-menu-item/record/constants/DefaultRecordCommandMenuItemsConfig.tsx
@@ -13331,6 +13428,7 @@ msgstr "szöveg"
 
 #. js-lingui-id: xeiujy
 #: src/modules/workflow/workflow-steps/workflow-actions/http-request-action/components/BodyInput.tsx
+#: src/modules/object-record/record-show/components/RecordShowIdentityCard.tsx
 #: src/modules/ai/constants/OutputFieldTypeOptions.ts
 #: src/modules/advanced-text-editor/extensions/slash-command/DefaultSlashCommands.ts
 msgid "Text"
@@ -13350,6 +13448,11 @@ msgstr "Szöveg vágólapra másolva"
 #: src/modules/object-record/record-field/ui/form-types/components/FormAdvancedTextFieldInput.tsx
 msgid "Text Editor"
 msgstr "Szövegszerkesztő"
+
+#. js-lingui-id: b5sq9Y
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
+msgid "Texts"
+msgstr ""
 
 #. js-lingui-id: 1xQkU9
 #: src/modules/settings/data-model/fields/forms/phones/components/SettingsDataModelFieldPhonesForm.tsx
@@ -14146,6 +14249,11 @@ msgstr ""
 msgid "Unable to Reach Back-end"
 msgstr "Nem sikerült elérni a háttérszolgáltatást"
 
+#. js-lingui-id: tuS5Jz
+#: src/pages/sms-inbox/SmsInboxPage.tsx
+msgid "Unblock"
+msgstr ""
+
 #. js-lingui-id: EbnX+O
 #: src/modules/settings/admin-panel/ai/components/SettingsAdminAI.tsx
 msgid "Unconfigured models"
@@ -14294,6 +14402,7 @@ msgstr ""
 #: src/modules/page-layout/components/PageLayoutRendererContent.tsx
 #: src/modules/object-record/record-title-cell/components/RecordTitleFullNameFieldDisplay.tsx
 #: src/modules/object-record/record-title-cell/components/RecordTitleCellTextFieldDisplay.tsx
+#: src/modules/object-record/record-show/components/RecordShowContextRail.tsx
 #: src/modules/object-record/components/RecordChip.tsx
 #: src/modules/object-record/components/RecordChip.tsx
 #: src/modules/mention/components/MentionRecordChip.tsx
@@ -14323,6 +14432,11 @@ msgstr "Cím nélküli szerep"
 #: src/modules/workflow/workflow-steps/workflow-actions/code-action/components/WorkflowEditActionCode.tsx
 msgid "Untitled Workflow"
 msgstr "Cím nélküli munkafolyamat"
+
+#. js-lingui-id: ia8YsC
+#: src/modules/activities/timeline-activities/components/TimelineUpcomingSection.tsx
+msgid "Upcoming"
+msgstr ""
 
 #. js-lingui-id: hmc//6
 #: src/modules/workflow/workflow-trigger/components/CronExpressionHelper.tsx
@@ -14383,6 +14497,7 @@ msgstr ""
 #: src/pages/settings/updates/SettingsUpdates.tsx
 #: src/pages/settings/updates/SettingsUpdates.tsx
 #: src/modules/settings/hooks/useSettingsNavigationItems.tsx
+#: src/modules/activities/timeline-activities/components/TimelineFilterPills.tsx
 msgid "Updates"
 msgstr "Frissítések"
 
@@ -15007,9 +15122,9 @@ msgstr "Hét"
 msgid "weeks"
 msgstr ""
 
-#. js-lingui-id: nTuObL
+#. js-lingui-id: b+LHTB
 #: src/pages/auth/SignInUp.tsx
-msgid "Welcome to Twenty"
+msgid "Welcome to BSD"
 msgstr ""
 
 #. js-lingui-id: t8ZvkC
