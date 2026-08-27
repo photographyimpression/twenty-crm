@@ -6,6 +6,20 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>Daily Command Center</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>" />
+    <!-- Embedded mode: when the CRM app frames us on its /command page we drop
+         our own brand row and our request light — the CRM's top bar (page title
+         + status strip) is then the only chrome and the only way to file a
+         request, so it reads as one app, not a frame in a frame. Detected via
+         ?embed=1 (set by the CRM page) or by being framed at all; applied as a
+         class on <html> before first paint so nothing flashes. -->
+    <script>
+      (function () {
+        var embedded = false;
+        try { embedded = window.self !== window.top; } catch (e) { embedded = true; }
+        if (!embedded && new URLSearchParams(location.search).has('embed')) embedded = true;
+        if (embedded) document.documentElement.classList.add('embedded');
+      })();
+    </script>
     <style>
       :root {
         --bg: #0f1115;
@@ -41,6 +55,14 @@
       }
       .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
       .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+      /* Embedded mode (html.embedded, set by the script in <head>): framed by
+         the CRM's /command page — the CRM top bar already names the page and
+         carries the status strip, so our brand row and our own request light
+         come off (ONE header, ONE feedback entry). */
+      html.embedded header { padding-top: 12px; }
+      html.embedded .brand { display: none; }
+      html.embedded #lightRequest { display: none; }
+      html.embedded .light-wrap:has(> #lightRequest) { display: none; }
       .tabs { display: flex; gap: 6px; }
       .tab {
         background: transparent; color: var(--muted); border: 1px solid transparent;
