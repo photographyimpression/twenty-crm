@@ -1,19 +1,20 @@
-// Impression fork: the Daily Command Center used to be an external link, which
-// dumped you into a bare page with no sidebar and no header — you had left the
-// app. It is a separate Express app (nginx serves it at /command-center/, and
-// the CRM SPA cannot own that path), so it is embedded here instead: same
-// origin, so its CRM single sign-on and cookies work untouched, but it now
-// lives inside the normal shell with the nav, the header and the feedback icon.
+// Impression fork: the Daily Command Center is a separate Express app (nginx
+// serves it at /command-center/, and the CRM SPA cannot own that path), so it
+// is embedded here as a same-origin frame — but chromeless. The page is the
+// app's own top bar (title + status strip) with the tool filling everything
+// below it edge to edge; the tool loads with ?embed=1 and drops its own brand
+// row and its own request light in return (see its index.html). One app, no
+// frame in a frame, one feedback entry.
 import { styled } from '@linaria/react';
 import { IconListCheck } from 'twenty-ui/display';
 
-import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
 
-// The embedded app owns its own scrolling, so the frame fills the area and
-// never produces a second, nested scrollbar.
+// The embedded app owns its own scrolling, so the frame fills the whole
+// content area (no page-body padding, no panel around it — the dark tool IS
+// the page) and never produces a second, nested scrollbar.
 const StyledFrame = styled.iframe`
   border: none;
   display: block;
@@ -39,18 +40,16 @@ export const CommandCenterPage = () => (
     <PageTitle title="Command Center" />
     {/* eslint-disable-next-line lingui/no-unlocalized-strings */}
     <PageHeader title="Command Center" Icon={IconListCheck} />
-    <MainContainerLayoutWithSidePanel>
-      <StyledFrameWrapper>
-        <StyledFrame
-          src="/command-center/"
-          title="Command Center"
-          // Same-origin app of our own: allow-same-origin keeps its session
-          // cookie working, and it needs scripts + forms to function at all.
-          // allow-top-navigation-by-user-activation lets lead-name links open
-          // the person's CRM profile in the top window (a click, not a script).
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-top-navigation-by-user-activation"
-        />
-      </StyledFrameWrapper>
-    </MainContainerLayoutWithSidePanel>
+    <StyledFrameWrapper>
+      <StyledFrame
+        src="/command-center/?embed=1"
+        title="Command Center"
+        // Same-origin app of our own: allow-same-origin keeps its session
+        // cookie working, and it needs scripts + forms to function at all.
+        // allow-top-navigation-by-user-activation lets lead-name links open
+        // the person's CRM profile in the top window (a click, not a script).
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-top-navigation-by-user-activation"
+      />
+    </StyledFrameWrapper>
   </PageContainer>
 );
