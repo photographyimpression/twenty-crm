@@ -413,19 +413,28 @@ export class TelnyxWebhookService {
         this.logger.error(`Failed to log SMS to timeline: ${err}`),
       );
 
-      // Fire any "sms.received" workflow first (gives the user a per-run
-      // execution log in the Workflows UI). Only fall back to the
-      // hardcoded forwarder if no workflow is configured.
-      const workflowsFired = await this.dispatchSmsReceivedWorkflow(smsRecord);
+      // "ATT Avi …" — the boss texting a ZMN teammate through the company
+      // line. Handed to the ZMN control plane, which puts it on that
+      // teammate's desk; they text their answer back (which arrives here
+      // again as an outbound record). Routed messages skip the email
+      // forward and the customer auto-reply — Avi IS the reply.
+      const routed = await this.routeSmsToZmnAssistant(fromNumber, smsRecord);
 
-      if (!workflowsFired) {
-        await this.forwardSmsToEmail(fromNumber, toNumber, payload.text || '');
-      }
+      if (!routed) {
+        // Fire any "sms.received" workflow first (gives the user a per-run
+        // execution log in the Workflows UI). Only fall back to the
+        // hardcoded forwarder if no workflow is configured.
+        const workflowsFired = await this.dispatchSmsReceivedWorkflow(smsRecord);
 
-      // AI auto-reply — guarded against self-echoes, marketing loopbacks,
-      // and floods (see shouldSendAutoReply for the full guard list).
-      if (this.shouldSendAutoReply(fromNumber, payload.text || '')) {
-        await this.sendAutoReply(fromNumber, payload.text || '');
+        if (!workflowsFired) {
+          await this.forwardSmsToEmail(fromNumber, toNumber, payload.text || '');
+        }
+
+        // AI auto-reply — guarded against self-echoes, marketing loopbacks,
+        // and floods (see shouldSendAutoReply for the full guard list).
+        if (this.shouldSendAutoReply(fromNumber, payload.text || '')) {
+          await this.sendAutoReply(fromNumber, payload.text || '');
+        }
       }
     }
 
@@ -930,6 +939,82 @@ export class TelnyxWebhookService {
       const message = error instanceof Error ? error.message : String(error);
 
       this.logger.error(`Failed to dispatch sms.received workflow: ${message}`);
+
+      return false;
+    }
+  }
+
+  // Forward an "ATT <teammate>" text from the boss to the ZMN control plane.
+  // Returns true when ZMN accepted it (so the caller skips the email forward
+  // and the customer auto-reply). False when the text isn't addressed to a
+  // teammate, isn't from the boss's phone, ZMN isn't configured, or the
+  // hand-off failed — in every false case the normal SMS pipeline runs, so a
+  // ZMN outage never silently eats a message.
+  private async routeSmsToZmnAssistant(
+    from: string,
+    smsRecord: SmsRecord,
+  ): Promise<boolean> {
+    const controlUrl = process.env['ZMN_CONTROL_URL'];
+    const token = process.env['ZMN_SMS_TOKEN'];
+
+    if (!controlUrl || !token) return false;
+
+    // Only the boss's own phone can task a teammate — the prefix is an
+    // instruction to an employee, not something a customer should be able to
+    // trigger. Compared on digits so +1/1/bare forms all match.
+    const bossDigits = (
+      process.env['SMS_BOSS_NUMBER'] ||
+      process.env['OWNER_PHONE_NUMBER'] ||
+      '+15148947978'
+    ).replace(/\D/g, '');
+    const fromDigits = from.replace(/\D/g, '');
+
+    if (!fromDigits || fromDigits !== bossDigits) return false;
+
+    // "ATT Avi", "att: avi", "Attn Avi —" … the teammate name follows.
+    const match = /^\s*at+t(?:n)?\s*[:\-]?\s*([a-zA-Z]+)\b/i.exec(
+      smsRecord.text || '',
+    );
+
+    if (!match) return false;
+
+    const agent = match[1];
+    const payload = {
+      from,
+      to: smsRecord.to,
+      text: smsRecord.text,
+      agent,
+      message_id: smsRecord.id,
+    };
+
+    try {
+      const response = await fetch(
+        `${controlUrl.replace(/\/$/, '')}/sms/inbound`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      if (response.ok) {
+        this.logger.log(`SMS routed to ZMN teammate "${agent}" (task queued)`);
+
+        return true;
+      }
+
+      this.logger.error(
+        `ZMN rejected SMS hand-off for "${agent}" (${response.status}) — falling back to normal pipeline`,
+      );
+
+      return false;
+    } catch (error) {
+      this.logger.error(
+        `ZMN SMS hand-off failed for "${agent}": ${error instanceof Error ? error.message : error} — falling back to normal pipeline`,
+      );
 
       return false;
     }
