@@ -57,12 +57,13 @@
       .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
       /* Embedded mode (html.embedded, set by the script in <head>): framed by
          the CRM's /command page — the CRM top bar already names the page and
-         carries the status strip, so our brand row and our own request light
-         come off (ONE header, ONE feedback entry). */
+         carries the full status strip (request, decision, queue, update), so
+         our brand row and our ENTIRE lights row come off. Keeping the
+         decision/queue/update lights here stacked a second copy of the same
+         icons directly under the CRM's strip (board card 2026-08-27). */
       html.embedded header { padding-top: 12px; }
       html.embedded .brand { display: none; }
-      html.embedded #lightRequest { display: none; }
-      html.embedded .light-wrap:has(> #lightRequest) { display: none; }
+      html.embedded .lights { display: none; }
       .tabs { display: flex; gap: 6px; }
       .tab {
         background: transparent; color: var(--muted); border: 1px solid transparent;
