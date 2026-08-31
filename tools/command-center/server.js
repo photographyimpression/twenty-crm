@@ -343,7 +343,17 @@ const OLLAMA_RELAY_URL =
   process.env.CC_OLLAMA_RELAY_URL ||
   'https://crm.impressionphotography.ca/ollama-relay/api/generate';
 const OLLAMA_MODEL = process.env.CC_OLLAMA_MODEL || 'llama3.2:3b';
-const OLLAMA_TIMEOUT_MS = Number(process.env.CC_OLLAMA_TIMEOUT_MS || 25000);
+// 90s, not 25s. Measured 2026-08-31 on the OVH box (CPU-only, no GPU): a warm
+// llama3.2:3b takes ~53s to produce a 40-token opener, and ~28s just to load
+// the model cold. The old 25s budget could therefore NEVER succeed — every
+// attempt aborted, the feature had been silently dead for months, and each
+// abort still cost 25s. The budget is only affordable because the opener pass
+// no longer runs inside the request path (see generatePendingOpeners below).
+const OLLAMA_TIMEOUT_MS = Number(process.env.CC_OLLAMA_TIMEOUT_MS || 90000);
+// After a pass where every generation attempt failed, stop trying for a while.
+// Without this, a down/overloaded Ollama means 3 doomed 90s fetches every 5
+// minutes, forever, pegging cores on a box that also runs production services.
+const OPENER_COOLDOWN_MS = Number(process.env.CC_OPENER_COOLDOWN_MS || 30 * 60 * 1000);
 // Relay bearer token: env first, then the on-disk relay-token file (same one
 // the OVH host keeps at /root/.ollama-relay-token), then the local copy that
 // ships next to the app. Read once at startup; never logged.
@@ -1221,15 +1231,29 @@ async function generateOpener(firstName, companyName) {
 // after the greeting. Idempotent (needsOpener() guards against re-doing) and
 // fully isolated — it logs and continues on any per-row failure, and the caller
 // wraps it so it can never break reconcile.
+//
+// NEVER await this from a request handler. Generation is minutes-slow on this
+// CPU-only box, and awaiting it inside reconcile() is what made the Command
+// Center appear broken (2026-08-31): GET /api/queue reconciles first, so every
+// page load sat behind 3 x 25s of doomed Ollama calls — 75s of spinner before
+// a single card rendered. reconcile() now fires this in the background.
+let openerPassInFlight = null;
+let openerCooldownUntil = 0;
+
 async function generatePendingOpeners(approvals) {
   const targets = (approvals || []).filter(needsOpener);
+  if (targets.length === 0) return 0;
+  if (Date.now() < openerCooldownUntil) return 0;
   let patched = 0;
+  let attempted = 0;
+  let failed = 0;
   for (const a of targets) {
     try {
       const split = splitGreeting(a.emailBody);
       if (!split) continue; // body changed under us — skip
+      attempted += 1;
       const opener = await generateOpener(firstNameOf(a), a.companyName);
-      if (!opener) continue; // Ollama down/slow — leave plain, retry next run
+      if (!opener) { failed += 1; continue; } // Ollama down/slow — retry later
       // Splice: greeting, blank line, opener, blank line, original rest.
       const newBody = `${split.greeting}\n\n${opener}\n\n${split.rest}`;
       await updateApproval(a.id, { emailBody: newBody });
@@ -1238,10 +1262,39 @@ async function generatePendingOpeners(approvals) {
         `[opener] inserted opener for touch ${a.touchNumber} of ${a.recipientEmail}`
       );
     } catch (e) {
+      failed += 1;
       console.error(`[opener] patch failed for approval ${a.id} (continuing): ${e.message}`);
     }
   }
+  // Every attempt failed => the relay is down or hopelessly slow. Back off so
+  // we stop hammering it (and burning cores) on every reconcile.
+  if (attempted > 0 && failed === attempted) {
+    openerCooldownUntil = Date.now() + OPENER_COOLDOWN_MS;
+    console.error(
+      `[opener] all ${failed} generation(s) failed — pausing the opener pass for ` +
+        `${Math.round(OPENER_COOLDOWN_MS / 60000)} min`
+    );
+  }
   return patched;
+}
+
+// Fire the opener pass in the background, at most one at a time. Returns
+// immediately so callers (reconcile, and therefore GET /api/queue) never wait
+// on Ollama. Openers still land — on the 5-minute timer's reconcile, or on the
+// next one after this pass finishes.
+function startOpenerPass(approvals) {
+  if (openerPassInFlight) return false;
+  if (Date.now() < openerCooldownUntil) return false;
+  if (!(approvals || []).some(needsOpener)) return false;
+  openerPassInFlight = generatePendingOpeners(approvals)
+    .catch((e) => {
+      console.error('[opener] pass failed (continuing):', e.message);
+      return 0;
+    })
+    .finally(() => {
+      openerPassInFlight = null;
+    });
+  return true;
 }
 
 let reconcileInFlight = null;
@@ -1347,15 +1400,12 @@ async function reconcile() {
       console.error('[reconcile] auto-unenroll pass failed (continuing):', e.message);
     }
 
-    // Lazy, best-effort AI-opener fill for Pre-Phone touches 4-6. Fully
-    // isolated: any failure here must never break scheduling/queue. Uses the
-    // post-scheduling approvals snapshot (fine — needsOpener only reads body).
-    let openersPatched = 0;
-    try {
-      openersPatched = await generatePendingOpeners(approvals);
-    } catch (e) {
-      console.error('[opener] pass failed (continuing):', e.message);
-    }
+    // Lazy, best-effort AI-opener fill for Pre-Phone touches 4-6. Started, NOT
+    // awaited: generation runs for tens of seconds per touch on this CPU-only
+    // box, and awaiting it here put that latency directly in front of every
+    // GET /api/queue. Uses the post-scheduling approvals snapshot (fine —
+    // needsOpener only reads body).
+    const openersRunning = startOpenerPass(approvals);
 
     return {
       written: dateWrites.length,
@@ -1363,7 +1413,7 @@ async function reconcile() {
       total: approvals.length,
       paused: pausedSet.size,
       newlyPaused: replyResult.pausedNow.length,
-      openersPatched,
+      openersRunning,
       unenrolled,
     };
   })();
