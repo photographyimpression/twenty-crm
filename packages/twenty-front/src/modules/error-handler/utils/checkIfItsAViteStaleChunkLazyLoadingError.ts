@@ -1,26 +1,25 @@
-// A redeploy replaces the content-hashed chunks, so a tab that has been open
-// across one asks for a filename that no longer exists. Our server does NOT
-// 404 that request — the SPA catch-all answers every unknown path with
-// index.html, so the browser gets `200 text/html` where it expected a module
-// and refuses it on MIME grounds. That produces a DIFFERENT message from the
-// network-failure one, which is why the auto-reload below used to miss it and
-// the page dead-ended on "Sorry, something went wrong" instead (2026-08-31).
+// A redeploy replaces the content-hashed chunks, so a tab left open across one
+// asks for a filename that no longer exists and the lazy route throws. We
+// recover by reloading the shell — but only if we recognise the error, and the
+// engines word it differently.
 //
-// Match every shape the three engines produce for "this chunk is stale":
-//   Chrome  fetch failed : Failed to fetch dynamically imported module: <url>
-//   Chrome  served HTML  : Failed to load module script: Expected a JavaScript
-//                          module script but the server responded with a MIME
-//                          type of "text/html". …
-//   Firefox fetch failed : error loading dynamically imported module
-//   Firefox served HTML  : Loading module from "<url>" was blocked because of a
-//                          disallowed MIME type ("text/html").
-//   Safari               : Importing a module script failed.
+// Verified against prod on 2026-08-31: Chrome reports a deleted chunk as
+// "Failed to fetch dynamically imported module", even though our server does
+// not 404 it (the SPA catch-all answers unknown paths with index.html, so the
+// response is 200 text/html and Chrome folds the MIME rejection into that same
+// message). Firefox and Safari word it their own way, and a classic-script
+// MIME rejection surfaces differently again — none of which the original
+// single-string check matched.
 const STALE_CHUNK_ERROR_MESSAGES = [
+  // Chrome / Edge
   'failed to fetch dynamically imported module',
+  // Firefox
   'error loading dynamically imported module',
+  // Safari
+  'importing a module script failed',
+  // MIME rejections, when the engine surfaces them directly
   'failed to load module script',
   'was blocked because of a disallowed mime type',
-  'importing a module script failed',
 ];
 
 export const checkIfItsAViteStaleChunkLazyLoadingError = (error: Error) => {

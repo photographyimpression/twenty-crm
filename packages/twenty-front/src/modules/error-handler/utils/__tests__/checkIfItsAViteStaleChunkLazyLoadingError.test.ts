@@ -11,8 +11,8 @@ describe('checkIfItsAViteStaleChunkLazyLoadingError', () => {
     expect(result).toBe(true);
   });
 
-  // The shape our own server produces: the SPA catch-all answers a deleted
-  // chunk with index.html, so the browser rejects it on MIME grounds.
+  // Some engines surface a MIME rejection directly instead of folding it into
+  // the dynamic-import failure above.
   it('should return true when the server answered the chunk with HTML', () => {
     const error = new Error(
       'Failed to load module script: Expected a JavaScript module script but the server responded with a MIME type of "text/html". Strict MIME type checking is enforced for module scripts per HTML spec.',
