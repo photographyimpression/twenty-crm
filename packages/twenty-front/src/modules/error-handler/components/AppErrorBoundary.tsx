@@ -16,6 +16,27 @@ const hasErrorCode = (
   return 'code' in error && isDefined(error.code);
 };
 
+const STALE_CHUNK_RELOAD_KEY = 'staleChunkReloadAttempted';
+
+// sessionStorage, so the guard is per tab and clears when the tab closes.
+// Storage can throw (Safari private mode); treat that as "not reloaded yet" —
+// the worst case is the old, unguarded behaviour.
+const hasReloadedForStaleChunk = () => {
+  try {
+    return sessionStorage.getItem(STALE_CHUNK_RELOAD_KEY) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const markReloadedForStaleChunk = () => {
+  try {
+    sessionStorage.setItem(STALE_CHUNK_RELOAD_KEY, 'true');
+  } catch {
+    // no-op: a tab that cannot remember simply behaves as it did before
+  }
+};
+
 export const AppErrorBoundary = ({
   children,
   FallbackComponent,
@@ -40,7 +61,13 @@ export const AppErrorBoundary = ({
     const isViteStaleChunkLazyLoadingError =
       checkIfItsAViteStaleChunkLazyLoadingError(error);
 
-    if (isViteStaleChunkLazyLoadingError) {
+    // Reload once per tab, not every time. A reload fetches a fresh index.html
+    // and the chunk hashes it names, which is the whole fix — but if a deploy
+    // is genuinely broken the chunk stays unloadable, and an unguarded reload
+    // would put the tab in an endless refresh loop. One attempt, then let the
+    // fallback render so the user sees something they can act on.
+    if (isViteStaleChunkLazyLoadingError && !hasReloadedForStaleChunk()) {
+      markReloadedForStaleChunk();
       window.location.reload();
     }
   };
