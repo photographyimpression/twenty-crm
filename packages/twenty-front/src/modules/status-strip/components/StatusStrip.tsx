@@ -47,6 +47,9 @@ import {
   useState,
 } from 'react';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
+import { usePushFocusItemToFocusStack } from '@/ui/utilities/focus/hooks/usePushFocusItemToFocusStack';
+import { useRemoveFocusItemFromFocusStackById } from '@/ui/utilities/focus/hooks/useRemoveFocusItemFromFocusStackById';
+import { FocusComponentType } from '@/ui/utilities/focus/types/FocusComponentType';
 
 const FEEDBACK_BOARD_URL = (
   import.meta.env.REACT_APP_FEEDBACK_BOARD_URL || ''
@@ -779,6 +782,39 @@ export const StatusStrip = () => {
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
   }, [popupOpen, addAttachmentFiles]);
+
+  // Claim keyboard focus while the popup is open (board card 2026-08-30: with
+  // a client Note open in the side panel, every keystroke typed into this
+  // popup was intercepted by the note editor's catch-all side-panel hotkey and
+  // landed IN THE NOTE instead of the request box). The app's hotkey system
+  // routes keys to whatever sits on top of the focus stack — this popup never
+  // pushed itself on, so the side panel kept winning. Push a focus item while
+  // open, pop it on close; typing then flows to the browser-focused textarea.
+  const QUICK_REQUEST_FOCUS_ID = 'status-strip-quick-request-popup';
+  const { pushFocusItemToFocusStack } = usePushFocusItemToFocusStack();
+  const { removeFocusItemFromFocusStackById } =
+    useRemoveFocusItemFromFocusStackById();
+  useEffect(() => {
+    if (!popupOpen) {
+      return;
+    }
+    pushFocusItemToFocusStack({
+      focusId: QUICK_REQUEST_FOCUS_ID,
+      component: {
+        type: FocusComponentType.DIALOG,
+        instanceId: QUICK_REQUEST_FOCUS_ID,
+      },
+    });
+    return () => {
+      removeFocusItemFromFocusStackById({
+        focusId: QUICK_REQUEST_FOCUS_ID,
+      });
+    };
+  }, [
+    popupOpen,
+    pushFocusItemToFocusStack,
+    removeFocusItemFromFocusStackById,
+  ]);
 
   // Closing the popup KEEPS the draft — text, pasted screenshots, type and
   // urgent all survive, so the flow Moshe asked for works: open the popup,
