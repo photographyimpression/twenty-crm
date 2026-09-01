@@ -18,10 +18,15 @@ import { findTargetFieldInfo } from '@/object-record/record-field/ui/utils/junct
 
 export const useOpenCreateActivityDrawer = ({
   activityObjectNameSingular,
+  // LOCAL-PATCH: the Salesmate-style center-column note composer creates the
+  // note through this same hook but keeps it INLINE in the timeline instead
+  // of opening the side panel (board card 2026-08-30).
+  openInSidePanel = true,
 }: {
   activityObjectNameSingular:
     | CoreObjectNameSingular.Note
     | CoreObjectNameSingular.Task;
+  openInSidePanel?: boolean;
 }) => {
   const { createOneRecord: createOneActivity } = useCreateOneRecord<
     (Task | Note) & { position: 'first' | 'last' }
@@ -125,15 +130,19 @@ export const useOpenCreateActivityDrawer = ({
       setActivityTargetableEntityArray([]);
     }
 
-    openRecordInSidePanel({
-      recordId: activity.id,
-      objectNameSingular: activityObjectNameSingular,
-      isNewRecord: true,
-    });
+    if (openInSidePanel) {
+      openRecordInSidePanel({
+        recordId: activity.id,
+        objectNameSingular: activityObjectNameSingular,
+        isNewRecord: true,
+      });
 
-    setViewableRecordId(activity.id);
+      setViewableRecordId(activity.id);
+    }
 
     setIsUpsertingActivityInDB(false);
+
+    return activity;
   };
 
   return openCreateActivityDrawer;

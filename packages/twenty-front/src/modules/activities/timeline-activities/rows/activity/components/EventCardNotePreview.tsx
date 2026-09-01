@@ -1,4 +1,5 @@
 import { styled } from '@linaria/react';
+import { useState } from 'react';
 
 import { type NoteActivityClassification } from '@/activities/timeline-activities/utils/classifyNoteActivity';
 import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSidePanel';
@@ -84,6 +85,11 @@ const StyledViewDetails = styled.span`
   }
 `;
 
+const StyledViewDetailsRow = styled.div`
+  display: flex;
+  gap: ${themeCssVariables.spacing[4]};
+`;
+
 const StyledHeaderRow = styled.div`
   align-items: center;
   display: flex;
@@ -107,11 +113,19 @@ export const EventCardNotePreview = ({
 }: EventCardNotePreviewProps) => {
   const { openRecordInSidePanel } = useOpenRecordInSidePanel();
 
+  // LOCAL-PATCH: long notes expand INLINE in the center column instead of
+  // hopping to the right-column side panel (board card 2026-08-30: "why do I
+  // need the right column preview"). The side panel stays one click away for
+  // editing — "Open editor" below.
+  const [expanded, setExpanded] = useState(false);
+
   const truncatedBody = bodyContent
     ? bodyContent.length > 300
       ? bodyContent.slice(0, 300) + '...'
       : bodyContent
     : null;
+  const isTruncated =
+    bodyContent !== null && bodyContent.length > 300;
 
   return (
     <StyledPreviewContainer>
@@ -129,18 +143,35 @@ export const EventCardNotePreview = ({
         )}
       </StyledHeaderRow>
 
-      {truncatedBody && <StyledBodyPreview>{truncatedBody}</StyledBodyPreview>}
+      {bodyContent && (
+        <StyledBodyPreview
+          style={
+            expanded
+              ? { maxHeight: 'none', overflow: 'visible' }
+              : undefined
+          }
+        >
+          {expanded ? bodyContent : truncatedBody}
+        </StyledBodyPreview>
+      )}
 
-      <StyledViewDetails
-        onClick={() =>
-          openRecordInSidePanel({
-            recordId: noteId,
-            objectNameSingular,
-          })
-        }
-      >
-        View full details
-      </StyledViewDetails>
+      <StyledViewDetailsRow>
+        {isTruncated && (
+          <StyledViewDetails onClick={() => setExpanded((value) => !value)}>
+            {expanded ? 'Show less' : 'View full details'}
+          </StyledViewDetails>
+        )}
+        <StyledViewDetails
+          onClick={() =>
+            openRecordInSidePanel({
+              recordId: noteId,
+              objectNameSingular,
+            })
+          }
+        >
+          Open editor
+        </StyledViewDetails>
+      </StyledViewDetailsRow>
     </StyledPreviewContainer>
   );
 };

@@ -9,6 +9,7 @@ import {
   TimelineFilterPills,
   type TimelineFilter,
 } from '@/activities/timeline-activities/components/TimelineFilterPills';
+import { TimelineInlineNoteEditor } from '@/activities/timeline-activities/components/TimelineInlineNoteEditor';
 import { TimelineUpcomingSection } from '@/activities/timeline-activities/components/TimelineUpcomingSection';
 import { useTimelineActivities } from '@/activities/timeline-activities/hooks/useTimelineActivities';
 import {
@@ -86,9 +87,34 @@ export const TimelineCard = () => {
 
   const [activeFilter, setActiveFilter] = useState<TimelineFilter>('all');
 
+  // LOCAL-PATCH: inline (center-column) note composer. On the record page,
+  // "Add note" opens the editor right in the timeline — Salesmate style, no
+  // side panel. Inside the side panel there IS no center column, so the old
+  // drawer behavior stays there (board card 2026-08-30).
+  const [inlineNoteId, setInlineNoteId] = useState<string | null>(null);
+  const [creatingInlineNote, setCreatingInlineNote] = useState(false);
+
   const openCreateActivity = useOpenCreateActivityDrawer({
     activityObjectNameSingular: CoreObjectNameSingular.Note,
+    openInSidePanel: true,
   });
+
+  const openInlineNote = useOpenCreateActivityDrawer({
+    activityObjectNameSingular: CoreObjectNameSingular.Note,
+    openInSidePanel: false,
+  });
+
+  const openNoteComposer = async () => {
+    setCreatingInlineNote(true);
+    try {
+      const activity = await openInlineNote({
+        targetableObjects: [targetRecord],
+      });
+      setInlineNoteId(activity?.id ?? null);
+    } finally {
+      setCreatingInlineNote(false);
+    }
+  };
 
   const linkedObjectNameSingularById = useMemo(
     () =>
@@ -134,6 +160,16 @@ export const TimelineCard = () => {
     [activeFilter, timelineActivities, categoryByEventId],
   );
 
+  const openAddNote = () => {
+    if (!isInSidePanel) {
+      void openNoteComposer();
+      return;
+    }
+    openCreateActivity({
+      targetableObjects: [targetRecord],
+    });
+  };
+
   const isTimelineActivitiesEmpty = timelineActivities.length === 0;
 
   if (loading === true) {
@@ -159,11 +195,7 @@ export const TimelineCard = () => {
           Icon={IconPlus}
           title={t`Add note`}
           variant="secondary"
-          onClick={() =>
-            openCreateActivity({
-              targetableObjects: [targetRecord],
-            })
-          }
+          onClick={openAddNote}
         />
       </AnimatedPlaceholderEmptyContainer>
     );
@@ -196,13 +228,16 @@ export const TimelineCard = () => {
           title={t`Add note`}
           variant="secondary"
           size="small"
-          onClick={() =>
-            openCreateActivity({
-              targetableObjects: [targetRecord],
-            })
-          }
+          onClick={openAddNote}
+          disabled={creatingInlineNote}
         />
       </StyledToolbar>
+      {!isInSidePanel && inlineNoteId && (
+        <TimelineInlineNoteEditor
+          noteId={inlineNoteId}
+          onClose={() => setInlineNoteId(null)}
+        />
+      )}
       <EventList
         targetableObject={targetRecord}
         title={t`All`}
