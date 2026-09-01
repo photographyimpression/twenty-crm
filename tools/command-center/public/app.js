@@ -110,6 +110,71 @@
     return json;
   }
 
+  // Connected mailboxes for the From picker. Loaded once in the background;
+  // when it lands, any already-rendered picker is refreshed in place (never a
+  // full re-render — that could clobber a click or a half-typed edit).
+  let accountsCache = null;
+  function loadAccounts() {
+    if (accountsCache) return Promise.resolve();
+    return apiGet('/accounts')
+      .then((d) => {
+        const accounts = d.accounts || [];
+        if (accounts.length) {
+          accountsCache = accounts;
+          const pick = el('fromPick');
+          if (pick) {
+            const current = pick.value;
+            pick.innerHTML = accounts
+              .map((acc) => `<option value="${esc(acc.id)}">${esc(acc.handle)}</option>`)
+              .join('');
+            if (accounts.some((acc) => acc.id === current)) pick.value = current;
+          }
+        }
+      })
+      .catch(() => { /* picker falls back to the pinned mailbox */ });
+  }
+
+  function copyEmail(email) {
+    const done = () => toast('Email copied');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(email).then(done, () => fallbackCopy(email, done));
+    } else {
+      fallbackCopy(email, done);
+    }
+  }
+  function fallbackCopy(text, done) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch (_e) { toast('Copy failed', true); }
+    document.body.removeChild(ta);
+  }
+
+  // Pull the lead's CURRENT name/company from the CRM and re-merge it into
+  // every still-pending touch of their sequence (typo fix, rename, married
+  // name…). The current card updates in place afterwards.
+  async function onRemerge(a) {
+    const btn = el('remergeBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
+    try {
+      const r = await apiPost(`/approval/${a.id}/remerge`, {});
+      if (r.approval) {
+        Object.assign(a, r.approval);
+      } else {
+        a.leadName = r.leadName || a.leadName;
+        a.companyName = r.companyName || a.companyName;
+      }
+      toast(`Refreshed — now writing to ${r.leadName} (${r.updated} pending touch${r.updated === 1 ? '' : 'es'} updated)`);
+      renderTriage();
+    } catch (e) {
+      toast('Refresh failed: ' + e.message, true);
+      if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh contact info'; }
+    }
+  }
+
   // ---- tab switching -------------------------------------------------------
 
   document.querySelectorAll('.tab').forEach((tab) => {
@@ -219,6 +284,18 @@
     const sigPill = a.signatureName
       ? `<span class="pill pill-sig" title="The email signature that will be appended when you hit Send">✍ ${esc(a.signatureName)}</span>`
       : '';
+    // From picker: the connected mailboxes, pre-selected on the pinned send
+    // pick for THIS card. Until /api/accounts lands (first card render can win
+    // the race) the pinned mailbox renders as the only option.
+    const accounts = accountsCache && accountsCache.length
+      ? accountsCache
+      : [{ id: a.fromAccountId, handle: a.fromEmail || 'default mailbox' }];
+    const fromOptions = accounts
+      .map(
+        (acc) =>
+          `<option value="${esc(acc.id)}" ${acc.id === a.fromAccountId ? 'selected' : ''}>${esc(acc.handle)}</option>`,
+      )
+      .join('');
     mount.innerHTML = `
       <div class="card">
         <div class="meta-row">
@@ -230,8 +307,13 @@
         </div>
         <div class="lead-name">${leadLink(a.leadName || 'Unknown lead', a.personId)}</div>
         <div class="company">${esc(a.companyName) || ''}</div>
-        <div class="recipient">To: <b>${esc(a.recipientEmail)}</b></div>
-        <div class="from-line">From: <b>${esc(a.fromEmail || '')}</b></div>
+        <div class="recipient">To: <b>${esc(a.recipientEmail)}</b>
+          <button class="mini-btn" id="copyEmailBtn" type="button" title="Copy this email address">⧉</button>
+          <button class="mini-btn" id="searchEmailBtn" type="button" title="Find this email in the CRM Inbox">🔍</button>
+        </div>
+        <div class="from-line">From:
+          <select id="fromPick" class="from-select" title="Which mailbox this email sends from">${fromOptions}</select>
+        </div>
         <label class="bcc-toggle" title="Send a copy to my email so I see exactly what the client sees">
           <input type="checkbox" id="bccMe" ${getBccMe() ? 'checked' : ''}>
           <span>BCC me — see exactly what the client sees</span>
@@ -239,6 +321,7 @@
         <div class="subject">${esc(a.emailSubject) || '(no subject)'}</div>
         <div class="body">${esc(a.emailBody) || '(empty body)'}</div>
         <div class="card-tools">
+          <button class="btn-preview" id="remergeBtn" title="Re-merge every pending touch for this lead with their CURRENT CRM name/company — use it right after fixing a typo or renaming the contact">↻ Refresh contact info</button>
           <button class="btn-preview" id="previewBtn">Preview final ✉</button>
         </div>
         <div class="actions">
@@ -255,6 +338,12 @@
     el('editBtn').addEventListener('click', () => { editing = true; renderTriage(); });
     el('previewBtn').addEventListener('click', () => { previewing = true; renderTriage(); });
     el('unenrollBtn').addEventListener('click', onUnenroll);
+    el('copyEmailBtn').addEventListener('click', () => copyEmail(a.recipientEmail));
+    el('searchEmailBtn').addEventListener('click', () => {
+      // Open the CRM's own Inbox pre-filtered to this sender — stays in the app.
+      window.open('/inbox?search=' + encodeURIComponent(a.recipientEmail || ''), '_top');
+    });
+    el('remergeBtn').addEventListener('click', () => onRemerge(a));
   }
 
   // ---- final-email preview (rendered, signature included) ------------------
@@ -314,6 +403,12 @@
     cursor += 1;
     editing = false;
     previewing = false;
+    // Critical: the action handlers setBusy(true) before their POST resolves,
+    // and renderTriage() re-renders fresh (enabled-looking) buttons WITHOUT
+    // touching the busy flag. Until this reset, every action after the first
+    // successful send/skip silently no-op'd on its `if (busy) return` guard —
+    // "click Send and nothing happens until I refresh" (board card, 2026-08-27).
+    busy = false;
     renderTriage();
   }
 
@@ -358,7 +453,11 @@
   async function commitSend(id) {
     setBusy(true);
     try {
-      await apiPost(`/approval/${id}/send`, { bcc: getBccMe() });
+      // Honor the From picker: whatever mailbox the card shows is the one the
+      // send stamps (server validates it against the connected accounts).
+      const pick = el('fromPick');
+      const from = pick && pick.value ? { fromAccountId: pick.value } : {};
+      await apiPost(`/approval/${id}/send`, { bcc: getBccMe(), ...from });
       toast(`Sent ✓${getBccMe() ? ' — copy to your inbox' : ''}`);
       advance();
     } catch (e) {
@@ -1191,14 +1290,40 @@
         mount.innerHTML = versionLine + '<div class="state"><p>No ideas yet. Add one above.</p></div>';
         return;
       }
-      mount.innerHTML = versionLine + items
-        .map(
-          (it) => `
-        <div class="row">
-          <div class="row-main"><div class="roadmap-item">💡 ${esc(it.text)}</div></div>
-        </div>`
-        )
-        .join('');
+      // Open ideas on top (the build queue), delivered ones below as the
+      // changelog — checked off right here via the API, never by hand-editing
+      // the server's roadmap.json.
+      const open = items.filter((it) => !it.done);
+      const done = items.filter((it) => it.done);
+      const row = (it, isDone) => `
+        <div class="row ${isDone ? 'done' : ''}" data-rid="${esc(it.id)}">
+          <div class="row-main"><div class="roadmap-item">${isDone ? '✅' : '💡'} ${esc(it.text)}</div></div>
+          <div class="row-actions">
+            <button class="done-btn btn rm-done" data-rid="${esc(it.id)}" data-rdone="${isDone ? '1' : '0'}">${isDone ? 'Reopen' : '✓ Done'}</button>
+          </div>
+        </div>`;
+      const doneSection = done.length
+        ? `<div class="section-title" style="margin-top:18px">Delivered</div>` + done.map((it) => row(it, true)).join('')
+        : '';
+      mount.innerHTML =
+        versionLine +
+        (open.length ? open.map((it) => row(it, false)).join('') : '<div class="state"><p>Everything on the roadmap is delivered 🎉</p></div>') +
+        doneSection;
+      mount.querySelectorAll('.rm-done').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-rid');
+          const nextDone = btn.getAttribute('data-rdone') !== '1';
+          btn.disabled = true;
+          try {
+            await apiPost(`/roadmap/${id}/done`, { done: nextDone });
+            roadmapCache = null; // lights re-read on next hover
+            await loadRoadmap();
+          } catch (e) {
+            toast('Failed: ' + e.message, true);
+            btn.disabled = false;
+          }
+        });
+      });
     } catch (e) {
       mount.innerHTML = `<div class="state"><div class="big">⚠️</div><p>${esc(e.message)}</p></div>`;
     }
@@ -1471,6 +1596,9 @@
   // ---- boot ----------------------------------------------------------------
 
   loadQueue();
+  // Mailboxes for the From picker (populates an already-rendered picker when
+  // the answer arrives — see loadAccounts).
+  loadAccounts();
   // Refresh the calls badge in the background so it's populated on first paint.
   apiGet('/calls')
     .then((d) => { el('callsBadge').textContent = (d.calls || []).length; })

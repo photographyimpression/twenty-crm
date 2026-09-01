@@ -483,6 +483,31 @@ function resolveFromEmail(sendFromAccountId) {
   return ACCOUNT_HANDLES[sendFromAccountId] || DEFAULT_FROM_EMAIL;
 }
 
+// Live connected mailboxes, for the From picker on the triage card. Falls back
+// to the static handles above so the picker still works if the query fails.
+async function fetchSendAccounts() {
+  try {
+    const data = await gql(
+      `query SendAccounts {
+        connectedAccounts(first: 20, orderBy: createdAt ASC) {
+          edges { node { id handle provider } }
+        }
+      }`,
+    );
+    const accounts = ((data.connectedAccounts || {}).edges || [])
+      .map((e) => e.node)
+      .filter((n) => n && n.id && n.handle);
+    if (accounts.length > 0) return accounts;
+  } catch (_e) {
+    /* fall through to static handles */
+  }
+  return Object.entries(ACCOUNT_HANDLES).map(([id, handle]) => ({
+    id,
+    handle,
+    provider: 'unknown',
+  }));
+}
+
 // Batch resolve emails -> person record ids so the UI can deep-link a lead's
 // name straight into their CRM profile (/object/person/<id>). One query for
 // the whole list; on any failure the map stays empty and names simply render
@@ -2209,6 +2234,7 @@ api.get('/queue', async (_req, res) => {
         // what the send endpoint stamps, so the card can't display a From the
         // workflow then overrides (it used to fall back to the primary address
         // while sends actually went out via the campaign mailbox).
+        fromAccountId: pickSendFromAccountId(a),
         fromEmail: resolveFromEmail(pickSendFromAccountId(a)),
         bcc: a.bccEmail || null,
         personId: person ? person.id : null,
@@ -2263,7 +2289,14 @@ api.post('/approval/:id/send', async (req, res) => {
 
     // "Send" = set APPROVED; the Twenty workflow does the actual send + flips
     // to COMPLETED. Pin the sending identity first (see pickSendFromAccountId).
-    const sendFromAccountId = pickSendFromAccountId(current);
+    // The From picker on the card can override the pinned pick — but only with
+    // a mailbox that is actually connected, so a stale UI can't point a send
+    // at a dead account.
+    const accounts = await fetchSendAccounts();
+    const chosenFrom = (req.body && req.body.fromAccountId) || '';
+    const sendFromAccountId = accounts.some((acc) => acc.id === chosenFrom)
+      ? chosenFrom
+      : pickSendFromAccountId(current);
     // Click-to-BCC toggle on the triage card: stamp (or clear) Moshe's address
     // BEFORE approving so the workflow sends exactly what the card promised.
     // Default ON — "copy me at least for the beginning"; one click turns it off.
@@ -2317,6 +2350,118 @@ api.post('/approval/:id/edit', async (req, res) => {
     }
     const updated = await updateApproval(req.params.id, patch);
     res.json({ ok: true, approval: updated });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Which mailboxes a send can go out from (the From picker on the triage card).
+api.get('/accounts', async (_req, res) => {
+  try {
+    const accounts = await fetchSendAccounts();
+    res.json({
+      accounts: accounts.map((a) => ({ id: a.id, handle: a.handle })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Re-merge a lead's pending touches with their CURRENT CRM info. The bodies
+// were rendered at enrollment time, so a renamed lead keeps emailing the old
+// name forever. This pulls the person's live name/company and swaps the old
+// tokens (per approval, since each row carries its own leadName snapshot) in
+// every still-PENDING touch of that lead's sequence — not just this card.
+api.post('/approval/:id/remerge', async (req, res) => {
+  try {
+    const seed = (await fetchAllApprovals()).find((a) => a.id === req.params.id);
+    if (!seed) return res.status(404).json({ error: 'Approval not found' });
+
+    const person = (await fetchPersonContextByEmails([seed.recipientEmail])).get(
+      String(seed.recipientEmail || '').toLowerCase(),
+    );
+    const data = await gql(
+      `query PersonForRemerge($id: UUID!) {
+        person(id: $id) {
+          id
+          name { firstName lastName }
+          companyName
+        }
+      }`,
+      { id: person ? person.id : '' },
+    ).catch(() => null);
+    const node =
+      (data && data.person) ||
+      (await (async () => {
+        // No person id resolved (rare): fall back to an email lookup.
+        const byEmail = await gql(
+          `query PersonByEmailForRemerge($email: String!) {
+            people(first: 1, filter: { emails: { primaryEmail: { ilike: $email } } }) {
+              edges { node { id name { firstName lastName } companyName } }
+            }
+          }`,
+          { email: seed.recipientEmail },
+        );
+        return (((byEmail.people || {}).edges || [])[0] || {}).node;
+      })());
+    if (!node || !(node.name && (node.name.firstName || node.name.lastName))) {
+      return res.status(422).json({
+        error: 'No person record found for this lead — nothing to re-merge.',
+      });
+    }
+
+    const newFirst = String(node.name.firstName || '').trim();
+    const newLast = String(node.name.lastName || '').trim();
+    const newFull = [newFirst, newLast].filter(Boolean).join(' ');
+    const newCompany = String(node.companyName || '').trim();
+
+    const replaceTokens = (text, pairs) => {
+      let out = String(text || '');
+      for (const [from, to] of pairs) {
+        if (!from || from.length < 2 || from === to) continue;
+        out = out.split(from).join(to);
+      }
+      return out;
+    };
+
+    const all = await fetchAllApprovals();
+    const targets = all.filter(
+      (a) =>
+        a.approvalStatus === 'PENDING' &&
+        String(a.recipientEmail).toLowerCase() ===
+          String(seed.recipientEmail).toLowerCase() &&
+        seqOf(a) === seqOf(seed),
+    );
+
+    let touched = 0;
+    let updatedCurrent = null;
+    for (const a of targets) {
+      const oldFirst = firstNameOf(a);
+      const oldFull = String(a.leadName || '').trim();
+      // Longest token first so "Melissa de Repentigny" is replaced as a whole
+      // before "Melissa" gets a chance to match inside it.
+      const pairs = [
+        [oldFull, newFull],
+        [oldFirst, newFirst],
+      ];
+      const subject = replaceTokens(a.emailSubject, pairs);
+      const body = replaceTokens(a.emailBody, pairs);
+      const patch = { leadName: newFull };
+      if (newCompany) patch.companyName = newCompany;
+      if (subject !== a.emailSubject) patch.emailSubject = subject;
+      if (body !== a.emailBody) patch.emailBody = body;
+      const updated = await updateApproval(a.id, patch);
+      touched += 1;
+      if (a.id === seed.id) updatedCurrent = updated;
+    }
+
+    res.json({
+      ok: true,
+      leadName: newFull,
+      companyName: newCompany,
+      updated: touched,
+      approval: updatedCurrent,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -3035,6 +3180,19 @@ api.post('/roadmap', (req, res) => {
     createdAt: new Date().toISOString(),
   };
   items.push(item);
+  writeRoadmap(items);
+  res.json({ ok: true, item, items });
+});
+
+// Mark an idea done (or reopen it). This is the roadmap's delivery path —
+// check an item off HERE, never by editing roadmap.json on the server.
+api.post('/roadmap/:id/done', (req, res) => {
+  const done = req.body && req.body.done !== undefined ? !!req.body.done : true;
+  const items = readRoadmap();
+  const item = items.find((i) => i.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Idea not found' });
+  item.done = done;
+  item.doneAt = done ? new Date().toISOString() : null;
   writeRoadmap(items);
   res.json({ ok: true, item, items });
 });

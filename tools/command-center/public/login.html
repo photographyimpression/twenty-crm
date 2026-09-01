@@ -6,21 +6,23 @@
     <title>Sign in · Command Center</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>" />
     <style>
+      /* Light theme matched to the CRM (see index.html) — the login is the one
+         page the CC still shows on its own, so it wears the app's colors too. */
       :root {
-        --bg: #0f1115;
-        --panel: #171a21;
-        --panel-2: #1e222b;
-        --border: #2a2f3a;
-        --text: #e6e9ef;
-        --muted: #9aa3b2;
-        --accent: #3b82f6;
-        --accent-hover: #2f6fd6;
-        --red: #ef4444;
-        --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        --bg: #ffffff;
+        --panel: #ffffff;
+        --panel-2: #f1f2f4;
+        --border: #e4e5e9;
+        --text: #1f2328;
+        --muted: #6b7280;
+        --accent: #3e63dd;
+        --accent-hover: #3355c0;
+        --red: #e5484d;
+        --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 16px rgba(16, 24, 40, 0.07);
       }
       html, body { margin: 0; padding: 0; height: 100%; }
       body {
-        background: radial-gradient(1200px 600px at 50% -10%, #1a2030 0%, var(--bg) 60%);
+        background: var(--bg);
         color: var(--text);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         -webkit-font-smoothing: antialiased;

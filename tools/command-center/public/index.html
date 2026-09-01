@@ -21,25 +21,31 @@
       })();
     </script>
     <style>
+      /* Light theme, matched to the CRM's own palette (ThemeLight in
+         twenty-ui: white page, #3E63DD indigo, #30A46C green) so the Command
+         Center reads as a page OF the app, not a dark second app inside it
+         (board cards 2026-08-28/31: "make it part of the regular app" +
+         "I like white background, not black"). */
       :root {
-        --bg: #0f1115;
-        --panel: #171a21;
-        --panel-2: #1e222b;
-        --border: #2a2f3a;
-        --text: #e6e9ef;
-        --muted: #9aa3b2;
-        --accent: #3b82f6;
-        --accent-hover: #2f6fd6;
-        --green: #22c55e;
-        --green-hover: #1ba34d;
-        --red: #ef4444;
-        --amber: #f59e0b;
-        --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        --bg: #ffffff;
+        --panel: #ffffff;
+        --panel-2: #f1f2f4;
+        --border: #e4e5e9;
+        --border-strong: #d6d7dc;
+        --text: #1f2328;
+        --muted: #6b7280;
+        --accent: #3e63dd;
+        --accent-hover: #3355c0;
+        --green: #30a46c;
+        --green-hover: #279160;
+        --red: #e5484d;
+        --amber: #d97706;
+        --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 16px rgba(16, 24, 40, 0.07);
       }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
       body {
-        background: radial-gradient(1200px 600px at 50% -10%, #1a2030 0%, var(--bg) 60%);
+        background: var(--bg);
         color: var(--text);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         min-height: 100vh;
@@ -93,23 +99,39 @@
       }
       /* Sequence badge: accent-tinted so the playbook is obvious at a glance. */
       .card .pill-seq {
-        background: rgba(59, 130, 246, 0.14); border-color: rgba(59, 130, 246, 0.45);
-        color: #9cc1f7;
+        background: rgba(62, 99, 221, 0.08); border-color: rgba(62, 99, 221, 0.35);
+        color: #3355c0;
       }
       /* Signature badge: green-tinted — WHICH signature the send appends. */
       .card .pill-sig {
-        background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.4);
-        color: #6ee7b7;
+        background: rgba(48, 164, 108, 0.1); border-color: rgba(48, 164, 108, 0.35);
+        color: #217a53;
       }
       .lead-name { font-size: 30px; font-weight: 800; margin: 14px 0 2px; line-height: 1.1; }
       .company { color: var(--muted); font-size: 16px; margin-bottom: 18px; }
       .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
       .recipient { color: var(--muted); font-size: 13px; }
       .recipient b { color: var(--text); }
+      /* Small icon buttons on the To line: copy the address / search it in the
+         CRM Inbox (board card 2026-08-31: "icon to copy the email address and
+         be able to search for the email on my emails"). */
+      .mini-btn {
+        background: transparent; border: 1px solid var(--border); color: var(--muted);
+        border-radius: 6px; padding: 1px 6px; margin-left: 6px; font-size: 12px;
+        cursor: pointer; vertical-align: baseline; line-height: 1.5;
+      }
+      .mini-btn:hover { color: var(--accent); border-color: var(--accent); }
       /* From line + BCC-me toggle: the sender is now always the real mailbox
-         the send will use, and the copy-to-me option sits right under it. */
-      .from-line { color: var(--muted); font-size: 13px; margin-top: 2px; }
-      .from-line b { color: #9cc1f7; }
+         the send will use, and the copy-to-me option sits right under it. The
+         mailbox itself is a picker — which connected account sends this email. */
+      .from-line { color: var(--muted); font-size: 13px; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+      .from-line b { color: #3355c0; }
+      .from-select {
+        background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+        border-radius: 7px; padding: 4px 8px; font-size: 12.5px; font-family: inherit;
+        cursor: pointer; max-width: 320px;
+      }
+      .from-select:focus { outline: none; border-color: var(--accent); }
       .bcc-toggle {
         display: flex; align-items: center; gap: 8px; margin-top: 10px;
         color: var(--muted); font-size: 13px; cursor: pointer; user-select: none;
@@ -117,20 +139,20 @@
       .bcc-toggle input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
       /* Lead names deep-link into the person's CRM profile. */
       .lead-link, a.lead-link { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--muted); }
-      a.lead-link:hover { color: #9cc1f7; border-bottom-color: #9cc1f7; }
-      .week-row .lead-link, .dash-table .lead-link { color: #9cc1f7; border-bottom: none; }
+      a.lead-link:hover { color: #3355c0; border-bottom-color: #3355c0; }
+      .week-row .lead-link, .dash-table .lead-link { color: #3355c0; border-bottom: none; }
       .week-row .lead-link:hover, .dash-table .lead-link:hover { text-decoration: underline; }
       .subject {
         font-size: 20px; font-weight: 700; margin: 18px 0 10px; padding-bottom: 12px;
         border-bottom: 1px solid var(--border);
       }
       .body {
-        white-space: pre-wrap; line-height: 1.6; font-size: 15.5px; color: #d7dce6;
+        white-space: pre-wrap; line-height: 1.6; font-size: 15.5px; color: var(--text);
         max-height: 46vh; overflow: auto; padding-right: 6px;
       }
       .actions { display: flex; gap: 12px; margin-top: 26px; }
       button.btn {
-        border: none; border-radius: 12px; padding: 14px 18px; font-size: 15px; font-weight: 700;
+        border: none; border-radius: 10px; padding: 14px 18px; font-size: 15px; font-weight: 700;
         cursor: pointer; transition: transform .04s ease, background .15s ease; color: #fff;
       }
       /* Anchors styled as buttons (e.g. the tel: Call link) need these to match
@@ -144,9 +166,9 @@
       .btn-send { background: var(--green); flex: 1; font-size: 17px; }
       .btn-send:hover:not(:disabled) { background: var(--green-hover); }
       .btn-skip { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
-      .btn-skip:hover:not(:disabled) { background: #262b36; }
+      .btn-skip:hover:not(:disabled) { background: #e9ebef; }
       .btn-edit { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
-      .btn-edit:hover:not(:disabled) { background: #262b36; }
+      .btn-edit:hover:not(:disabled) { background: #e9ebef; }
       .btn-secondary { background: var(--accent); }
       .btn-secondary:hover:not(:disabled) { background: var(--accent-hover); }
 
@@ -157,7 +179,7 @@
 
       /* Version banner on the Roadmap tab */
       .version-banner {
-        background: rgba(34,197,94,.10); border: 1px solid rgba(34,197,94,.35);
+        background: rgba(48, 164, 108, 0.08); border: 1px solid rgba(48, 164, 108, 0.3);
         border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;
         font-size: 13px; font-weight: 600;
       }
@@ -205,7 +227,7 @@
       .add-box { display: flex; gap: 10px; margin-bottom: 18px; }
       .add-box input { flex: 1; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
         border-radius: 12px; padding: 12px 14px; font-size: 14px; font-family: inherit; }
-      .roadmap-item { color: #d7dce6; }
+      .roadmap-item { color: var(--text); }
       .section-title { font-size: 14px; color: var(--muted); font-weight: 700; text-transform: uppercase;
         letter-spacing: .6px; margin: 4px 0 14px; }
       .footer-note { text-align: center; color: var(--muted); font-size: 12px; margin-top: 30px; }
@@ -221,7 +243,7 @@
       .light-wrap { position: relative; display: flex; }
       .light {
         position: relative; width: 30px; height: 30px; border-radius: 8px; border: none;
-        background: transparent; color: #566072; cursor: pointer; padding: 0;
+        background: transparent; color: #98a2b3; cursor: pointer; padding: 0;
         display: flex; align-items: center; justify-content: center;
         transition: background .12s ease, color .12s ease;
       }
@@ -229,8 +251,7 @@
       .light svg { width: 16px; height: 16px; }
       .light-red { color: var(--red); }
       .light-decision.lit { color: var(--amber); }
-      /* Dim on purpose — the queue is "on the list", not actionable. */
-      .light-queue.lit { color: rgba(34, 197, 94, .55); }
+      .light-queue.lit { color: rgba(48, 164, 108, .75); }
       .light-queue.lit:hover { color: var(--green); }
       .light-update.lit { color: var(--green); }
       /* The one and only pulse in the strip: the running service is newer than
@@ -249,19 +270,19 @@
       .pop.show { display: block; }
       .pop-title { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin: 0 0 8px; }
       .pop-list { list-style: none; margin: 0; padding: 0; max-height: 224px; overflow: auto; }
-      .pop-list li { font-size: 12.5px; color: #d7dce6; padding: 3px 0; }
+      .pop-list li { font-size: 12.5px; color: var(--text); padding: 3px 0; }
       .pop-list .tt { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .pop-more { font-size: 11px; color: var(--muted); margin-top: 4px; }
       .pop-empty { font-size: 12px; color: var(--muted); line-height: 1.5; }
       .pop-link { display: block; margin-top: 8px; padding: 8px 0 0; border-top: 1px solid var(--border); font-size: 11.5px; font-weight: 600; color: var(--accent); text-decoration: none; cursor: pointer; background: none; border-left: none; border-right: none; border-bottom: none; padding-left: 0; padding-right: 0; font-family: inherit; }
-      .pop-link:hover { color: #6ea3f5; }
+      .pop-link:hover { color: #3355c0; }
       .pop-reload { display: block; width: 100%; margin-top: 8px; padding: 7px 10px; border: none; border-radius: 8px; background: var(--green); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
       .pop-reload:hover { background: var(--green-hover); }
       .pop-uptodate { font-size: 12px; color: var(--muted); }
 
       /* ---- Idea popup (the red light) ---- */
       .qr-overlay {
-        position: fixed; inset: 0; background: rgba(5, 8, 14, .6); display: none;
+        position: fixed; inset: 0; background: rgba(16, 24, 40, .35); display: none;
         align-items: flex-start; justify-content: center; padding: 8vh 16px; z-index: 90;
       }
       .qr-overlay.show { display: flex; }
@@ -304,7 +325,8 @@
 
       /* Final-email preview (rendered inside the card) */
       .preview-frame {
-        background: #fff; color: #111; border-radius: 12px; padding: 20px 22px; margin: 16px 0 6px;
+        background: #fff; color: #111; border: 1px solid var(--border); border-radius: 12px;
+        padding: 20px 22px; margin: 16px 0 6px;
         max-height: 52vh; overflow: auto; font-size: 14.5px; line-height: 1.55;
       }
       .preview-frame img { max-width: 100%; height: auto; }
@@ -316,7 +338,7 @@
       .paused-section { margin-bottom: 18px; }
       .paused-banner {
         background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.4);
-        border-radius: 12px; padding: 10px 16px; font-weight: 700; color: #fbbf24; margin-bottom: 10px;
+        border-radius: 12px; padding: 10px 16px; font-weight: 700; color: #92600a; margin-bottom: 10px;
       }
       .paused-row {
         background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
@@ -334,11 +356,11 @@
       /* Ending a sequence is destructive-ish — muted red, visually distinct
          from the accent-blue Resume. */
       .btn-dismiss, .btn-unenroll {
-        background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.45);
-        color: #fca5a5; flex-shrink: 0; padding: 11px 18px; font-size: 14px;
+        background: rgba(229, 72, 77, 0.08); border: 1px solid rgba(229, 72, 77, 0.4);
+        color: #b4232f; flex-shrink: 0; padding: 11px 18px; font-size: 14px;
       }
       .btn-dismiss:hover:not(:disabled), .btn-unenroll:hover:not(:disabled) {
-        background: rgba(239, 68, 68, 0.26);
+        background: rgba(229, 72, 77, 0.16);
       }
 
       /* Dashboard */
@@ -368,13 +390,13 @@
       .dash-table tr:last-child td { border-bottom: none; }
       .dash-table .seq-name { font-weight: 700; }
       .health-card {
-        background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.45);
+        background: rgba(229, 72, 77, 0.06); border: 1px solid rgba(229, 72, 77, 0.4);
         border-radius: 14px; padding: 16px 18px; margin-bottom: 22px;
       }
-      .health-card.ok { background: rgba(34, 197, 94, 0.08); border-color: rgba(34, 197, 94, 0.4); }
+      .health-card.ok { background: rgba(48, 164, 108, 0.06); border-color: rgba(48, 164, 108, 0.35); }
       .health-card .health-head { font-weight: 800; font-size: 16px; margin-bottom: 8px; }
       .health-card.ok .health-head { color: var(--green); }
-      .health-card:not(.ok) .health-head { color: #f87171; }
+      .health-card:not(.ok) .health-head { color: #d0393e; }
       .health-card .health-wf { margin-top: 8px; }
       .health-card .health-wf-name { font-weight: 700; font-size: 14px; }
       .health-card .health-wf ul { margin: 4px 0 0; padding-left: 20px; }
@@ -399,13 +421,13 @@
       .week-row .week-main { min-width: 0; flex: 1; }
       .week-row .week-lead { font-weight: 700; font-size: 15px; }
       .week-row .week-lead .week-company { color: var(--muted); font-weight: 600; font-size: 13px; }
-      .week-row .week-subject { color: #d7dce6; font-size: 13.5px; margin-top: 3px;
+      .week-row .week-subject { color: var(--text); font-size: 13.5px; margin-top: 3px;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .week-row .week-to { color: var(--muted); font-size: 12px; margin-top: 2px; }
       .week-row .week-to .week-from { margin-left: 10px; }
       .week-row .week-pill {
-        flex-shrink: 0; align-self: flex-start; background: rgba(59,130,246,0.14);
-        border: 1px solid rgba(59,130,246,0.45); color: #9cc1f7; border-radius: 999px;
+        flex-shrink: 0; align-self: flex-start; background: rgba(62, 99, 221, 0.08);
+        border: 1px solid rgba(62, 99, 221, 0.35); color: #3355c0; border-radius: 999px;
         padding: 4px 11px; font-size: 11.5px; font-weight: 700; white-space: nowrap;
       }
 
