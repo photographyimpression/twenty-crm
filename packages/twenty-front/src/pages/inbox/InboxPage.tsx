@@ -1,6 +1,7 @@
 import { styled } from '@linaria/react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { IconMail, IconSearch, IconSend, IconX } from 'twenty-ui/display';
 import {
   AnimatedPlaceholder,
@@ -177,8 +178,13 @@ const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
 
 export const InboxPage = () => {
   const { t } = useLingui();
+  const [searchParams] = useSearchParams();
   const [folder, setFolder] = useState<InboxFolder>('inbox');
-  const [searchInput, setSearchInput] = useState('');
+  // LOCAL-PATCH: /inbox?search=<q> pre-fills the search box (e.g. the Command
+  // Center's "find this email in my mailbox" button deep-links here).
+  const [searchInput, setSearchInput] = useState(
+    () => searchParams.get('search') ?? '',
+  );
   const debouncedSearch = useDebouncedValue(searchInput, 300);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
 
