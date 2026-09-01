@@ -420,7 +420,16 @@ export class TelnyxWebhookService {
       // forward and the customer auto-reply — Avi IS the reply.
       const routed = await this.routeSmsToZmnAssistant(fromNumber, smsRecord);
 
-      if (!routed) {
+      if (routed) {
+        // "ATT Avi" handled by the ZMN assistant — Avi IS the reply.
+      } else if (this.isFamilyNumber(fromNumber)) {
+        // Our own / the wife's cell: recorded + on the timeline above, but no
+        // email forward ("I'm the one who sent the text"), no auto-reply, no
+        // workflow — the thread is waiting in the office, nothing else fires.
+        this.logger.log(
+          `Family number ${fromNumber}: recorded only — no forward, no auto-reply, no workflow`,
+        );
+      } else {
         // Fire any "sms.received" workflow first (gives the user a per-run
         // execution log in the Workflows UI). Only fall back to the
         // hardcoded forwarder if no workflow is configured.
@@ -461,6 +470,15 @@ export class TelnyxWebhookService {
     if (fromDigits && fromDigits === ownDigits) {
       this.logger.warn(
         `Skipping auto-reply: inbound from own Telnyx number ${from} (likely carrier loopback)`,
+      );
+
+      return false;
+    }
+
+    // 1b. Never auto-reply to family cells, whatever path got us here.
+    if (this.isFamilyNumber(from)) {
+      this.logger.log(
+        `Skipping auto-reply: ${from} is a family number (no auto-replies to our own phones)`,
       );
 
       return false;
@@ -1500,6 +1518,30 @@ export class TelnyxWebhookService {
     const key = this.blockKey(phone);
 
     return key !== '' && this.blockedNumbers.has(key);
+  }
+
+  // --- Family numbers -------------------------------------------------------
+  // Moshe's and his wife's own cell phones (board cards 2026-08-28 + 2026-08-30:
+  // "I'm the one who sent the text — I don't need it in my email", "we don't
+  // need auto reply, just costing extra money"). Texts FROM these numbers are
+  // still recorded on the timeline (he reads the thread in the office), but
+  // never email-forwarded, never auto-replied, and never handed to the
+  // sms.received workflow — no pings, no spend. The boss number stays routable
+  // to the ZMN assistant ("ATT Avi …") because the family check runs AFTER the
+  // ZMN route. Env-overridable as a comma list, same digits normalization as
+  // the blocklist.
+  private familyNumbers = new Set<string>(
+    (process.env['SMS_FAMILY_NUMBERS'] ||
+      '+15148947978,+14387637978')
+      .split(',')
+      .map((entry) => this.blockKey(entry))
+      .filter(Boolean),
+  );
+
+  isFamilyNumber(phone: string): boolean {
+    const key = this.blockKey(phone);
+
+    return key !== '' && this.familyNumbers.has(key);
   }
 
   blockNumber(phone: string): boolean {
