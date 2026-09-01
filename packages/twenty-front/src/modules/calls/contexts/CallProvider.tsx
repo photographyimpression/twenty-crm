@@ -47,6 +47,112 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // True while a call is ringing or live. The token-refresh timer must NEVER
+  // tear the WebRTC client down in this state — disconnecting the client hangs
+  // up the call from OUR end mid-sentence (board card 2026-08-30: "we need to
+  // make sure calls are not disconnected from my end"). Kept in a ref so the
+  // interval callback sees the live value without re-subscribing.
+  const callBusyRef = useRef(false);
+  // Set when the 10-min refresh fired during a call; the refresh then runs as
+  // soon as the call ends (see the inCall/isRinging effect below).
+  const pendingRefreshRef = useRef(false);
+  const refreshingRef = useRef(false);
+
+  // Shared wiring for EVERY TelnyxRTC client (initial + every token refresh):
+  // audio sink + ready/error/notification handlers. One definition so a
+  // refreshed client behaves exactly like the first one.
+  const attachClientListeners = useCallback((client: TelnyxRTC) => {
+    // Tell TelnyxRTC which DOM element to use for remote audio playback.
+    // Must be set before `client.connect()` so the SDK wires the
+    // RTCPeerConnection's remote track to this <audio> sink on the first
+    // call. Without this the call connects but no sound plays.
+    (client as unknown as { remoteElement: string }).remoteElement =
+      REMOTE_AUDIO_ELEMENT_ID;
+
+    client.on('telnyx.ready', () => {
+      console.log('TelnyxRTC: connected and ready');
+      setIsRegistered(true);
+      setError(null);
+    });
+
+    client.on('telnyx.error', (err: any) => {
+      console.error('TelnyxRTC error:', err);
+      setError(err?.message ?? 'Telnyx connection error');
+      setIsRegistered(false);
+    });
+
+    client.on('telnyx.notification', (notification: any) => {
+      if (notification.type !== 'callUpdate') return;
+
+      const call = notification.call;
+      console.log('TelnyxRTC call state:', call.state, call);
+      switch (call.state) {
+        case 'ringing':
+          callBusyRef.current = true;
+          setActiveCall(call);
+          setIsRinging(true);
+          setIsIncoming(call.direction === 'inbound');
+          setActiveNumber(call.remoteCallerNumber ?? null);
+          setCallSessionId(call.telnyxCallControlId ?? call.id ?? null);
+          break;
+        case 'active':
+          callBusyRef.current = true;
+          setIsRinging(false);
+          setInCall(true);
+          setCallStartTime(Date.now());
+          break;
+        case 'done':
+        case 'hangup':
+        case 'destroy':
+          callBusyRef.current = false;
+          setIsRinging(false);
+          setInCall(false);
+          setIsIncoming(false);
+          setActiveCall(null);
+          setActiveNumber(null);
+          setCallSessionId(null);
+          setCallStartTime(null);
+          break;
+      }
+    });
+  }, []);
+
+  // Swap in a fresh client on a fresh JWT. Callers must ensure no call is
+  // live (callBusyRef) before invoking.
+  const doTokenRefresh = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    try {
+      const tokenResponse = await fetch('/telnyx/webrtc-token');
+      const tokenData = (await tokenResponse.json()) as {
+        token?: string;
+      };
+
+      if (tokenData?.token) {
+        console.log('TelnyxRTC: refreshing JWT token');
+        const oldClient = clientRef.current;
+        const newClient = new TelnyxRTC({ login_token: tokenData.token });
+        attachClientListeners(newClient);
+
+        // Detach the old client's listeners so its late events can't clobber
+        // the new client's state, then retire it.
+        if (oldClient) {
+          oldClient.off('telnyx.ready');
+          oldClient.off('telnyx.error');
+          oldClient.off('telnyx.notification');
+          oldClient.disconnect();
+        }
+
+        newClient.connect();
+        clientRef.current = newClient;
+      }
+    } catch {
+      console.warn('TelnyxRTC: token refresh failed, will retry');
+    } finally {
+      refreshingRef.current = false;
+    }
+  }, [attachClientListeners]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -62,9 +168,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
 
         if (tokenData?.token) {
           console.log('TelnyxRTC: using JWT login_token auth');
-          client = new TelnyxRTC({
-            login_token: tokenData.token,
-          });
+          client = new TelnyxRTC({ login_token: tokenData.token });
         } else {
           // Fallback to credential auth
           console.log('TelnyxRTC: falling back to credential auth');
@@ -92,134 +196,27 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (cancelled) return;
 
-      // Tell TelnyxRTC which DOM element to use for remote audio playback.
-      // Must be set before `client.connect()` so the SDK wires the
-      // RTCPeerConnection's remote track to this <audio> sink on the first
-      // call. Without this the call connects but no sound plays.
-      (client as unknown as { remoteElement: string }).remoteElement =
-        REMOTE_AUDIO_ELEMENT_ID;
-
-      client.on('telnyx.ready', () => {
-        console.log('TelnyxRTC: connected and ready');
-        setIsRegistered(true);
-        setError(null);
-      });
-
-      client.on('telnyx.error', (err: any) => {
-        console.error('TelnyxRTC error:', err);
-        setError(err?.message ?? 'Telnyx connection error');
-        setIsRegistered(false);
-      });
-
-      client.on('telnyx.notification', (notification: any) => {
-        if (notification.type !== 'callUpdate') return;
-
-        const call = notification.call;
-        console.log('TelnyxRTC call state:', call.state, call);
-        switch (call.state) {
-          case 'ringing':
-            setActiveCall(call);
-            setIsRinging(true);
-            setIsIncoming(call.direction === 'inbound');
-            setActiveNumber(call.remoteCallerNumber ?? null);
-            setCallSessionId(call.telnyxCallControlId ?? call.id ?? null);
-            break;
-          case 'active':
-            setIsRinging(false);
-            setInCall(true);
-            setCallStartTime(Date.now());
-            break;
-          case 'done':
-          case 'hangup':
-          case 'destroy':
-            setIsRinging(false);
-            setInCall(false);
-            setIsIncoming(false);
-            setActiveCall(null);
-            setActiveNumber(null);
-            setCallSessionId(null);
-            setCallStartTime(null);
-            break;
-        }
-      });
-
+      attachClientListeners(client);
       client.connect();
       clientRef.current = client;
     };
 
     initTelnyx();
 
-    // Refresh JWT token every 10 minutes (tokens expire after ~1 hour)
+    // Refresh the JWT periodically (tokens expire after ~1 hour) — but a
+    // live call always wins: swapping clients mid-call hangs up the phone on
+    // the customer. When a call blocks the refresh, it runs right after the
+    // call ends instead.
     const tokenRefreshInterval = setInterval(
-      async () => {
-        try {
-          const tokenResponse = await fetch('/telnyx/webrtc-token');
-          const tokenData = (await tokenResponse.json()) as {
-            token?: string;
-          };
-
-          if (tokenData?.token && clientRef.current) {
-            console.log('TelnyxRTC: refreshing JWT token');
-            clientRef.current.disconnect();
-            const newClient = new TelnyxRTC({
-              login_token: tokenData.token,
-            });
-
-            // Re-attach the audio sink on the refreshed client. Without this,
-            // calls placed after the 10-min token refresh would go silent.
-            (newClient as unknown as { remoteElement: string }).remoteElement =
-              REMOTE_AUDIO_ELEMENT_ID;
-
-            newClient.on('telnyx.ready', () => {
-              console.log('TelnyxRTC: reconnected after token refresh');
-              setIsRegistered(true);
-              setError(null);
-            });
-
-            newClient.on('telnyx.error', (err: any) => {
-              console.error('TelnyxRTC error after refresh:', err);
-              setError(err?.message ?? 'Telnyx connection error');
-              setIsRegistered(false);
-            });
-
-            newClient.on('telnyx.notification', (notification: any) => {
-              if (notification.type !== 'callUpdate') return;
-
-              const call = notification.call;
-              console.log('TelnyxRTC call state:', call.state, call);
-              switch (call.state) {
-                case 'ringing':
-                  setActiveCall(call);
-                  setIsRinging(true);
-                  setIsIncoming(call.direction === 'inbound');
-                  setActiveNumber(call.remoteCallerNumber ?? null);
-                  setCallSessionId(call.telnyxCallControlId ?? call.id ?? null);
-                  break;
-                case 'active':
-                  setIsRinging(false);
-                  setInCall(true);
-                  setCallStartTime(Date.now());
-                  break;
-                case 'done':
-                case 'hangup':
-                case 'destroy':
-                  setIsRinging(false);
-                  setInCall(false);
-                  setIsIncoming(false);
-                  setActiveCall(null);
-                  setActiveNumber(null);
-                  setCallSessionId(null);
-                  setCallStartTime(null);
-                  break;
-              }
-            });
-
-            newClient.connect();
-            clientRef.current = newClient;
-          }
-        } catch {
-          console.warn('TelnyxRTC: token refresh failed, will retry');
+      () => {
+        if (callBusyRef.current) {
+          pendingRefreshRef.current = true;
+          console.log(
+            'TelnyxRTC: token refresh deferred — call in progress',
+          );
+          return;
         }
+        doTokenRefresh();
       },
       10 * 60 * 1000,
     );
@@ -236,7 +233,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         clientRef.current = null;
       }
     };
-  }, []);
+  }, [attachClientListeners, doTokenRefresh]);
+
+  // A refresh was postponed because a call was live — run it now that the
+  // line is free, before the (possibly stale-token) client drops on its own.
+  useEffect(() => {
+    if (!inCall && !isRinging && pendingRefreshRef.current) {
+      pendingRefreshRef.current = false;
+      doTokenRefresh();
+    }
+  }, [inCall, isRinging, doTokenRefresh]);
 
   const dial = useCallback(
     (number: string) => {
@@ -262,6 +268,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       setActiveNumber(number);
       setIsRinging(true);
       setIsIncoming(false);
+      callBusyRef.current = true;
       setCallSessionId(
         (call as unknown as { telnyxCallControlId?: string })
           ?.telnyxCallControlId ??
@@ -283,6 +290,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       setActiveNumber(null);
       setCallSessionId(null);
       setCallStartTime(null);
+      callBusyRef.current = false;
     }
   }, [activeCall]);
 
