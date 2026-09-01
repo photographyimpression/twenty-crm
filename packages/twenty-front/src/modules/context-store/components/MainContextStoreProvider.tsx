@@ -10,7 +10,7 @@ import { coreViewsState } from '@/views/states/coreViewState';
 import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { AppPath } from 'twenty-shared/types';
 import { isDefined } from 'twenty-shared/utils';
-import { ViewKey } from '~/generated-metadata/graphql';
+import { ViewKey, ViewType } from '~/generated-metadata/graphql';
 import { isMatchingLocation } from '~/utils/isMatchingLocation';
 
 const getViewId = (
@@ -31,6 +31,38 @@ const getViewId = (
   }
 
   return undefined;
+};
+
+// LOCAL-PATCH: never open a non-list view as an object's landing page.
+// Fields-widget views ("Person Record Page Fields") are internal layout views,
+// but the view picker lists them and selecting one poisons the localStorage
+// last-visited map — after that, clicking "People" in the sidebar lands on a
+// weird fields page instead of the table (board card 2026-08-31). Accept only
+// real list views (table/kanban/calendar) as "last visited"; anything else
+// falls through to the INDEX view.
+const LIST_VIEW_TYPES = new Set<string>([
+  ViewType.TABLE,
+  ViewType.KANBAN,
+  ViewType.CALENDAR,
+]);
+
+const isListViewId = (
+  viewId: string | undefined,
+  objectMetadataId: string | undefined,
+  coreViews: { id: string; type: string; objectMetadataId: string }[],
+) => {
+  if (!isDefined(viewId)) {
+    return false;
+  }
+
+  const view = coreViews.find(
+    (view) =>
+      view.id === viewId &&
+      (!isDefined(objectMetadataId) ||
+        view.objectMetadataId === objectMetadataId),
+  );
+
+  return isDefined(view) && LIST_VIEW_TYPES.has(view.type);
 };
 
 export const MainContextStoreProvider = () => {
@@ -70,7 +102,21 @@ export const MainContextStoreProvider = () => {
       view.key === ViewKey.INDEX,
   )?.id;
 
-  const viewId = getViewId(viewIdQueryParam, indexViewId, lastVisitedViewId);
+  // LOCAL-PATCH: a poisoned last-visited entry (a fields-widget view) must not
+  // hijack the object's landing page — see isListViewId above.
+  const usableLastVisitedViewId = isListViewId(
+    lastVisitedViewId,
+    objectMetadataItem?.id,
+    coreViews,
+  )
+    ? lastVisitedViewId
+    : undefined;
+
+  const viewId = getViewId(
+    viewIdQueryParam,
+    indexViewId,
+    usableLastVisitedViewId,
+  );
   const showAuthModal = useShowAuthModal();
 
   const shouldComputeContextStore =

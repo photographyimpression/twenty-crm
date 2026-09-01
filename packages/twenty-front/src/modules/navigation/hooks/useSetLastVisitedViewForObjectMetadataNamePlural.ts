@@ -5,6 +5,7 @@ import { type CoreViewWithRelations } from '@/views/types/CoreViewWithRelations'
 import { useCallback } from 'react';
 import { isDefined } from 'twenty-shared/utils';
 import { useStore } from 'jotai';
+import { ViewType } from '~/generated-metadata/graphql';
 
 export const useSetLastVisitedViewForObjectMetadataNamePlural = () => {
   const store = useStore();
@@ -33,6 +34,17 @@ export const useSetLastVisitedViewForObjectMetadataNamePlural = () => {
       }
 
       if (view.objectMetadataId !== objectMetadataItem.id) {
+        return;
+      }
+
+      // LOCAL-PATCH: never remember a non-list view (e.g. the internal
+      // fields-widget views) as "last visited" — doing so hijacks the
+      // sidebar's landing page for the object (board card 2026-08-31).
+      if (
+        view.type !== ViewType.TABLE &&
+        view.type !== ViewType.KANBAN &&
+        view.type !== ViewType.CALENDAR
+      ) {
         return;
       }
 

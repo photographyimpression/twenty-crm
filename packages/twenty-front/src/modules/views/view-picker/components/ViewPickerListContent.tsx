@@ -26,6 +26,7 @@ import { IconPlus } from 'twenty-ui/display';
 import { MenuItem } from 'twenty-ui/navigation';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 import { ViewVisibility } from '~/generated-metadata/graphql';
+import { ViewType } from '@/views/types/ViewType';
 import { moveArrayItem } from '~/utils/array/moveArrayItem';
 
 const StyledBoldDropdownMenuItemsContainerWrapper = styled.div`
@@ -42,12 +43,23 @@ export const ViewPickerListContent = () => {
     { objectMetadataItemId: objectMetadataItem.id },
   );
 
+  // LOCAL-PATCH: hide internal fields-widget views from the picker. They are
+  // record-page layout views, not list views — selecting one used to poison
+  // the "last visited view" and hijack the sidebar landing page (board card
+  // 2026-08-31: "When I click on People, I get to this area page").
+  const isPickableListView = (view: (typeof viewsOnCurrentObject)[number]) =>
+    view.type === ViewType.Table ||
+    view.type === ViewType.Kanban ||
+    view.type === ViewType.Calendar;
+
   const workspaceViews = viewsOnCurrentObject.filter(
-    (view) => view.visibility === ViewVisibility.WORKSPACE,
+    (view) =>
+      view.visibility === ViewVisibility.WORKSPACE && isPickableListView(view),
   );
 
   const unlistedViews = viewsOnCurrentObject.filter(
-    (view) => view.visibility === ViewVisibility.UNLISTED,
+    (view) =>
+      view.visibility === ViewVisibility.UNLISTED && isPickableListView(view),
   );
 
   const shouldShowSectionLabels =
