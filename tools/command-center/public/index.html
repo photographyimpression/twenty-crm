@@ -150,7 +150,14 @@
         white-space: pre-wrap; line-height: 1.6; font-size: 15.5px; color: var(--text);
         max-height: 46vh; overflow: auto; padding-right: 6px;
       }
-      .actions { display: flex; gap: 12px; margin-top: 26px; }
+      /* Board card b6156069 ("the three buttons on the bottom right I can't
+         reach"): the actions row never wrapped above the 640px mobile
+         breakpoint, so Edit/Skip/Unenroll overflowed the card — and the card's
+         overflow:hidden CLIPPED them out of reach. Wrap at every width; when
+         the row breaks, every button shares the wrapped lines. */
+      .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+      .actions .btn { flex: 1 1 auto; }
+      .actions .btn-send { flex: 1 1 160px; }
       button.btn {
         border: none; border-radius: 10px; padding: 14px 18px; font-size: 15px; font-weight: 700;
         cursor: pointer; transition: transform .04s ease, background .15s ease; color: #fff;
@@ -309,7 +316,7 @@
       .qr-done p { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
 
       /* Triage extras: "Preview final" link button + keyboard-shortcut hint */
-      .card-tools { display: flex; justify-content: flex-end; margin-top: 14px; }
+      .card-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 14px; }
       .btn-preview {
         background: transparent; border: 1px solid var(--border); color: var(--muted);
         border-radius: 10px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
