@@ -2385,7 +2385,7 @@ api.post('/approval/:id/remerge', async (req, res) => {
         person(id: $id) {
           id
           name { firstName lastName }
-          companyName
+          company { name }
         }
       }`,
       { id: person ? person.id : '' },
@@ -2397,7 +2397,7 @@ api.post('/approval/:id/remerge', async (req, res) => {
         const byEmail = await gql(
           `query PersonByEmailForRemerge($email: String!) {
             people(first: 1, filter: { emails: { primaryEmail: { ilike: $email } } }) {
-              edges { node { id name { firstName lastName } companyName } }
+              edges { node { id name { firstName lastName } company { name } } }
             }
           }`,
           { email: seed.recipientEmail },
@@ -2413,7 +2413,7 @@ api.post('/approval/:id/remerge', async (req, res) => {
     const newFirst = String(node.name.firstName || '').trim();
     const newLast = String(node.name.lastName || '').trim();
     const newFull = [newFirst, newLast].filter(Boolean).join(' ');
-    const newCompany = String(node.companyName || '').trim();
+    const newCompany = String((node.company || {}).name || '').trim();
 
     const replaceTokens = (text, pairs) => {
       let out = String(text || '');
