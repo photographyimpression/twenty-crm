@@ -10,6 +10,7 @@ import { MessageChannelMessageAssociationWorkspaceEntity } from 'src/modules/mes
 import { type MessageThreadWorkspaceEntity } from 'src/modules/messaging/common/standard-objects/message-thread.workspace-entity';
 import { type MessageWorkspaceEntity } from 'src/modules/messaging/common/standard-objects/message.workspace-entity';
 import { deleteUsingPagination } from 'src/modules/messaging/message-cleaner/utils/delete-using-pagination.util';
+import { type TimelineActivityWorkspaceEntity } from 'src/modules/timeline/standard-objects/timeline-activity.workspace-entity';
 
 @Injectable()
 export class MessagingMessageCleanerService {
@@ -93,6 +94,29 @@ export class MessagingMessageCleanerService {
         );
 
         await messageRepository.delete(orphanMessages.map(({ id }) => id));
+
+        // LOCAL-PATCH (board card 2026-09-01): a deleted message leaves its
+        // `message.linked` timeline activity behind — the person timeline then
+        // shows a card that fails to load ("Message not found"). Delete the
+        // orphaned timeline activities with the message so the timeline stays
+        // truthful.
+        try {
+          const timelineActivityRepository =
+            await this.globalWorkspaceOrmManager.getRepository<TimelineActivityWorkspaceEntity>(
+              workspaceId,
+              'timelineActivity',
+            );
+
+          await timelineActivityRepository.delete({
+            name: 'message.linked',
+            linkedRecordId: In(orphanMessages.map(({ id }) => id)),
+          });
+        } catch (error) {
+          // Best-effort: a failure here must never block the message cleanup.
+          this.logger.warn(
+            `Could not delete orphaned message timeline activities: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
 
         const orphanMessageThreads = await messageThreadRepository.find({
           where: {

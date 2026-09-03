@@ -9,7 +9,7 @@ import { classifyNoteActivity } from '@/activities/timeline-activities/utils/cla
 import { isTimelineActivityWithLinkedRecord } from '@/activities/timeline-activities/types/TimelineActivity';
 import { useOpenRecordInSidePanel } from '@/side-panel/hooks/useOpenRecordInSidePanel';
 import { type CoreObjectNameSingular } from 'twenty-shared/types';
-import { useGetRecordFromCache } from '@/object-record/cache/hooks/useGetRecordFromCache';
+import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { isNonEmptyString } from '@sniptt/guards';
 import {
   IconMail,
@@ -114,24 +114,60 @@ export const EventRowActivity = ({
     throw new Error('Could not find linked record id for event');
   }
 
-  const getActivityFromCache = useGetRecordFromCache({
+  // LOCAL-PATCH (board cards 2026-09-02): the note body used to come from the
+  // Apollo cache only — when the cache held the note without bodyV2, expanding
+  // the row showed no body at all ("why do I need to open the editor to see
+  // the transcript?"). Fetch it instead (Apollo's default cache-first policy:
+  // cache hit when present, one query per note otherwise).
+  const { record: activityInStore } = useFindOneRecord({
     objectNameSingular,
+    objectRecordId: event.linkedRecordId,
     recordGqlFields: {
       id: true,
       title: true,
-      bodyV2: true,
+      bodyV2: { markdown: true },
     },
   });
 
-  const activityInStore = getActivityFromCache(event.linkedRecordId);
+  // LOCAL-PATCH (board card 2026-09-02): imported notes carry code-like junk
+  // titles ("NF5ZG") that read as a glitch. Treat a short no-space mixed-case
+  // alphanumeric title as junk and fall back to the body's first words.
+  const isJunkTitle = (title: string | null | undefined) =>
+    !!title && /^[A-Za-z0-9]{3,10}$/.test(title.trim());
+
+  const bodyExcerpt = (() => {
+    const markdown = activityInStore?.bodyV2?.markdown || '';
+
+    return markdown
+      .replace(/\s+/g, ' ')
+      .replace(/^[^A-Za-z0-9📝📞📥📤⏳]+/, '')
+      .trim()
+      .slice(0, 60);
+  })();
 
   const computeActivityTitle = () => {
-    if (isNonEmptyString(activityInStore?.title)) {
+    if (
+      isNonEmptyString(activityInStore?.title) &&
+      !isJunkTitle(activityInStore?.title)
+    ) {
       return activityInStore?.title;
     }
 
-    if (isNonEmptyString(event.linkedRecordCachedName)) {
+    if (
+      isNonEmptyString(event.linkedRecordCachedName) &&
+      !isJunkTitle(event.linkedRecordCachedName)
+    ) {
+      // Junk title on the record AND on the cached name — the body's first
+      // words say more than "Untitled".
+      if (bodyExcerpt) {
+        return bodyExcerpt;
+      }
+
       return event.linkedRecordCachedName;
+    }
+
+    if (bodyExcerpt) {
+      return bodyExcerpt;
     }
 
     return 'Untitled';

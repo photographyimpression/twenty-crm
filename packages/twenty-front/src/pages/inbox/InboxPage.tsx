@@ -38,19 +38,26 @@ const StyledLayout = styled.div`
 `;
 
 const StyledList = styled.div`
+  // LOCAL-PATCH (board card 2026-09-02): standard email-client proportions —
+  // a compact fixed-width list column and a wide reading pane (it used to be
+  // the opposite: a huge list and a cramped 480px preview).
   display: flex;
-  flex: 1 1 0;
+  flex: 0 0 400px;
   flex-direction: column;
   height: 100%;
   min-width: 0;
   overflow: auto;
   padding: ${themeCssVariables.spacing[6]} ${themeCssVariables.spacing[6]}
     ${themeCssVariables.spacing[2]};
+
+  @media (max-width: 900px) {
+    flex: 0 0 300px;
+  }
 `;
 
 const StyledDetailColumn = styled.div`
   display: flex;
-  flex: 0 0 480px;
+  flex: 1 1 0;
   flex-direction: column;
   height: 100%;
   min-width: 0;
@@ -66,7 +73,9 @@ const StyledTitleRow = styled.div`
 `;
 
 const StyledCount = styled.span`
-  color: ${themeCssVariables.font.color.light};
+  // LOCAL-PATCH (board card 2026-09-02): was font.color.light — too pale to
+  // read on the white background ("the contrast is like white on white").
+  color: ${themeCssVariables.font.color.secondary};
   font-size: ${themeCssVariables.font.size.lg};
   font-weight: ${themeCssVariables.font.weight.regular};
 `;

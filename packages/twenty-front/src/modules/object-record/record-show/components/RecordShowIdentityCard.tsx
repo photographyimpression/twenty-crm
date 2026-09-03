@@ -12,6 +12,7 @@ import { useObjectMetadataItem } from '@/object-metadata/hooks/useObjectMetadata
 import { type ObjectMetadataItem } from '@/object-metadata/types/ObjectMetadataItem';
 import { useIsRecordFieldReadOnly } from '@/object-record/read-only/hooks/useIsRecordFieldReadOnly';
 import { FieldContext } from '@/object-record/record-field/ui/contexts/FieldContext';
+import { LightCopyIconButton } from '@/object-record/record-field/ui/components/LightCopyIconButton';
 import { usePersonAvatarUpload } from '@/object-record/record-show/hooks/usePersonAvatarUpload';
 import { useRecordShowContainerActions } from '@/object-record/record-show/hooks/useRecordShowContainerActions';
 import { useRecordShowContainerData } from '@/object-record/record-show/hooks/useRecordShowContainerData';
@@ -494,8 +495,29 @@ export const RecordShowIdentityCard = ({
         </StyledNameBlock>
       </StyledIdentityRow>
 
-      {(createdByName || city) && (
+      {(createdByName || city || primaryEmail || primaryPhone) && (
         <StyledMetaList>
+          {primaryEmail && (
+            <StyledMetaRow title={primaryEmail}>
+              <StyledMetaIcon>
+                <IconMail size={14} />
+              </StyledMetaIcon>
+              <StyledMetaValue>{primaryEmail}</StyledMetaValue>
+              {/* LOCAL-PATCH (board card 2026-09-02): one-click copy next to
+                  the email — "so I can copy it and send her an email from my
+                  desktop app". Same for the phone below. */}
+              <LightCopyIconButton copyText={primaryEmail} />
+            </StyledMetaRow>
+          )}
+          {primaryPhone && (
+            <StyledMetaRow title={primaryPhone}>
+              <StyledMetaIcon>
+                <IconPhone size={14} />
+              </StyledMetaIcon>
+              <StyledMetaValue>{primaryPhone}</StyledMetaValue>
+              <LightCopyIconButton copyText={primaryPhone} />
+            </StyledMetaRow>
+          )}
           {createdByName && (
             <StyledMetaRow>
               <StyledMetaIcon>

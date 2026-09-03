@@ -96,6 +96,30 @@ const StyledHeaderRow = styled.div`
   gap: ${themeCssVariables.spacing[2]};
 `;
 
+// LOCAL-PATCH (board card 2026-09-02): while a call's transcript is still
+// being prepared, show a live "working" chip instead of silence.
+const StyledPendingChip = styled.span`
+  animation: pending-pulse 1.2s ease-in-out infinite;
+  background: ${themeCssVariables.color.orange3};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.color.orange};
+  display: inline-flex;
+  font-size: ${themeCssVariables.font.size.xs};
+  font-weight: ${themeCssVariables.font.weight.semiBold};
+  padding: 2px 8px;
+  width: fit-content;
+
+  @keyframes pending-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+`;
+
 const TYPE_LABELS: Record<string, string> = {
   email: 'Email',
   sms: 'SMS',
@@ -124,8 +148,13 @@ export const EventCardNotePreview = ({
       ? bodyContent.slice(0, 300) + '...'
       : bodyContent
     : null;
-  const isTruncated =
-    bodyContent !== null && bodyContent.length > 300;
+  const isTruncated = bodyContent !== null && bodyContent.length > 300;
+
+  // The Telnyx call note writes this marker while the recording is being
+  // transcribed and rewrites itself when the transcript lands.
+  const isTranscriptionPending = !!bodyContent?.includes(
+    '⏳ Transcription: preparing',
+  );
 
   return (
     <StyledPreviewContainer>
@@ -141,14 +170,15 @@ export const EventCardNotePreview = ({
         {classification.duration && (
           <StyledDirectionBadge>{classification.duration}</StyledDirectionBadge>
         )}
+        {isTranscriptionPending && (
+          <StyledPendingChip>⏳ Transcribing…</StyledPendingChip>
+        )}
       </StyledHeaderRow>
 
       {bodyContent && (
         <StyledBodyPreview
           style={
-            expanded
-              ? { maxHeight: 'none', overflow: 'visible' }
-              : undefined
+            expanded ? { maxHeight: 'none', overflow: 'visible' } : undefined
           }
         >
           {expanded ? bodyContent : truncatedBody}

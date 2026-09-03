@@ -101,10 +101,21 @@ export const EventCardMessage = ({
     );
 
     if (shouldHandleNotFound) {
+      // LOCAL-PATCH (board card 2026-09-01): "Message not found" read like a
+      // bug. The honest message: the email left the synced folders, so its
+      // copy in the CRM was cleaned up — the card isn't broken.
       return (
-        <div>
-          <Trans>Message not found</Trans>
-        </div>
+        <StyledEventCardMessageContainer>
+          <StyledEmailTitle>
+            <Trans>Email no longer synced</Trans>
+          </StyledEmailTitle>
+          <StyledEmailParticipants>
+            <Trans>
+              This email was removed from the mailbox's synced folders, so its
+              contents are no longer available in the CRM.
+            </Trans>
+          </StyledEmailParticipants>
+        </StyledEventCardMessageContainer>
       );
     }
 

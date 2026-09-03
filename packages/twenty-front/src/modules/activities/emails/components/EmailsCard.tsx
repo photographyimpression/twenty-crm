@@ -46,7 +46,9 @@ const StyledH1TitleWrapper = styled.div`
 `;
 
 const StyledEmailCount = styled.span`
-  color: ${themeCssVariables.font.color.light};
+  // LOCAL-PATCH (board card 2026-09-02): raised from font.color.light — too
+  // pale to read on white.
+  color: ${themeCssVariables.font.color.secondary};
 `;
 
 export const EmailsCard = () => {

@@ -90,9 +90,20 @@ export const TimelineFilterPills = ({
 }: TimelineFilterPillsProps) => {
   // Only offer a pill the user can actually land on — an empty filter is a
   // dead end, and Salesmate's fixed row of eight would be mostly dead here.
+  // LOCAL-PATCH (board card 2026-09-02): Calls and Texts are ALWAYS shown on
+  // a record with any timeline content — the phone/SMS history lives in older
+  // pages of the timeline, so their counts can read 0 on the first page while
+  // the filter is still exactly what the user looks for ("there should be one
+  // for Calls as well").
+  const PINNED_CATEGORIES: TimelineEventCategory[] = ['calls', 'texts'];
+
   const availableCategories = (
     Object.keys(countsByCategory) as TimelineEventCategory[]
-  ).filter((category) => countsByCategory[category] > 0);
+  ).filter(
+    (category) =>
+      countsByCategory[category] > 0 ||
+      (totalCount > 0 && PINNED_CATEGORIES.includes(category)),
+  );
 
   if (availableCategories.length < 2) {
     return null;

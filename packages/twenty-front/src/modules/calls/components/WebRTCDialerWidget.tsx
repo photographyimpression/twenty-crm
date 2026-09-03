@@ -208,11 +208,14 @@ export const WebRTCDialerWidget: React.FC = () => {
       body: JSON.stringify({
         sessionId: callSessionId,
         transcript: fullTranscript,
+        // The peer number lets the server match the call record when the
+        // WebRTC session id differs from the voice-webhook's session key.
+        peerPhone: activeNumber ?? undefined,
       }),
     }).catch(() => {
       // Best-effort — the server-side recording transcript is the backup.
     });
-  }, [inCall, callSessionId, getFullTranscript]);
+  }, [inCall, callSessionId, activeNumber, getFullTranscript]);
 
   if (!isRinging && !inCall && !error) {
     return null;

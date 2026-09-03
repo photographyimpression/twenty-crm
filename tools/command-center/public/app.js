@@ -311,6 +311,7 @@
           <button class="mini-btn" id="copyEmailBtn" type="button" title="Copy this email address">⧉</button>
           <button class="mini-btn" id="searchEmailBtn" type="button" title="Find this email in the CRM Inbox">🔍</button>
         </div>
+        <div class="ctx-strip" id="ctxStrip"></div>
         <div class="from-line">From:
           <select id="fromPick" class="from-select" title="Which mailbox this email sends from">${fromOptions}</select>
         </div>
@@ -324,26 +325,47 @@
           <button class="btn-preview" id="remergeBtn" title="Re-merge every pending touch for this lead with their CURRENT CRM name/company — use it right after fixing a typo or renaming the contact">↻ Refresh contact info</button>
           <button class="btn-preview" id="previewBtn">Preview final ✉</button>
         </div>
-        <div class="actions">
-          <button class="btn btn-send" id="sendBtn">Send ✓</button>
-          <button class="btn btn-edit" id="editBtn">Edit</button>
-          <button class="btn btn-skip" id="skipBtn">Skip</button>
-          <button class="btn btn-unenroll" id="unenrollBtn" title="End this lead's whole sequence — for not-interested leads. Skip only postpones this one touch.">Unenroll</button>
-        </div>
+        ${
+          unenrollMode
+            ? renderOutcomeBox(a)
+            : `<div class="actions">
+                <button class="btn btn-send" id="sendBtn">Send ✓</button>
+                <button class="btn btn-edit" id="editBtn">Edit</button>
+                <button class="btn btn-skip" id="skipBtn">Skip</button>
+                <button class="btn btn-unenroll" id="unenrollBtn" title="End this lead's whole sequence — for not-interested leads. Skip only postpones this one touch.">Unenroll</button>
+              </div>`
+        }
       </div>`;
 
     el('bccMe').addEventListener('change', (ev) => setBccMe(ev.target.checked));
-    el('sendBtn').addEventListener('click', onSend);
-    el('skipBtn').addEventListener('click', onSkip);
-    el('editBtn').addEventListener('click', () => { editing = true; renderTriage(); });
+    if (el('sendBtn')) el('sendBtn').addEventListener('click', onSend);
+    if (el('skipBtn')) el('skipBtn').addEventListener('click', onSkip);
+    if (el('editBtn')) el('editBtn').addEventListener('click', () => { editing = true; renderTriage(); });
     el('previewBtn').addEventListener('click', () => { previewing = true; renderTriage(); });
-    el('unenrollBtn').addEventListener('click', onUnenroll);
+    if (el('unenrollBtn')) el('unenrollBtn').addEventListener('click', onUnenroll);
+    if (el('outCancel')) el('outCancel').addEventListener('click', () => { unenrollMode = false; renderTriage(); });
+    if (el('outWon')) el('outWon').addEventListener('click', () => commitDismiss(a, 'won', ''));
+    if (el('outPlain')) el('outPlain').addEventListener('click', () => commitDismiss(a, null, ''));
+    if (el('outLost')) {
+      el('outLost').addEventListener('click', () => {
+        const wrap = el('lostWrap');
+        if (wrap) { wrap.style.display = ''; el('lostReason').focus(); }
+      });
+    }
+    if (el('outLostConfirm')) {
+      el('outLostConfirm').addEventListener('click', () => {
+        const reason = (el('lostReason').value || '').trim();
+        if (!reason) { toast('Type a short reason first — it goes on their timeline', true); el('lostReason').focus(); return; }
+        commitDismiss(a, 'lost', reason);
+      });
+    }
     el('copyEmailBtn').addEventListener('click', () => copyEmail(a.recipientEmail));
     el('searchEmailBtn').addEventListener('click', () => {
       // Open the CRM's own Inbox pre-filtered to this sender — stays in the app.
       window.open('/inbox?search=' + encodeURIComponent(a.recipientEmail || ''), '_top');
     });
     el('remergeBtn').addEventListener('click', () => onRemerge(a));
+    loadLeadContext(a);
   }
 
   // ---- final-email preview (rendered, signature included) ------------------
@@ -403,6 +425,7 @@
     cursor += 1;
     editing = false;
     previewing = false;
+    unenrollMode = false;
     // Critical: the action handlers setBusy(true) before their POST resolves,
     // and renderTriage() re-renders fresh (enabled-looking) buttons WITHOUT
     // touching the busy flag. Until this reset, every action after the first
@@ -490,38 +513,112 @@
     }
   }
 
-  // Unenroll straight from the card: end the lead's whole sequence (reject all
-  // pending touches) — "the client says they're not interested or whatever
-  // other reason" (Moshe, 2026-08-25). Two-click confirm, same pattern as
-  // Dismiss on the replied rows.
-  async function onUnenroll(ev) {
+  // Unenroll straight from the card (board card 2026-09-02): instead of a bare
+  // two-click "sure?", the card flips to an outcome picker — Won (contact
+  // becomes a Customer + 🏆 timeline note), Lost (asks for a reason, saves a
+  // 📕 timeline note), or a plain end. All three end the sequence the same way
+  // (reject every pending touch).
+  let unenrollMode = false;
+
+  function onUnenroll() {
     if (busy) return;
-    const btn = ev.currentTarget;
-    if (btn.dataset.armed !== '1') {
-      btn.dataset.armed = '1';
-      btn.textContent = 'Sure? End sequence';
-      setTimeout(() => {
-        if (btn.isConnected) {
-          btn.dataset.armed = '';
-          btn.textContent = 'Unenroll';
-        }
-      }, 4000);
-      return;
-    }
-    const a = queue[cursor];
+    unenrollMode = true;
+    renderTriage();
+  }
+
+  function renderOutcomeBox(a) {
+    return `
+      <div class="outcome-box">
+        <div class="outcome-title">End ${seqLabel(a)} for ${esc(a.leadName || a.recipientEmail)} — why?</div>
+        <div class="outcome-row">
+          <button class="btn" id="outWon" style="background:var(--green);border-color:var(--green);color:#fff;">🏆 Won</button>
+          <button class="btn btn-unenroll" id="outLost">📕 Lost…</button>
+          <button class="btn btn-skip" id="outPlain">Just end it</button>
+          <button class="btn btn-secondary" id="outCancel">Cancel</button>
+        </div>
+        <div id="lostWrap" style="display:none;">
+          <input class="outcome-reason" id="lostReason" placeholder="What happened? (saved on their CRM timeline)" />
+          <div class="outcome-row"><button class="btn btn-unenroll" id="outLostConfirm" style="flex:1;">Confirm Lost</button></div>
+        </div>
+        <div class="outcome-hint">Won sets their contact type to Customer. Lost saves your reason on their timeline. All options end the sequence.</div>
+      </div>`;
+  }
+
+  async function commitDismiss(a, outcome, reason) {
+    if (busy) return;
     setBusy(true);
     try {
       const r = await apiPost('/dismiss', {
         email: a.recipientEmail,
         sequenceKey: seqOfCard(a),
+        ...(outcome ? { outcome } : {}),
+        ...(reason ? { reason } : {}),
       });
-      toast(`Unenrolled — ${r.rejected} upcoming touch${r.rejected === 1 ? '' : 'es'} cancelled`);
+      const why = r.outcome === 'won' ? ' — marked WON (contact is now a Customer)'
+        : r.outcome === 'lost' ? ' — marked LOST (reason saved on their timeline)' : '';
+      toast(`Unenrolled${why} — ${r.rejected} upcoming touch${r.rejected === 1 ? '' : 'es'} cancelled`);
       advance();
       await loadQueue();
     } catch (e) {
       toast('Unenroll failed: ' + e.message, true);
       setBusy(false);
     }
+  }
+
+  // ---- lead context strip (board card 2026-09-02) ---------------------------
+  // "Can I have the phone number of the person here on this page, and the
+  // option to call instead of email… a short summary: how many times we
+  // called, the product… everything on this one page."
+  function ctxShortDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  function loadLeadContext(a) {
+    const strip = el('ctxStrip');
+    if (!strip || !a.recipientEmail) return;
+    apiGet(`/lead-context?email=${encodeURIComponent(a.recipientEmail)}`)
+      .then((ctx) => {
+        // The user may have moved to another card while this loaded.
+        const current = queue[cursor];
+        if (!current || current.id !== a.id || !el('ctxStrip')) return;
+        const bits = [];
+        if (ctx.phone) {
+          bits.push(
+            `📞 <span class="ctx-phone">${esc(ctx.phone)}</span>` +
+            `<button class="ctx-call" id="ctxCallBtn" type="button" title="Ring your cell first, then bridge the lead">📞 Call</button>`,
+          );
+        }
+        const callBits = [];
+        if (ctx.calls && ctx.calls.count > 0) {
+          const last = ctxShortDate(ctx.calls.lastAt);
+          callBits.push(`called ${ctx.calls.count}×${last ? ` (last ${esc(last)})` : ''}`);
+        }
+        if (ctx.texts && ctx.texts.count > 0) {
+          const last = ctxShortDate(ctx.texts.lastAt);
+          callBits.push(`${ctx.texts.count} text${ctx.texts.count === 1 ? '' : 's'}${last ? ` (last ${esc(last)})` : ''}`);
+        }
+        if (ctx.sequence) {
+          callBits.push(`${esc(SEQ_LABELS[ctx.sequence.key] || ctx.sequence.key)} ${ctx.sequence.sent}/${ctx.sequence.total} sent`);
+        }
+        if (ctx.niche) callBits.push(`niche ${esc(ctx.niche)}`);
+        if (callBits.length) bits.push(`<span>${callBits.join(' · ')}</span>`);
+        if (bits.length === 0) bits.push('<span>No phone on file — email only</span>');
+        el('ctxStrip').innerHTML = bits.join(' ');
+        const callBtn = el('ctxCallBtn');
+        if (callBtn) {
+          callBtn.addEventListener('click', () => {
+            dialLead(ctx.phone, callBtn);
+          });
+        }
+      })
+      .catch(() => {
+        if (el('ctxStrip') && queue[cursor] && queue[cursor].id === a.id) {
+          el('ctxStrip').innerHTML = '';
+        }
+      });
   }
 
   // sequenceKey as the SERVER sees it (seqOf): fall back to the default for
@@ -593,6 +690,7 @@
       cursor = 0;
       editing = false;
       previewing = false;
+      unenrollMode = false;
       busy = false;
       renderTriage();
     } catch (e) {
@@ -1156,7 +1254,7 @@
     if (tag === 'input' || tag === 'textarea' || (t && t.isContentEditable)) return;
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
 
-    if (editing || previewing) return; // let Back/Cancel buttons handle those modes
+    if (editing || previewing || unenrollMode) return; // let Back/Cancel/Cancel buttons handle those modes
     if (busy) return;
     if (cursor >= queue.length || queue.length === 0) return;
 

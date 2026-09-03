@@ -132,6 +132,36 @@
         cursor: pointer; max-width: 320px;
       }
       .from-select:focus { outline: none; border-color: var(--accent); }
+      /* Lead context strip (board card 2026-09-02): phone + call button +
+         one-line history, right under the To line on the triage card. */
+      .ctx-strip {
+        align-items: center; color: var(--muted); display: flex; flex-wrap: wrap;
+        font-size: 13px; gap: 6px 10px; margin-top: 6px;
+      }
+      .ctx-strip .ctx-phone { color: var(--text); font-weight: 600; }
+      .ctx-strip .ctx-call {
+        background: var(--green); border: 0; border-radius: 999px; color: #fff;
+        cursor: pointer; font-size: 12px; font-weight: 600; padding: 3px 10px;
+      }
+      .ctx-strip .ctx-call:hover { background: var(--green-hover); }
+      .ctx-strip .ctx-call:disabled { opacity: 0.6; cursor: default; }
+
+      /* Unenroll outcome picker (board card 2026-09-02): Won / Lost+reason /
+         plain end, shown on the card instead of a bare two-click confirm. */
+      .outcome-box {
+        background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+        margin-top: 12px; padding: 12px;
+      }
+      .outcome-title { color: var(--text); font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+      .outcome-row { display: flex; flex-wrap: wrap; gap: 8px; }
+      .outcome-row .btn { flex: 1 1 140px; }
+      .outcome-reason {
+        border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+        font: inherit; font-size: 13px; margin: 10px 0 8px; padding: 8px 10px; width: 100%;
+        box-sizing: border-box;
+      }
+      .outcome-reason:focus { outline: none; border-color: var(--accent); }
+      .outcome-hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
       .bcc-toggle {
         display: flex; align-items: center; gap: 8px; margin-top: 10px;
         color: var(--muted); font-size: 13px; cursor: pointer; user-select: none;

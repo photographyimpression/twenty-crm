@@ -86,6 +86,10 @@ type CallRecord = {
   // The timeline note created at hangup — kept so the late-arriving
   // transcription can UPDATE that note instead of adding a duplicate.
   timelineNoteId?: string | null;
+  // LOCAL-PATCH (board card 2026-09-02): transient — true while the hangup
+  // path is creating the timeline note, so a live transcript arriving in that
+  // window waits for the note id instead of creating a second note.
+  noteCreating?: boolean;
 };
 
 type SmsRecord = {
@@ -433,10 +437,15 @@ export class TelnyxWebhookService {
         // Fire any "sms.received" workflow first (gives the user a per-run
         // execution log in the Workflows UI). Only fall back to the
         // hardcoded forwarder if no workflow is configured.
-        const workflowsFired = await this.dispatchSmsReceivedWorkflow(smsRecord);
+        const workflowsFired =
+          await this.dispatchSmsReceivedWorkflow(smsRecord);
 
         if (!workflowsFired) {
-          await this.forwardSmsToEmail(fromNumber, toNumber, payload.text || '');
+          await this.forwardSmsToEmail(
+            fromNumber,
+            toNumber,
+            payload.text || '',
+          );
         }
 
         // AI auto-reply — guarded against self-echoes, marketing loopbacks,
@@ -1531,8 +1540,7 @@ export class TelnyxWebhookService {
   // ZMN route. Env-overridable as a comma list, same digits normalization as
   // the blocklist.
   private familyNumbers = new Set<string>(
-    (process.env['SMS_FAMILY_NUMBERS'] ||
-      '+15148947978,+14387637978')
+    (process.env['SMS_FAMILY_NUMBERS'] || '+15148947978,+14387637978')
       .split(',')
       .map((entry) => this.blockKey(entry))
       .filter(Boolean),
@@ -1837,11 +1845,19 @@ export class TelnyxWebhookService {
   // Create a timeline entry for a completed call. Keeps the created note id on
   // the record so the late-arriving transcription can update the SAME note.
   async logCallToTimeline(record: CallRecord): Promise<void> {
-    const noteId = await this.createOrSkipCallNote(record);
+    // LOCAL-PATCH: flag the creation window so a concurrently-arriving live
+    // transcript waits for this note instead of adding a duplicate.
+    record.noteCreating = true;
 
-    if (noteId) {
-      record.timelineNoteId = noteId;
-      this.saveCallRecords();
+    try {
+      const noteId = await this.createOrSkipCallNote(record);
+
+      if (noteId) {
+        record.timelineNoteId = noteId;
+        this.saveCallRecords();
+      }
+    } finally {
+      record.noteCreating = false;
     }
   }
 
@@ -1866,7 +1882,11 @@ export class TelnyxWebhookService {
       return null;
     }
 
-    return this.createTimelineNote(personId, this.callNoteTitle(record), this.callNoteBody(record));
+    return this.createTimelineNote(
+      personId,
+      this.callNoteTitle(record),
+      this.callNoteBody(record),
+    );
   }
 
   private callNoteTitle(record: CallRecord): string {
@@ -1906,6 +1926,12 @@ export class TelnyxWebhookService {
       // The recording-based transcription hadn't landed yet — show the live
       // mic transcript so the note is useful immediately.
       body += `\n\n📝 Transcription (live, your side):\n${record.liveTranscript}`;
+    } else {
+      // LOCAL-PATCH (board card 2026-09-02): say the transcript is on its way
+      // instead of silently showing none — "if it takes time it should show
+      // something, so I see that it's working". This line is replaced when the
+      // transcription (or live transcript) lands and rewrites this note.
+      body += `\n\n⏳ Transcription: preparing — the transcript appears here automatically as soon as it's ready.`;
     }
 
     return body;
@@ -1916,6 +1942,20 @@ export class TelnyxWebhookService {
   // hangup note was created) or when a live transcript arrives.
   async updateCallTimelineNote(record: CallRecord): Promise<void> {
     try {
+      // LOCAL-PATCH (board card 2026-09-02): a live transcript posted at
+      // hangup can arrive while logCallToTimeline is still creating the note.
+      // Creating our own note in that window produced a DUPLICATE "Phone Call"
+      // note (one with, one without the transcript). Wait for the in-flight
+      // note instead.
+      if (!record.timelineNoteId && record.noteCreating) {
+        for (let i = 0; i < 32; i++) {
+          // ~8s max
+          await new Promise((resolve) => setTimeout(resolve, 250));
+
+          if (record.timelineNoteId || !record.noteCreating) break;
+        }
+      }
+
       if (record.timelineNoteId) {
         await this.updateTimelineNoteBody(
           record.timelineNoteId,
@@ -1937,24 +1977,67 @@ export class TelnyxWebhookService {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
-      this.logger.error(
-        `Failed to update call timeline note: ${errorMessage}`,
-      );
+      this.logger.error(`Failed to update call timeline note: ${errorMessage}`);
     }
   }
 
   // Store the browser-side (mic) transcript posted by the dialer on hangup.
-  async saveLiveTranscript(sessionId: string, transcript: string | null) {
-    const record =
+  // LOCAL-PATCH (board card 2026-09-02): the WebRTC dialer posts with ITS
+  // session id, which does not always equal the voice-webhook's session key —
+  // the transcript then landed on "unknown call session" and never reached the
+  // timeline. When the id misses, fall back to matching the freshest recent
+  // call with the same peer phone number (the dialer sends it as peerPhone).
+  async saveLiveTranscript(
+    sessionId: string,
+    transcript: string | null,
+    peerPhone?: string | null,
+  ) {
+    let record =
       this.callRecords.get(sessionId) ??
       (this.callControlIdIndex.has(sessionId)
         ? this.callRecords.get(this.callControlIdIndex.get(sessionId) ?? '')
         : undefined);
 
+    if (!record && peerPhone) {
+      const peerDigits = peerPhone.replace(/\D/g, '');
+      const cutoff = Date.now() - 30 * 60 * 1000;
+
+      let best: { rec: CallRecord; at: number } | null = null;
+
+      for (const rec of this.callRecords.values()) {
+        const startedAt = new Date(rec.startTime).getTime();
+
+        if (startedAt < cutoff) continue;
+
+        const candidateDigits = (
+          rec.direction === 'incoming' || rec.direction === 'inbound'
+            ? rec.from
+            : rec.to
+        ).replace(/\D/g, '');
+
+        const matches =
+          peerDigits.length > 0 &&
+          candidateDigits.length > 0 &&
+          (peerDigits.endsWith(candidateDigits) ||
+            candidateDigits.endsWith(peerDigits));
+
+        if (!matches || rec.liveTranscript) continue;
+
+        if (!best || startedAt > best.at) {
+          best = { rec, at: startedAt };
+        }
+      }
+
+      if (best) {
+        record = best.rec;
+        this.logger.log(
+          `Live transcript session ${sessionId} matched call ${record.callSessionId} by peer phone ${peerPhone}`,
+        );
+      }
+    }
+
     if (!record) {
-      this.logger.warn(
-        `Live transcript for unknown call session ${sessionId}`,
-      );
+      this.logger.warn(`Live transcript for unknown call session ${sessionId}`);
 
       return;
     }

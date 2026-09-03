@@ -30,10 +30,17 @@ export class OutlookCalendarEventService {
 
     return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
+        // LOCAL-PATCH: run with permission checks bypassed, exactly like the
+        // Telnyx webhook service does. The system context's member role has no
+        // object grants, so the connectedAccount read below failed Twenty's
+        // record-permission check and every "Add to calendar" from a person
+        // page died with "Entity performing the request does not have
+        // permission" (board card 2026-09-02).
         const connectedAccountRepository =
           await this.globalWorkspaceOrmManager.getRepository<ConnectedAccountWorkspaceEntity>(
             workspaceId,
             'connectedAccount',
+            { shouldBypassPermissionChecks: true },
           );
 
         const connectedAccount = await connectedAccountRepository.findOne({
@@ -53,6 +60,7 @@ export class OutlookCalendarEventService {
           await this.globalWorkspaceOrmManager.getRepository<PersonWorkspaceEntity>(
             workspaceId,
             'person',
+            { shouldBypassPermissionChecks: true },
           );
 
         const person = await personRepository.findOne({

@@ -41,11 +41,18 @@ export class TelnyxCallRecordsController {
   }
 
   // The in-CRM dialer's live (mic-side) transcript, posted when the call
-  // ends so it can be saved onto the person's timeline note.
+  // ends so it can be saved onto the person's timeline note. peerPhone is the
+  // number the dialer called — used to match the call record when the WebRTC
+  // session id doesn't equal the voice-webhook's session key.
   @Post('transcript')
   @UseGuards(PublicEndpointGuard, NoPermissionGuard)
   async saveLiveTranscript(
-    @Body() body: { sessionId?: string; transcript?: string },
+    @Body()
+    body: {
+      sessionId?: string;
+      transcript?: string;
+      peerPhone?: string;
+    },
   ) {
     if (!body?.sessionId) {
       return { data: null, error: 'sessionId is required' };
@@ -54,6 +61,7 @@ export class TelnyxCallRecordsController {
     await this.telnyxWebhookService.saveLiveTranscript(
       body.sessionId,
       body.transcript ?? null,
+      body.peerPhone ?? null,
     );
 
     return { data: 'ok' };

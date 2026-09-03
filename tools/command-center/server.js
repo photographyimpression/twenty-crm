@@ -532,7 +532,11 @@ async function fetchPersonContextByEmails(emails) {
     const data = await gql(
       `query PersonContext($emails: [String!]) {
         people(first: 200, filter: { emails: { primaryEmail: { in: $emails } } }) {
-          edges { node { id niche sequenceTag contactType emails { primaryEmail } } }
+          edges { node {
+            id niche sequenceTag contactType
+            emails { primaryEmail }
+            phones { primaryPhoneNumber primaryPhoneCallingCode }
+          } }
         }
       }`,
       { emails: unique },
@@ -542,11 +546,16 @@ async function fetchPersonContextByEmails(emails) {
         (e.node && e.node.emails && e.node.emails.primaryEmail) || '',
       ).toLowerCase();
       if (email && !map.has(email)) {
+        const phones = (e.node && e.node.phones) || {};
+        const phoneDigits = `${phones.primaryPhoneCallingCode || ''}${
+          phones.primaryPhoneNumber || ''
+        }`.replace(/\D/g, '');
         map.set(email, {
           id: e.node.id,
           niche: normalizeNiche(e.node.niche),
           sequenceTag: e.node.sequenceTag || null,
           contactType: e.node.contactType || null,
+          phone: phoneDigits ? `+${phoneDigits}` : null,
         });
       }
     }
@@ -2239,6 +2248,7 @@ api.get('/queue', async (_req, res) => {
         bcc: a.bccEmail || null,
         personId: person ? person.id : null,
         signatureName: sig ? sig.name : null,
+        phone: person ? person.phone : null,
       };
     });
 
@@ -2778,6 +2788,138 @@ api.get('/upcoming', async (_req, res) => {
   }
 });
 
+// ---- Lead context (board card 2026-09-02) -----------------------------------
+//
+// GET /api/lead-context?email=...
+// "Everything on this one page": the lead's phone, call/text history counts,
+// and sequence progress, so the triage card can brief Moshe without leaving
+// the Command Center. Sources: person record (GraphQL), the CRM's Telnyx
+// call/sms record stores (public CRM endpoints, called server-to-server), and
+// the approval rows we already hold. Degrades gracefully — any failing source
+// just drops out of the summary.
+const digitsOf = (v) => String(v || '').replace(/\D/g, '');
+
+async function fetchCallRecordsSafe() {
+  try {
+    const r = await fetch(`${CRM_BASE_URL}/telnyx/call-records`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!r.ok) return [];
+    const json = await r.json();
+    const entries = Array.isArray(json && json.data) ? json.data : [];
+    // The store serializes as [[sessionId, record], ...].
+    return entries
+      .map((entry) => (Array.isArray(entry) ? entry[1] : entry))
+      .filter(Boolean);
+  } catch (_e) {
+    return [];
+  }
+}
+
+async function fetchSmsRecordsSafe(contact) {
+  try {
+    const r = await fetch(
+      `${CRM_BASE_URL}/telnyx/sms-records?contact=${encodeURIComponent(contact)}`,
+      { headers: { Accept: 'application/json' } },
+    );
+    if (!r.ok) return [];
+    const json = await r.json();
+    return Array.isArray(json && json.data) ? json.data : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+api.get('/lead-context', async (req, res) => {
+  try {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'email is required' });
+
+    const person = (await fetchPersonContextByEmails([email])).get(email) || null;
+
+    const approvals = (await fetchAllApprovals()).filter(
+      (a) => String(a.recipientEmail || '').toLowerCase() === email,
+    );
+
+    // Sequence progress for the currently-active sequence.
+    const pendings = approvals.filter((a) => a.approvalStatus === 'PENDING');
+    const activeSeq = pendings.length
+      ? seqOf(
+          pendings.reduce((acc, a) =>
+            new Date(a.createdAt) > new Date(acc.createdAt) ? a : acc
+          )
+        )
+      : null;
+    const seqApprovals = activeSeq
+      ? approvals.filter((a) => seqOf(a) === activeSeq)
+      : [];
+    const sent = seqApprovals.filter((a) => a.approvalStatus === 'COMPLETED');
+    const lastSent = sent.length
+      ? sent.reduce((acc, a) =>
+          new Date(a.updatedAt) > new Date(acc.updatedAt) ? a : acc
+        )
+      : null;
+
+    let calls = { count: 0, lastAt: null };
+    let texts = { count: 0, lastAt: null };
+    if (person && person.phone) {
+      const phoneDigits = digitsOf(person.phone);
+      const [callRecords, smsRecords] = await Promise.all([
+        fetchCallRecordsSafe(),
+        fetchSmsRecordsSafe(person.phone),
+      ]);
+      const myCalls = callRecords.filter((rec) => {
+        const from = digitsOf(rec.from);
+        const to = digitsOf(rec.to);
+        return (
+          phoneDigits.length > 0 &&
+          (from.endsWith(phoneDigits.slice(-10)) ||
+            phoneDigits.endsWith(from.slice(-10)) ||
+            to.endsWith(phoneDigits.slice(-10)) ||
+            phoneDigits.endsWith(to.slice(-10)))
+        );
+      });
+      calls = {
+        count: myCalls.length,
+        lastAt: myCalls.length
+          ? myCalls.reduce((acc, r) =>
+              new Date(r.startTime) > new Date(acc.startTime) ? r : acc
+            ).startTime
+          : null,
+      };
+      texts = {
+        count: smsRecords.length,
+        lastAt: smsRecords.length
+          ? smsRecords.reduce((acc, r) =>
+              new Date(r.timestamp) > new Date(acc.timestamp) ? r : acc
+            ).timestamp
+          : null,
+      };
+    }
+
+    res.json({
+      email,
+      personId: person ? person.id : null,
+      phone: person ? person.phone : null,
+      niche: person ? person.niche : null,
+      contactType: person ? person.contactType : null,
+      calls,
+      texts,
+      sequence: activeSeq
+        ? {
+            key: activeSeq,
+            label: activeSeq,
+            sent: sent.length,
+            total: SEQUENCE_TOTALS[activeSeq] || seqApprovals.length,
+            lastSentAt: lastSent ? lastSent.updatedAt : null,
+          }
+        : null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ---- Final-email preview (body + niche signature) ---------------------------
 //
 // GET /api/approval/:id/preview
@@ -2896,17 +3038,49 @@ api.post('/resume', async (req, res) => {
   }
 });
 
-// POST /api/dismiss { email, sequenceKey } -> END the sequence for this lead:
-// clear the pause (if any) and reject every PENDING touch, so nothing more is
-// scheduled or sent and the lead leaves the CRM sequence views. This is the
-// "they replied and I'm done" button next to Resume, and the same endpoint
-// powers the triage card's "Unenroll" ("the client says they're not interested
-// or whatever other reason" — Moshe, 2026-08-25). A dismissed sequence can be
-// re-started later by setting the person's Sequence tag again.
+// POST /api/dismiss { email, sequenceKey, outcome?, reason? } -> END the
+// sequence for this lead: clear the pause (if any) and reject every PENDING
+// touch, so nothing more is scheduled or sent and the lead leaves the CRM
+// sequence views. This is the "they replied and I'm done" button next to
+// Resume, and the same endpoint powers the triage card's "Unenroll" ("the
+// client says they're not interested or whatever other reason" — Moshe,
+// 2026-08-25). A dismissed sequence can be re-started later by setting the
+// person's Sequence tag again.
+//
+// OUTCOME (board card 2026-09-02): unenrolling can record WHY —
+//   outcome='won'  -> contact type becomes Customer (the reconcile's
+//                     auto-unenroll already respects that state) + a 🏆 Won
+//                     note on their timeline,
+//   outcome='lost' -> a 📕 Lost note with the reason Moshe types.
+// Without an outcome it behaves exactly as before.
+async function createOutcomeTimelineNote(personId, title, body) {
+  const note = await gql(
+    `mutation CreateOutcomeNote($data: NoteCreateInput!) {
+      createNote(data: $data) { id }
+    }`,
+    {
+      data: {
+        title,
+        bodyV2: { markdown: body },
+      },
+    },
+  );
+  await gql(
+    `mutation CreateOutcomeNoteTarget($data: NoteTargetCreateInput!) {
+      createNoteTarget(data: $data) { id }
+    }`,
+    { data: { noteId: note.createNote.id, targetPersonId: personId } },
+  );
+}
+
 api.post('/dismiss', async (req, res) => {
   try {
     const email = (req.body.email || '').toString().trim().toLowerCase();
     const sequenceKey = (req.body.sequenceKey || '').toString().trim();
+    const outcome = req.body.outcome === 'won' || req.body.outcome === 'lost'
+      ? req.body.outcome
+      : null;
+    const reason = (req.body.reason || '').toString().trim();
     if (!email || !sequenceKey) {
       return res.status(400).json({ error: 'email and sequenceKey are required' });
     }
@@ -2928,11 +3102,70 @@ api.post('/dismiss', async (req, res) => {
     const state = readState();
     const before = state.paused.length;
     state.paused = state.paused.filter((p) => pausedKey(p.email, p.sequenceKey) !== key);
-    state.resumed = (state.resumed || []).filter(
+    state.resumed = state.resumed.filter(
       (r) => pausedKey(r.email, r.sequenceKey) !== key
     );
     if (state.paused.length !== before || (state.resumed || []).length !== (state.resumed || []).length) {
       writeState(state);
+    }
+
+    // Record the outcome on the person (best-effort: never fails the dismiss).
+    let outcomeApplied = null;
+    if (outcome) {
+      try {
+        const person = (await fetchPersonContextByEmails([email])).get(email);
+        if (person && person.id) {
+          const patch =
+            outcome === 'won'
+              ? { contactType: 'CUSTOMER', sequenceTag: null }
+              : { sequenceTag: null };
+          try {
+            await gql(
+              `mutation OutcomePerson($id: UUID!, $data: PersonUpdateInput!) {
+                updatePerson(id: $id, data: $data) { id }
+              }`,
+              { id: person.id, data: patch },
+            );
+          } catch (_patchError) {
+            // Some select fields reject null — retry clearing with ''.
+            await gql(
+              `mutation OutcomePerson($id: UUID!, $data: PersonUpdateInput!) {
+                updatePerson(id: $id, data: $data) { id }
+              }`,
+              {
+                id: person.id,
+                data: outcome === 'won'
+                  ? { contactType: 'CUSTOMER', sequenceTag: '' }
+                  : { sequenceTag: '' },
+              },
+            );
+          }
+
+          const when = new Date().toLocaleString('en-CA', {
+            timeZone: 'America/Toronto',
+          });
+          if (outcome === 'won') {
+            await createOutcomeTimelineNote(
+              person.id,
+              '🏆 Won',
+              `Marked WON from the Command Center on ${when} — ${sequenceKey} sequence ended, contact type set to Customer.${
+                reason ? `\n\nNote: ${reason}` : ''
+              }`,
+            );
+          } else {
+            await createOutcomeTimelineNote(
+              person.id,
+              '📕 Lost',
+              `Marked LOST from the Command Center on ${when} — ${sequenceKey} sequence ended.\n\nReason: ${
+                reason || '(none given)'
+              }`,
+            );
+          }
+          outcomeApplied = outcome;
+        }
+      } catch (e) {
+        console.error(`[dismiss] outcome write failed (continuing): ${e.message}`);
+      }
     }
 
     // Re-date everything else right away.
@@ -2942,12 +3175,15 @@ api.post('/dismiss', async (req, res) => {
       /* non-fatal */
     }
     console.log(
-      `[dismiss] ${email} ${sequenceKey}: rejected ${targets.length} pending touch(es)`
+      `[dismiss] ${email} ${sequenceKey}: rejected ${targets.length} pending touch(es)${
+        outcomeApplied ? ` (outcome: ${outcomeApplied})` : ''
+      }`
     );
     res.json({
       ok: true,
       dismissed: { email, sequenceKey },
       rejected: targets.length,
+      outcome: outcomeApplied,
       paused: state.paused,
     });
   } catch (e) {
