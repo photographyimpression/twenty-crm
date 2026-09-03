@@ -780,7 +780,8 @@ export class TelnyxWebhookService {
           return;
         }
 
-        // Fallback: try Deepgram if available
+        // Fallback: Gemini audio (free tier) first, then Deepgram if configured.
+        if (await this.transcribeWithGemini(sessionId, recordingUrl)) return;
         await this.transcribeWithDeepgram(sessionId, recordingUrl);
       }
     } catch (error) {
@@ -799,8 +800,178 @@ export class TelnyxWebhookService {
         return;
       }
 
-      // Fallback: try Deepgram if available
+      // Fallback: Gemini audio (free tier) first, then Deepgram if configured.
+      if (await this.transcribeWithGemini(sessionId, recordingUrl)) return;
       await this.transcribeWithDeepgram(sessionId, recordingUrl);
+    }
+  }
+
+  // The stored recording URL is a bare (unsigned) S3 link Telnyx's own
+  // transcriber can't fetch — and /v2/ai/transcribe turns out to answer
+  // 10005 "resource not found" on this account regardless (the product was
+  // never provisioned), so recordings NEVER transcribed server-side. The
+  // Recordings API hands out short-lived SIGNED download URLs; use one.
+  private async fetchSignedRecordingUrl(
+    sessionId: string,
+  ): Promise<string | null> {
+    const telnyxApiKey = process.env.TELNYX_API_KEY;
+
+    if (!telnyxApiKey) return null;
+
+    try {
+      const res = await fetch(
+        `https://api.telnyx.com/v2/recordings?filter[call_session_id]=${encodeURIComponent(
+          sessionId,
+        )}`,
+        { headers: { Authorization: `Bearer ${telnyxApiKey}` } },
+      );
+
+      if (!res.ok) return null;
+
+      const json = (await res.json()) as {
+        data?: Array<{
+          download_urls?: { mp3?: string; wav?: string };
+        }>;
+      };
+      const row = (json.data || [])[0];
+
+      return row?.download_urls?.mp3 || row?.download_urls?.wav || null;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  // LOCAL-PATCH (board card 2026-09-02): Gemini audio transcription — the
+  // REAL recording-transcript path on this box (Telnyx's transcriber is not
+  // provisioned and no Deepgram key is set). Downloads the recording and
+  // sends it inline to Gemini's free tier. Returns true when the timeline
+  // note was updated. IPv4 DNS preference is set process-wide by the
+  // ai-assistant module (the box's IPv6 egress is region-blocked).
+  async transcribeWithGemini(
+    sessionId: string,
+    recordingUrl: string,
+  ): Promise<boolean> {
+    const geminiKey =
+      process.env['GEMINI_API_KEY'] || process.env['GOOGLE_API_KEY'];
+
+    if (!geminiKey) return false;
+
+    try {
+      const signedUrl =
+        (await this.fetchSignedRecordingUrl(sessionId)) || recordingUrl;
+      const audioRes = await fetch(signedUrl);
+
+      if (!audioRes.ok) {
+        this.logger.warn(
+          `Could not download recording for ${sessionId} (${audioRes.status}) — skipping Gemini transcription`,
+        );
+
+        return false;
+      }
+
+      const audio = Buffer.from(await audioRes.arrayBuffer());
+
+      if (audio.length === 0 || audio.length > 18 * 1024 * 1024) {
+        this.logger.warn(
+          `Recording for ${sessionId} is ${audio.length} bytes — outside the inline-audio range`,
+        );
+
+        return false;
+      }
+
+      const audioBase64 = audio.toString('base64');
+
+      for (const model of [
+        'gemini-2.5-flash',
+        'gemini-2.5-flash-lite',
+        'gemini-2.0-flash',
+      ]) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': geminiKey,
+              },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    role: 'user',
+                    parts: [
+                      {
+                        text: 'Transcribe this phone call recording. Output only the transcript, labeling the speakers.',
+                      },
+                      {
+                        inline_data: {
+                          mime_type: 'audio/mpeg',
+                          data: audioBase64,
+                        },
+                      },
+                    ],
+                  },
+                ],
+                generationConfig: {
+                  maxOutputTokens: 4096,
+                  temperature: 0,
+                },
+              }),
+            },
+          );
+
+          if (!res.ok) {
+            this.logger.warn(
+              `Gemini ${model} transcription HTTP ${res.status}`,
+            );
+
+            continue;
+          }
+
+          const json = (await res.json()) as {
+            candidates?: Array<{
+              content?: { parts?: Array<{ text?: string }> };
+            }>;
+          };
+          const text = (json.candidates?.[0]?.content?.parts ?? [])
+            .map((part) => part.text ?? '')
+            .join('')
+            .trim();
+
+          if (!text) continue;
+
+          const record = this.callRecords.get(sessionId);
+
+          if (record) {
+            record.transcription = text;
+            record.status = 'transcribed';
+            this.saveCallRecords();
+            await this.updateCallTimelineNote(record);
+          }
+
+          this.logger.log(
+            `Gemini transcription completed for session ${sessionId} (${text.length} chars)`,
+          );
+
+          return true;
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+
+          this.logger.warn(
+            `Gemini ${model} transcription failed: ${errorMessage}`,
+          );
+        }
+      }
+
+      return false;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`Gemini transcription error: ${errorMessage}`);
+
+      return false;
     }
   }
 
