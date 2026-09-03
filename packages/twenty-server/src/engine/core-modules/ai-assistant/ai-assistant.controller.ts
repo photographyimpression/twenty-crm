@@ -14,6 +14,20 @@ import { type Response } from 'express';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { PublicEndpointGuard } from 'src/engine/guards/public-endpoint.guard';
 
+// LOCAL-PATCH (board card 2026-09-01): the box's IPv6 range geolocates to
+// France, where Gemini's free tier is region-blocked ("User location is not
+// supported"); its IPv4 geolocates to Canada and works. Node's fetch prefers
+// IPv6, so every server-side Gemini call (this panel AND the SMS auto-reply)
+// silently failed and fell back. Prefer IPv4 for DNS process-wide — the box
+// is fully dual-stack and IPv4 egress is the geographically correct one.
+import { setDefaultResultOrder } from 'node:dns';
+
+try {
+  setDefaultResultOrder('ipv4first');
+} catch {
+  // Very old Node — the Gemini calls then simply keep falling back.
+}
+
 // LOCAL-PATCH: AI contact-summary panel (board card 2026-08-25 — "the Claude
 // right panel I have in Chrome, so AI can summarize the contact I have open").
 // The CRM frontend assembles the visible context of the open record (person
