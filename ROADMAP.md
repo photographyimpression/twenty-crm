@@ -4,28 +4,49 @@ Living list of things we've discussed but haven't built yet. The in-app
 version lives in the Daily Command Center (`/command-center/`, "Roadmap" tab)
 and is editable from there. This file is the developer-facing mirror.
 
-_Last updated: 2026-09-01_
+_Last updated: 2026-09-03_
 
 This mirrors the in-app changelog (Command Center → Roadmap tab). Categories:
 🔧 fix ready · 🐞 open bug · ✨ wanted feature · 🔄 in progress · ⏳ blocked on you.
 
 ---
 
-## ✅ Delivered 2026-09-01 (roadmap board cleared — everything buildable is built)
+## ✅ Delivered 2026-09-03 (Feedback Board cleared — all 13 requests built)
 
-The in-app board had 3 open items; 1 was built + delivered, 2 are genuinely
-blocked on Moshe (see below). Same day, the whole Feedback Board queue
-(14 cards) was built + delivered — see the board's Delivered column for the
-"what shipped" notes (emails were sent per card).
+- **Unenroll outcomes** — the triage card's Unenroll now asks why: 🏆 Won sets
+  contact type to Customer (+ timeline note), 📕 Lost requires a reason
+  (+ timeline note), or just end it.
+- **AI panel on Gemini** — the right-side AI briefing streams from
+  gemini-2.5-flash (free tier) in ~1-2s; Ollama stays as fallback. Root fix
+  included forcing IPv4 egress — the box's IPv6 geolocates to France where
+  the free tier is blocked (this also un-broke the AI SMS auto-reply).
+- **Call recordings now actually transcribe** — Telnyx's /v2/ai/transcribe
+  was never provisioned on this account (every attempt 404s, so recordings
+  had never once transcribed). Recordings are downloaded via the Recordings
+  API's signed URLs and transcribed by Gemini audio. Missing Sept-2
+  transcripts were backfilled onto their timeline notes.
+- **Live transcripts land** — the dialer's session-id mismatch (dropped
+  transcripts) is fixed with phone-number matching + a hangup-race guard
+  (no more duplicate empty call notes); the note shows a pulsing
+  "⏳ Transcribing…" chip until the transcript arrives.
+- **"Message not found" fixed** — message cleanup now deletes the orphaned
+  timeline card with the email; leftovers render "Email no longer synced".
+- **Calendar permission bug fixed** — creating any event from a person page
+  (strategy call, Teams toggle) died with "Entity performing the request
+  does not have permission": the Outlook event service queried the connected
+  account without the system permission bypass. Verified end-to-end.
+- **Timeline** — note bodies always render inline on expand; junk imported
+  titles ("NF5ZG") fall back to the note's first words; Calls/Texts filter
+  pills are always offered; new notes get AI-written 2-5 word titles
+  (Gemini, heuristic fallback) instead of "Untitled".
+- **Person page** — email + phone with one-click copy icons on the identity
+  card.
+- **Inbox** — standard email proportions (compact list, wide reading pane)
+  and readable (non-pale) secondary text.
+- **Triage card context strip** — lead phone + click-to-call + calls/texts/
+  sequence summary on the card itself.
 
-- **Multi-from sender** (`cl-11`) — From picker on the triage card (both
-  connected mailboxes, server-validated against live `connectedAccounts`),
-  per-send override stamped into the approval; recipient-keyed rotation pool
-  (`CC_SENDER_POOL`) already in place for when warming mailboxes are connected.
-  Roadmap items are now checked off through `POST /api/roadmap/:id/done`
-  (new delivery path — the Roadmap tab has ✓ Done buttons).
-
-## ⏳ Blocked on you (Moshe) — the only things left on the board
+## ⏳ Blocked on you (Moshe) — the only things left
 
 - **Connect warming mailboxes** (`cl-24`) — Settings → Accounts. The From
   picker + rotation are live; each connected mailbox appears automatically.
@@ -37,6 +58,8 @@ blocked on Moshe (see below). Same day, the whole Feedback Board queue
   answer: merge WHAT? (Two duplicate people? Two views? Two boards?)
 - DIGI Brooks was deliberately NOT enrolled in any sequence (lead-gen vendor,
   not a client). Say the word if you want them in one anyway.
+- Outlook: the "TEST — strategy-call fix verification (safe to delete)"
+  calendar event from the 2026-09-03 verification can be deleted.
 
 ## Shipped (recent highlights)
 
