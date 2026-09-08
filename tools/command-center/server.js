@@ -19,12 +19,20 @@
 //   POST /api/roadmap      -> append an idea
 //   POST /api/reconcile    -> force-run the cascade scheduler (+ reply-check)
 //   GET  /api/health       -> liveness + CRM reachability
+//   GET  /api/ai/dossier   -> source counts for the Ask-Gemini sidebar (per email)
+//   POST /api/ai/ask       -> {email, question, history} -> SSE stream from Gemini
 
 const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const dns = require('dns');
 const { execFile } = require('child_process');
+
+// Gemini's free tier region-blocks the box's IPv6 egress (it geolocates to
+// France) — force IPv4-first DNS for every connection this process makes, the
+// same fix twenty-server applies process-wide for its own Gemini calls.
+dns.setDefaultResultOrder('ipv4first');
 const {
   SEASONAL_OFFER_KEY,
   SEASONAL_OFFER_TOUCHES,
@@ -212,6 +220,15 @@ function readEnvValueFromFile(filePath, key) {
 }
 
 const TWENTY_ENV_PATH = process.env.CC_TWENTY_ENV_PATH || '/opt/twenty/.env';
+
+// Gemini API key for the AI sidebar (/api/ai/*): env var first, then the same
+// Twenty .env the CRM's call-transcription path reads its key from. Never logged.
+const GEMINI_API_KEY =
+  process.env.GEMINI_API_KEY ||
+  process.env.GOOGLE_API_KEY ||
+  readEnvValueFromFile(TWENTY_ENV_PATH, 'GEMINI_API_KEY') ||
+  readEnvValueFromFile(TWENTY_ENV_PATH, 'GOOGLE_API_KEY') ||
+  null;
 
 // APP_SECRET: env var first, then the Twenty .env on disk. Never logged.
 const APP_SECRET =
@@ -2920,6 +2937,498 @@ api.get('/lead-context', async (req, res) => {
   }
 });
 
+// ---- Ask Gemini sidebar (direct request 2026-09-08) --------------------------
+//
+// A Chrome-style "Ask Gemini" side panel, but INSIDE the Command Center and fed
+// with the lead's own CRM history, so its summaries are about THIS contact:
+//   GET  /api/ai/dossier?email=...  -> the assembled briefing (source counts)
+//   POST /api/ai/ask { email, question, history } -> SSE stream of the answer
+//
+// Sources (each degrades quietly — a failing source just drops out):
+//   the person record, sequence approvals (sent + pending, with full email
+//   text), Telnyx call records (with transcripts) + SMS, recent timeline notes.
+// The Gemini key is the same one the CRM's call transcription uses. Asks run
+// one at a time (free-tier rate limits) — a concurrent ask queues, it fails
+// only when Gemini itself rejects every model.
+
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+];
+const AI_DOSSIER_TTL_MS = 2 * 60 * 1000;
+const aiDossierCache = new Map(); // lower(email) -> { at, dossier }
+
+// One Gemini conversation at a time; extra asks wait their turn.
+let aiAskInFlight = false;
+const aiAskWaiters = [];
+function acquireAiAsk() {
+  return new Promise((resolve) => {
+    if (!aiAskInFlight) {
+      aiAskInFlight = true;
+      resolve();
+    } else {
+      aiAskWaiters.push(resolve);
+    }
+  });
+}
+function releaseAiAsk() {
+  const next = aiAskWaiters.shift();
+  if (next) next();
+  else aiAskInFlight = false;
+}
+
+function clip(text, max) {
+  const s = String(text == null ? '' : text).trim();
+  if (s.length <= max) return s;
+  return s.slice(0, max) + '…';
+}
+
+// Person record with the fields the briefing wants (lead-context returns
+// context WITHOUT the name — the sidebar header needs the name).
+async function fetchPersonFullByEmail(email) {
+  const map = await fetchPersonContextByEmails([email]);
+  const base = map.get(email);
+  if (!base) return null;
+  try {
+    const data = await gql(
+      `query PersonFull($id: UUID!) {
+        person(filter: { id: { eq: $id } }) {
+          id
+          name { firstName lastName }
+          city
+          niche
+          contactType
+          sequenceTag
+          emails { primaryEmail }
+          phones { primaryPhoneNumber primaryPhoneCallingCode }
+        }
+      }`,
+      { id: base.id },
+    );
+    const p = data.person;
+    const phones = p.phones || {};
+    return {
+      id: p.id,
+      name: [p.name && p.name.firstName, p.name && p.name.lastName]
+        .filter(Boolean)
+        .join(' ') || null,
+      city: p.city || null,
+      niche: base.niche,
+      contactType: p.contactType || base.contactType || null,
+      sequenceTag: p.sequenceTag || base.sequenceTag || null,
+      phone: base.phone,
+      email: (p.emails && p.emails.primaryEmail) || email,
+      personId: base.id,
+    };
+  } catch (_e) {
+    // Name lookup failed — still return what lead-context resolved.
+    return {
+      id: base.id,
+      name: null,
+      city: null,
+      niche: base.niche,
+      contactType: base.contactType || null,
+      sequenceTag: base.sequenceTag || null,
+      phone: base.phone,
+      email,
+      personId: base.id,
+    };
+  }
+}
+
+// Recent timeline notes linked to this person (call logs, SMS notes, Won/Lost
+// reasons…). Notes can't be filtered by target in GraphQL, so we page the most
+// recent ones and match targets server-side — fine at this workspace's size.
+async function fetchNotesForPersonSafe(personId) {
+  if (!personId) return [];
+  try {
+    const data = await gql(
+      `query RecentNotes {
+        notes(first: 50, orderBy: { createdAt: DescNullsLast }) {
+          edges { node {
+            id title createdAt
+            bodyV2 { markdown }
+            noteTargets { edges { node { targetPerson { id } } } }
+          } }
+        }
+      }`,
+    );
+    const out = [];
+    for (const e of (data.notes && data.notes.edges) || []) {
+      const n = e.node;
+      const targets = ((n.noteTargets || {}).edges || [])
+        .map((t) => t.node && t.node.targetPerson && t.node.targetPerson.id)
+        .filter(Boolean);
+      if (!targets.includes(personId)) continue;
+      out.push({
+        id: n.id,
+        title: n.title || '',
+        body: clip((n.bodyV2 && n.bodyV2.markdown) || '', 1200),
+        createdAt: n.createdAt,
+      });
+      if (out.length >= 10) break;
+    }
+    return out;
+  } catch (_e) {
+    return [];
+  }
+}
+
+// Everything the sidebar knows about a lead, in one object. Heavy fetches are
+// cached briefly so the auto-summary on open and the follow-up asks don't
+// re-hit the CRM for the same data within the same conversation.
+async function buildAiDossier(email) {
+  const key = String(email || '').trim().toLowerCase();
+  const cached = aiDossierCache.get(key);
+  if (cached && Date.now() - cached.at < AI_DOSSIER_TTL_MS) return cached.dossier;
+
+  const [person, approvals] = await Promise.all([
+    fetchPersonFullByEmail(key),
+    fetchAllApprovals().catch(() => []),
+  ]);
+  const mine = approvals.filter(
+    (a) => String(a.recipientEmail || '').toLowerCase() === key,
+  );
+
+  // Sequence emails, newest last so Gemini reads the story in order.
+  const sent = mine
+    .filter((a) => a.approvalStatus === 'COMPLETED')
+    .sort((x, y) => new Date(x.updatedAt) - new Date(y.updatedAt))
+    .slice(-10)
+    .map((a) => ({
+      sentAt: a.updatedAt,
+      sequenceKey: seqOf(a),
+      touchNumber: a.touchNumber,
+      subject: a.emailSubject || '(no subject)',
+      body: clip(a.emailBody || '', 900),
+    }));
+  const pending = mine
+    .filter((a) => a.approvalStatus === 'PENDING')
+    .sort((x, y) => new Date(x.scheduledDate || 0) - new Date(y.scheduledDate || 0));
+  const nextTouch = pending[0]
+    ? {
+        sequenceKey: seqOf(pending[0]),
+        touchNumber: pending[0].touchNumber,
+        dueDate: pending[0].scheduledDate || null,
+        subject: pending[0].emailSubject || '(no subject)',
+        body: clip(pending[0].emailBody || '', 1500),
+      }
+    : null;
+
+  // Calls (with transcripts) + texts, matched on the person's phone exactly
+  // the way lead-context matches them.
+  let calls = [];
+  let texts = [];
+  if (person && person.phone) {
+    const phoneDigits = digitsOf(person.phone);
+    const [callRecords, smsRecords] = await Promise.all([
+      fetchCallRecordsSafe(),
+      fetchSmsRecordsSafe(person.phone),
+    ]);
+    if (phoneDigits.length > 0) {
+      calls = callRecords
+        .filter((rec) => {
+          const from = digitsOf(rec.from);
+          const to = digitsOf(rec.to);
+          return (
+            from.endsWith(phoneDigits.slice(-10)) ||
+            phoneDigits.endsWith(from.slice(-10)) ||
+            to.endsWith(phoneDigits.slice(-10)) ||
+            phoneDigits.endsWith(to.slice(-10))
+          );
+        })
+        .sort((x, y) => new Date(y.startTime) - new Date(x.startTime))
+        .slice(0, 8)
+        .map((rec) => ({
+          startedAt: rec.startTime,
+          direction: rec.direction || null,
+          durationSec: rec.duration || null,
+          to: rec.to || null,
+          transcript: clip(rec.transcription || '', 2000),
+        }));
+    }
+    texts = smsRecords
+      .slice()
+      .sort((x, y) => new Date(y.timestamp) - new Date(x.timestamp))
+      .slice(0, 12)
+      .map((rec) => ({
+        timestamp: rec.timestamp,
+        direction: rec.direction || null,
+        body: clip(rec.body || rec.text || '', 300),
+      }));
+  }
+
+  const notes = await fetchNotesForPersonSafe(person && person.id);
+
+  const dossier = {
+    generatedAt: new Date().toISOString(),
+    email: key,
+    person,
+    nextTouch,
+    sentEmails: sent,
+    calls,
+    texts,
+    notes,
+    sources: {
+      person: !!person,
+      sentEmails: sent.length,
+      calls: calls.length,
+      texts: texts.length,
+      notes: notes.length,
+      pendingTouch: !!nextTouch,
+    },
+  };
+  aiDossierCache.set(key, { at: Date.now(), dossier });
+  if (aiDossierCache.size > 50) {
+    // Tiny LRU-ish trim: drop the oldest half.
+    const entries = [...aiDossierCache.entries()].sort((a, b) => a[1].at - b[1].at);
+    for (const [k] of entries.slice(0, Math.floor(entries.length / 2))) {
+      aiDossierCache.delete(k);
+    }
+  }
+  return dossier;
+}
+
+// The dossier as a compact text block for the model. "Today" is included so
+// relative dates ("3 days ago") resolve correctly without tool calls.
+function renderDossierPrompt(d) {
+  const bits = [`TODAY: ${new Date().toISOString().slice(0, 10)}`];
+  if (d.person) {
+    const p = d.person;
+    const personBits = [
+      `name: ${p.name || '(unknown)'}`,
+      p.city ? `city: ${p.city}` : '',
+      p.niche ? `niche: ${p.niche}` : '',
+      p.contactType ? `contact type: ${p.contactType}` : '',
+      p.sequenceTag ? `sequence tag: ${p.sequenceTag}` : '',
+      p.phone ? `phone: ${p.phone}` : '',
+    ].filter(Boolean);
+    bits.push(`PERSON: ${personBits.join(', ')}`);
+  } else {
+    bits.push('PERSON: (no CRM record found for this email)');
+  }
+  if (d.nextTouch) {
+    const t = d.nextTouch;
+    bits.push(
+      `NEXT TOUCH QUEUED: ${t.sequenceKey} touch ${t.touchNumber}, due ${t.dueDate || 'n/a'} — subject "${t.subject}"\n${t.body}`,
+    );
+  }
+  if (d.sentEmails.length) {
+    bits.push(
+      'EMAILS WE SENT THEM (oldest first):\n' +
+        d.sentEmails
+          .map(
+            (m) =>
+              `- [${(m.sentAt || '').slice(0, 10)}] ${m.sequenceKey} touch ${m.touchNumber}: "${m.subject}"\n${m.body}`,
+          )
+          .join('\n'),
+    );
+  }
+  if (d.calls.length) {
+    bits.push(
+      'CALL HISTORY (newest first):\n' +
+        d.calls
+          .map((c) => {
+            const when = (c.startedAt || '').slice(0, 16).replace('T', ' ');
+            const dur = c.durationSec ? ` ${c.durationSec}s` : '';
+            const dir = c.direction || '';
+            return `- [${when}] ${dir}${dur}${c.transcript ? `\nTranscript: ${c.transcript}` : ' (no transcript)'}`;
+          })
+          .join('\n'),
+    );
+  }
+  if (d.texts.length) {
+    bits.push(
+      'TEXTS (newest first):\n' +
+        d.texts
+          .map((t) => `- [${(t.timestamp || '').slice(0, 16).replace('T', ' ')}] ${t.direction || ''}: ${t.body}`)
+          .join('\n'),
+    );
+  }
+  if (d.notes.length) {
+    bits.push(
+      'TIMELINE NOTES (newest first):\n' +
+        d.notes
+          .map(
+            (n) =>
+              `- [${(n.createdAt || '').slice(0, 10)}] ${n.title}${n.body ? `: ${n.body}` : ''}`,
+          )
+          .join('\n'),
+    );
+  }
+  return bits.join('\n\n');
+}
+
+const AI_SYSTEM_PROMPT = [
+  'You are the built-in sales assistant in the Command Center of a photography',
+  'business (Impression Photography — corporate, jewelry and e-commerce product',
+  'photography). The user is Moshe, the owner. You are shown a dossier of ONE',
+  'contact drawn live from the CRM: their record, every sequence email we sent',
+  'them, call transcripts, texts and timeline notes.',
+  '',
+  'Style — match it every time:',
+  '- FAST and TO THE POINT. Short paragraphs or tight bullets. No preamble, no',
+  '  "Certainly!", no restating the question.',
+  '- Ground everything in the dossier. If the dossier lacks the answer, say so',
+  '  in one short line — never invent history, names, dates or promises.',
+  '- For "summarize / catch me up": who they are, what we\'ve sent/called so far,',
+  '  where the relationship stands, what is queued next. 5-8 lines max.',
+  '- For call prep: lead with anything time-sensitive (a reply, a quote, a',
+  '  deadline), then 2-4 concrete talking points drawn from their actual words',
+  '  in transcripts/emails.',
+  '- Same language as the user (usually English; French only if they write French).',
+].join('\n');
+
+api.get('/ai/dossier', async (req, res) => {
+  try {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'email is required' });
+    const dossier = await buildAiDossier(email);
+    res.json({ ok: true, sources: dossier.sources, generatedAt: dossier.generatedAt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Streaming ask. The client POSTs { email, question, history }; we respond with
+// an SSE stream: one `data: {"text": "…"}` per delta, then `data: {"done":true}`.
+// `history` is the client's own [{role: 'user'|'model', content}] tail so the
+// conversation survives without server-side session state.
+api.post('/ai/ask', async (req, res) => {
+  const email = String((req.body || {}).email || '').trim().toLowerCase();
+  const question = String((req.body || {}).question || '').trim();
+  const history = Array.isArray((req.body || {}).history) ? req.body.history : [];
+
+  if (!email || !question) {
+    return res.status(400).json({ error: 'email and question are required' });
+  }
+  if (!GEMINI_API_KEY) {
+    return res
+      .status(503)
+      .json({ error: 'No Gemini API key configured on the server' });
+  }
+
+  await acquireAiAsk();
+
+  // Past the JSON-error point, failures must travel INSIDE the stream — the
+  // response headers are already committed to text/event-stream.
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    // nginx proxies this app; without this it buffers the stream into silence.
+    'X-Accel-Buffering': 'no',
+  });
+  const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+  const fail = (message) => {
+    send({ error: message });
+    send({ done: true });
+    res.end();
+  };
+
+  try {
+    const dossier = await buildAiDossier(email);
+    const contents = [];
+    for (const turn of history.slice(-10)) {
+      const role = turn && turn.role === 'model' ? 'model' : 'user';
+      const content = String((turn && turn.content) || '').trim();
+      if (content) contents.push({ role, parts: [{ text: content }] });
+    }
+    contents.push({ role: 'user', parts: [{ text: question }] });
+
+    let answered = false;
+    for (const model of GEMINI_MODELS) {
+      let upstream;
+      try {
+        upstream = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': GEMINI_API_KEY,
+            },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [
+                  {
+                    text: `${AI_SYSTEM_PROMPT}\n\n=== CONTACT DOSSIER ===\n${renderDossierPrompt(dossier)}`,
+                  },
+                ],
+              },
+              contents,
+              generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },
+            }),
+          },
+        );
+      } catch (e) {
+        console.error(`[ai] ${model} fetch failed: ${e.message}`);
+        continue;
+      }
+      if (!upstream.ok || !upstream.body) {
+        console.error(`[ai] ${model} HTTP ${upstream.status}`);
+        continue;
+      }
+
+      // Pipe the SSE lines through, forwarding only the text deltas.
+      const reader = upstream.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let emitted = false;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIdx;
+          while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, newlineIdx).trim();
+            buffer = buffer.slice(newlineIdx + 1);
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            try {
+              const json = JSON.parse(payload);
+              const parts =
+                (json.candidates &&
+                  json.candidates[0] &&
+                  json.candidates[0].content &&
+                  json.candidates[0].content.parts) ||
+                [];
+              const text = parts.map((part) => part.text || '').join('');
+              if (text) {
+                emitted = true;
+                send({ text });
+              }
+            } catch (_e) {
+              /* partial line — wait for more */
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`[ai] ${model} stream failed: ${e.message}`);
+      }
+      if (emitted) {
+        answered = true;
+        break;
+      }
+      // Nothing usable from this model — try the next one.
+    }
+
+    if (!answered) {
+      fail('Gemini did not answer (every model failed) — try again in a moment.');
+      return;
+    }
+    send({ done: true });
+    res.end();
+  } catch (e) {
+    fail(e.message || 'Ask failed');
+  } finally {
+    releaseAiAsk();
+  }
+});
+
 // ---- Final-email preview (body + niche signature) ---------------------------
 //
 // GET /api/approval/:id/preview
@@ -3226,14 +3735,14 @@ api.get('/calls', async (_req, res) => {
         tasks(first: 100, orderBy: { dueAt: AscNullsLast }) {
           edges { node {
             id title status dueAt
-            taskTargets { edges { node {
-              targetPerson {
-                id
-                name { firstName lastName }
-                phones { primaryPhoneNumber primaryPhoneCallingCode }
-                emails { primaryEmail }
-              }
-            } } }
+              taskTargets { edges { node {
+                targetPerson {
+                  id
+                  name { firstName lastName }
+                  phones { primaryPhoneNumber primaryPhoneCallingCode }
+                  emails { primaryEmail }
+                }
+              } } }
           } }
         }
       }`
@@ -3248,6 +3757,7 @@ api.get('/calls', async (_req, res) => {
         const person = target && target.targetPerson;
         let phone = null;
         let displayName = null;
+        let personEmail = null;
         if (person) {
           if (person.name) {
             displayName = [person.name.firstName, person.name.lastName]
@@ -3259,6 +3769,9 @@ api.get('/calls', async (_req, res) => {
             const cc = person.phones.primaryPhoneCallingCode || '';
             phone = `${cc}${person.phones.primaryPhoneNumber}`.trim();
           }
+          if (person.emails && person.emails.primaryEmail) {
+            personEmail = person.emails.primaryEmail.toLowerCase();
+          }
         }
         return {
           id: t.id,
@@ -3266,6 +3779,7 @@ api.get('/calls', async (_req, res) => {
           dueAt: t.dueAt,
           personName: displayName || null,
           personId: (person && person.id) || null,
+          personEmail,
           phone,
         };
       })

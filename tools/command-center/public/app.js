@@ -324,6 +324,7 @@
         <div class="card-tools">
           <button class="btn-preview" id="remergeBtn" title="Re-merge every pending touch for this lead with their CURRENT CRM name/company — use it right after fixing a typo or renaming the contact">↻ Refresh contact info</button>
           <button class="btn-preview" id="previewBtn">Preview final ✉</button>
+          <button class="ai-open-btn" data-ai="${esc(a.recipientEmail || '')}" data-ai-name="${esc(a.leadName || '')}" type="button" title="Gemini sidebar with this lead's full CRM history — sent emails, call transcripts, notes">✨ Ask Gemini</button>
         </div>
         ${
           unenrollMode
@@ -1188,6 +1189,9 @@
     const seq = esc(SEQ_LABELS[item.sequenceKey] || item.sequenceKey || 'Pre-Phone');
     const pill = `${seq} · Touch ${esc(item.touchNumber)} of ${esc(item.sequenceTotal || 12)}`;
     const metaLine = to || from ? `<div class="week-to">${to}${from}</div>` : '';
+    const aiBtn = item.recipientEmail
+      ? `<button class="ai-open-btn" data-ai="${esc(item.recipientEmail)}" data-ai-name="${esc(item.leadName || '')}" type="button" title="Gemini briefing on this contact">✨</button>`
+      : '';
     return `
       <div class="week-row">
         <div class="week-main">
@@ -1195,6 +1199,7 @@
           <div class="week-subject">${subject}</div>
           ${metaLine}
         </div>
+        ${aiBtn}
         <span class="week-pill">${pill}</span>
       </div>`;
   }
@@ -1313,6 +1318,9 @@
     const callBtn = c.phone
       ? `<button class="btn call-btn" data-dial="${esc(c.phone.replace(/[^\d+]/g, ''))}">📞 Call</button>`
       : '';
+    const aiBtn = c.personEmail
+      ? `<button class="ai-open-btn" data-ai="${esc(c.personEmail)}" data-ai-name="${esc(c.personName || '')}" type="button" title="Gemini briefing on this contact before you dial">✨</button>`
+      : '';
     return `
       <div class="row" data-row="${esc(c.id)}">
         <div class="row-main">
@@ -1320,6 +1328,7 @@
           <div class="row-sub">${sub || 'No contact linked'}</div>
         </div>
         <div class="row-actions">
+          ${aiBtn}
           ${callBtn}
           <button class="btn done-btn" data-done="${esc(c.id)}">Done</button>
         </div>
@@ -1689,6 +1698,195 @@
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && qrOpen) closeIdeaPopup();
+  });
+
+  // ---- ASK GEMINI SIDEBAR (direct request 2026-09-08) -----------------------
+  //
+  // Chrome-style Gemini side panel, but inside the app: the server feeds
+  // Gemini the lead's own CRM dossier (sent emails, call transcripts, texts,
+  // timeline notes), so its summaries are about THIS contact. Opening the
+  // panel on a fresh lead auto-asks for a catch-up — the whole point is fast,
+  // to-the-point briefings; reopening the same lead replays the conversation.
+
+  const AI_QUICK_ASKS = [
+    { label: '⚡ Catch me up', question: "Catch me up on this contact: who they are, where we stand, what's next. To the point." },
+    { label: '📞 Call prep', question: "I'm about to call them. Give me 2-4 talking points and anything time-sensitive, grounded in their actual words." },
+    { label: '🧭 Next move', question: "What's the next best move with this contact, and why?" },
+  ];
+
+  const ai = { email: null, name: null, history: [], controller: null, asking: false };
+
+  function aiMsg(role, text) {
+    const div = document.createElement('div');
+    div.className = `ai-msg ${role === 'model' ? 'model' : 'user'}`;
+    div.textContent = text;
+    el('aiLog').appendChild(div);
+    el('aiLog').scrollTop = el('aiLog').scrollHeight;
+    return div;
+  }
+
+  function aiRenderChips() {
+    el('aiChips').innerHTML = AI_QUICK_ASKS.map(
+      (q, i) => `<button class="ai-chip" type="button" data-ai-ask="${i}">${esc(q.label)}</button>`,
+    ).join('');
+  }
+
+  function openAiSidebar(contact) {
+    if (!contact || !contact.email) return;
+    const sameLead = ai.email === contact.email.toLowerCase();
+    ai.email = contact.email.toLowerCase();
+    ai.name = contact.name || contact.email;
+    if (!sameLead) ai.history = [];
+    el('aiName').textContent = ai.name;
+    el('aiSrc').textContent = 'reading their CRM history…';
+    el('aiLog').innerHTML = '';
+    aiRenderChips();
+    const side = el('aiSide');
+    side.classList.add('open');
+    side.setAttribute('aria-hidden', 'false');
+
+    // Warm the dossier and show what Gemini was given (quiet on failure).
+    apiGet(`/ai/dossier?email=${encodeURIComponent(ai.email)}`)
+      .then((d) => {
+        if (ai.email !== contact.email.toLowerCase()) return;
+        const s = d.sources || {};
+        const bits = [];
+        if (s.sentEmails) bits.push(`${s.sentEmails} email${s.sentEmails === 1 ? '' : 's'} sent`);
+        if (s.calls) bits.push(`${s.calls} call${s.calls === 1 ? '' : 's'}`);
+        if (s.texts) bits.push(`${s.texts} text${s.texts === 1 ? '' : 's'}`);
+        if (s.notes) bits.push(`${s.notes} note${s.notes === 1 ? '' : 's'}`);
+        if (s.pendingTouch) bits.push('next touch queued');
+        el('aiSrc').textContent = bits.length ? bits.join(' · ') : 'no history on file';
+      })
+      .catch(() => {
+        if (ai.email === contact.email.toLowerCase()) el('aiSrc').textContent = '';
+      });
+
+    if (ai.history.length === 0) {
+      aiAsk(AI_QUICK_ASKS[0].question);
+    } else {
+      for (const turn of ai.history) aiMsg(turn.role === 'model' ? 'model' : 'user', turn.content);
+      el('aiInput').focus();
+    }
+  }
+
+  function closeAiSidebar() {
+    const side = el('aiSide');
+    side.classList.remove('open');
+    side.setAttribute('aria-hidden', 'true');
+    if (ai.controller) ai.controller.abort();
+  }
+
+  async function aiAsk(question) {
+    if (ai.asking || !question || !ai.email) return;
+    ai.asking = true;
+    el('aiSendBtn').disabled = true;
+    el('aiChips').style.pointerEvents = 'none';
+    el('aiChips').style.opacity = '0.55';
+    aiMsg('user', question);
+    const bubble = aiMsg('model', 'Thinking…');
+    bubble.classList.add('thinking');
+    const cursor = document.createElement('span');
+    cursor.className = 'ai-cursor';
+    bubble.appendChild(cursor);
+
+    const controller = new AbortController();
+    ai.controller = controller;
+    try {
+      const res = await fetch(`${API}/ai/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: ai.email,
+          question,
+          history: ai.history.slice(-10),
+        }),
+        signal: controller.signal,
+      });
+      if (redirectToLoginIfUnauthorized(res)) return;
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || `Request failed (${res.status})`);
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let text = '';
+      let got = false;
+      let streamErr = null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim();
+          buf = buf.slice(i + 1);
+          if (!line.startsWith('data:')) continue;
+          let j;
+          try { j = JSON.parse(line.slice(5)); } catch (_e) { continue; }
+          if (j.error) { streamErr = j.error; continue; }
+          if (j.text) {
+            if (!got) {
+              got = true;
+              bubble.classList.remove('thinking');
+              bubble.textContent = '';
+              bubble.appendChild(cursor);
+            }
+            text += j.text;
+            bubble.insertBefore(document.createTextNode(j.text), cursor);
+            el('aiLog').scrollTop = el('aiLog').scrollHeight;
+          }
+        }
+      }
+      cursor.remove();
+      if (streamErr) throw new Error(streamErr);
+      if (!text.trim()) throw new Error('Empty answer — try again');
+      ai.history.push({ role: 'user', content: question }, { role: 'model', content: text });
+    } catch (e) {
+      cursor.remove();
+      if (e && e.name === 'AbortError') {
+        bubble.remove(); // sidebar closed mid-answer — not an error worth showing
+      } else {
+        bubble.classList.remove('thinking');
+        bubble.classList.add('err');
+        bubble.textContent = '⚠️ ' + (e.message || 'Ask failed');
+      }
+    } finally {
+      ai.asking = false;
+      ai.controller = null;
+      el('aiSendBtn').disabled = false;
+      el('aiChips').style.pointerEvents = '';
+      el('aiChips').style.opacity = '';
+    }
+  }
+
+  el('aiClose').addEventListener('click', closeAiSidebar);
+  el('aiForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const input = el('aiInput');
+    const q = input.value.trim();
+    // While an answer streams, keep the typed question in the box (aiAsk
+    // would drop it) — it'll send on the next Enter once the stream ends.
+    if (!q || ai.asking) return;
+    input.value = '';
+    aiAsk(q);
+  });
+  el('aiChips').addEventListener('click', (ev) => {
+    const chip = ev.target.closest('[data-ai-ask]');
+    if (chip) aiAsk(AI_QUICK_ASKS[parseInt(chip.getAttribute('data-ai-ask'), 10)].question);
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && el('aiSide').classList.contains('open')) closeAiSidebar();
+  });
+  // Delegated opener: any [data-ai] button (calls rows, week rows, paused
+  // rows, triage card) opens the sidebar for that lead — survives re-renders.
+  document.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-ai]');
+    if (!btn) return;
+    const email = btn.getAttribute('data-ai');
+    if (!email) return;
+    openAiSidebar({ email, name: btn.getAttribute('data-ai-name') || '' });
   });
 
   // ---- boot ----------------------------------------------------------------
