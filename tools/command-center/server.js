@@ -6,6 +6,7 @@
 //   GET  /api/queue        -> due approvals + counts + paused leads (runs reconcile first)
 //   POST /api/approval/:id/send   -> set APPROVED (workflow sends the email)
 //   POST /api/approval/:id/skip   -> set REJECTED
+//   POST /api/approval/:id/called -> "I called instead": touch COMPLETED (no email) + timeline note
 //   POST /api/approval/:id/edit   -> update subject/body
 //   GET  /api/approval/:id/preview -> subject/body + niche signature + fullPreviewHtml
 //   GET  /api/calls        -> tasks due today (with phone if reachable)
@@ -2367,6 +2368,59 @@ api.post('/approval/:id/skip', async (req, res) => {
   }
 });
 
+// ---- "I called instead" (board card 2026-09-09) -----------------------------
+//
+// "Instead of this email, say that I called instead. So I can enter a note and
+// it should be counted as a touch and go to the next email — I keep it to
+// twelve touches." Marks THIS touch COMPLETED (no email ever goes out, the
+// cascade schedules the next touch from today like any completed touch), and
+// writes the call note on the lead's timeline.
+api.post('/approval/:id/called', async (req, res) => {
+  try {
+    const note = String((req.body || {}).note || '').trim();
+    const all = await fetchAllApprovals();
+    const approval = all.find((a) => a.id === req.params.id);
+    if (!approval) return res.status(404).json({ error: 'Approval not found' });
+    if (approval.approvalStatus !== 'PENDING') {
+      return res.status(409).json({ error: `Touch is already ${approval.approvalStatus}` });
+    }
+
+    await updateApproval(req.params.id, { approvalStatus: 'COMPLETED' });
+
+    // Timeline note (best-effort — a missing person record must not fail the
+    // touch-completion above).
+    let noted = false;
+    try {
+      const email = String(approval.recipientEmail || '').trim().toLowerCase();
+      const person = (await fetchPersonContextByEmails([email])).get(email);
+      if (person && person.id) {
+        const when = new Date().toLocaleString('en-CA', {
+          timeZone: SCHEDULE_TZ,
+        });
+        const seq = seqOf(approval);
+        await createOutcomeTimelineNote(
+          person.id,
+          '📞 Called instead of email',
+          `Called instead of sending "${approval.emailSubject || '(no subject)'}" — ` +
+            `${seq} touch ${approval.touchNumber} counted as done on ${when}.${note ? `\n\nNote: ${note}` : ''}`,
+        );
+        noted = true;
+      }
+    } catch (e) {
+      console.error(`[called] timeline note failed (continuing): ${e.message}`);
+    }
+
+    try {
+      await reconcile();
+    } catch (_e) {
+      /* non-fatal */
+    }
+    res.json({ ok: true, noted });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 api.post('/approval/:id/edit', async (req, res) => {
   try {
     const patch = {};
@@ -3077,12 +3131,26 @@ async function fetchNotesForPersonSafe(personId) {
 
 // Everything the sidebar knows about a lead, in one object. Heavy fetches are
 // cached briefly so the auto-summary on open and the follow-up asks don't
-// re-hit the CRM for the same data within the same conversation.
-async function buildAiDossier(email) {
+// re-hit the CRM for the same data within the same conversation. Builds are
+// single-flight: the sidebar's warm-up GET and its first ask arrive together,
+// and without dedupe both would run the full CRM fan-out (board card
+// 2026-09-09: "THINKING takes so long" — every duplicate second shows).
+const aiDossierInFlight = new Map(); // lower(email) -> Promise<dossier>
+function buildAiDossier(email) {
   const key = String(email || '').trim().toLowerCase();
   const cached = aiDossierCache.get(key);
-  if (cached && Date.now() - cached.at < AI_DOSSIER_TTL_MS) return cached.dossier;
+  if (cached && Date.now() - cached.at < AI_DOSSIER_TTL_MS) {
+    return Promise.resolve(cached.dossier);
+  }
+  const existing = aiDossierInFlight.get(key);
+  if (existing) return existing;
+  const p = buildAiDossierUncached(key)
+    .finally(() => aiDossierInFlight.delete(key));
+  aiDossierInFlight.set(key, p);
+  return p;
+}
 
+async function buildAiDossierUncached(key) {
   const [person, approvals] = await Promise.all([
     fetchPersonFullByEmail(key),
     fetchAllApprovals().catch(() => []),
@@ -3116,10 +3184,11 @@ async function buildAiDossier(email) {
       }
     : null;
 
-  // Calls (with transcripts) + texts, matched on the person's phone exactly
-  // the way lead-context matches them.
+  // Calls (with transcripts) + texts + notes — all independent once the person
+  // resolved, so they run together (latency board card 2026-09-09).
   let calls = [];
   let texts = [];
+  const notesPromise = fetchNotesForPersonSafe(person && person.id);
   if (person && person.phone) {
     const phoneDigits = digitsOf(person.phone);
     const [callRecords, smsRecords] = await Promise.all([
@@ -3158,8 +3227,7 @@ async function buildAiDossier(email) {
         body: clip(rec.body || rec.text || '', 300),
       }));
   }
-
-  const notes = await fetchNotesForPersonSafe(person && person.id);
+  const notes = await notesPromise;
 
   const dossier = {
     generatedAt: new Date().toISOString(),
@@ -3285,7 +3353,15 @@ api.get('/ai/dossier', async (req, res) => {
     const email = String(req.query.email || '').trim().toLowerCase();
     if (!email) return res.status(400).json({ error: 'email is required' });
     const dossier = await buildAiDossier(email);
-    res.json({ ok: true, sources: dossier.sources, generatedAt: dossier.generatedAt });
+    res.json({
+      ok: true,
+      sources: dossier.sources,
+      generatedAt: dossier.generatedAt,
+      // For the sidebar header affordances (board card 2026-09-09): the name
+      // links into the CRM record and the call button dials the lead's phone.
+      personId: dossier.person ? dossier.person.personId : null,
+      phone: dossier.person ? dossier.person.phone : null,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -3341,6 +3417,14 @@ api.post('/ai/ask', async (req, res) => {
     for (const model of GEMINI_MODELS) {
       let upstream;
       try {
+        // 2.5-family models "think" before answering by default, which adds
+        // seconds of dead air before the first streamed word — exactly the
+        // "THINKING takes so long vs Chrome" complaint (board card
+        // 2026-09-09). This assistant is a summarizer: thinking off.
+        // (2.0 models reject thinkingConfig, so it's 2.5-only.)
+        const generationConfig = model.startsWith('gemini-2.5')
+          ? { temperature: 0.4, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } }
+          : { temperature: 0.4, maxOutputTokens: 1024 };
         upstream = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
           {
@@ -3358,7 +3442,7 @@ api.post('/ai/ask', async (req, res) => {
                 ],
               },
               contents,
-              generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },
+              generationConfig,
             }),
           },
         );

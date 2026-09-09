@@ -37,6 +37,8 @@ echo "Baked version.json: sha=$SHA builtAt=$BUILD_AT"
 
 scp server.js offer-campaign.js package.json version.json "$SERVER:$DEST/"
 scp public/app.js public/index.html public/login.html "$SERVER:$DEST/public/"
+ssh "$SERVER" "mkdir -p $DEST/public/vendor"
+scp public/vendor/telnyx-webrtc.js "$SERVER:$DEST/public/vendor/"
 scp templates/*.html "$SERVER:$DEST/templates/"
 ssh "$SERVER" "systemctl restart $SERVICE && systemctl is-active $SERVICE"
 

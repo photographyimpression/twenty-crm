@@ -116,7 +116,7 @@
          CRM Inbox (board card 2026-08-31: "icon to copy the email address and
          be able to search for the email on my emails"). */
       .mini-btn {
-        background: transparent; border: 1px solid var(--border); color: var(--muted);
+        background: transparent; border: 1px solid var(--border-strong); color: #5a6170;
         border-radius: 6px; padding: 1px 6px; margin-left: 6px; font-size: 12px;
         cursor: pointer; vertical-align: baseline; line-height: 1.5;
       }
@@ -188,7 +188,13 @@
       .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
       .actions .btn { flex: 1 1 auto; }
       .actions .btn-send { flex: 1 1 160px; }
-      button.btn {
+      /* BASE rule is .btn (class only, NOT button.btn): with the element
+         selector, its color:#fff was specificity (0,1,1) and beat every
+         variant's light-theme text color (0,1,0) — Edit/Skip/Unenroll/Dismiss/
+         Done rendered WHITE text on pale fills ("bright on bright", board card
+         2026-09-09). As a plain class it merely ties with variants, and the
+         variants sit later in this file, so their colors win. */
+      .btn {
         border: none; border-radius: 10px; padding: 14px 18px; font-size: 15px; font-weight: 700;
         cursor: pointer; transition: transform .04s ease, background .15s ease; color: #fff;
       }
@@ -348,7 +354,7 @@
       /* Triage extras: "Preview final" link button + keyboard-shortcut hint */
       .card-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 14px; }
       .btn-preview {
-        background: transparent; border: 1px solid var(--border); color: var(--muted);
+        background: transparent; border: 1px solid var(--border-strong); color: #4b5160;
         border-radius: 10px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
       }
       .btn-preview:hover { color: var(--text); border-color: var(--accent); }
@@ -526,9 +532,16 @@
         background: linear-gradient(135deg, #4285f4, #9b72cb 55%, #d96570);
         color: #fff;
       }
-      .ai-contact { flex: 1; min-width: 0; text-align: right; }
-      .ai-contact .ai-name { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .ai-contact { flex: 1; min-width: 0; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+      .ai-contact .ai-name { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+      .ai-contact a.ai-name { color: var(--accent); text-decoration: none; }
+      .ai-contact a.ai-name:hover { text-decoration: underline; }
       .ai-contact .ai-src { color: var(--muted); font-size: 11.5px; }
+      .ai-call {
+        background: var(--green); color: #fff; border: none; border-radius: 999px;
+        padding: 4px 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+      }
+      .ai-call:hover { background: var(--green-hover); }
       .ai-close {
         background: none; border: none; font-size: 24px; line-height: 1;
         color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 8px;
@@ -564,15 +577,37 @@
       .ai-send:disabled { opacity: .55; cursor: default; }
       /* The ✨ entry buttons live inside existing rows/cards. */
       .ai-open-btn {
-        background: linear-gradient(135deg, rgba(66, 133, 244, 0.10), rgba(155, 114, 203, 0.12));
-        border: 1px solid rgba(66, 133, 244, 0.35); color: #3355c0;
+        background: linear-gradient(135deg, rgba(66, 133, 244, 0.12), rgba(155, 114, 203, 0.14));
+        border: 1px solid rgba(66, 133, 244, 0.5); color: #2b4fc0;
         border-radius: 10px; padding: 7px 12px; font-size: 12.5px; font-weight: 700;
         cursor: pointer; white-space: nowrap;
       }
-      .ai-open-btn:hover { border-color: #4285f4; }
+      .ai-open-btn:hover { border-color: #3565d8; color: #24409b; }
       @media (max-width: 640px) {
         .ai-side { width: 100vw; }
       }
+
+      /* In-browser call widget (WebRTC via the CRM's Telnyx credential):
+         replaces "ring my cell first" as the default way to dial — the lead's
+         phone rings straight from the app/Chrome like the CRM contact page
+         (board card 2026-09-09). */
+      #rtcWidget {
+        position: fixed; bottom: 18px; right: 18px; z-index: 80;
+        background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+        box-shadow: var(--shadow); padding: 12px 14px; min-width: 250px; display: none;
+      }
+      #rtcWidget.show { display: block; }
+      .rtc-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+      .rtc-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--amber); }
+      #rtcWidget.live .rtc-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+      .rtc-num { color: var(--muted); font-size: 12.5px; margin: 4px 0 8px; }
+      .rtc-actions { display: flex; gap: 8px; }
+      .rtc-actions .btn { padding: 8px 14px; font-size: 13px; flex: 1; }
+      .rtc-hangup { background: var(--red); }
+      .rtc-hangup:hover { background: #c53a3f; }
+      .rtc-cell { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+      .rtc-cell:hover { background: #e9ebef; }
+      .rtc-status { color: var(--muted); font-size: 12px; margin-top: 6px; }
     </style>
   </head>
   <body>
@@ -727,6 +762,7 @@
         <div class="ai-title"><span class="ai-spark">✦</span> Ask Gemini</div>
         <div class="ai-contact">
           <div class="ai-name" id="aiName"></div>
+          <button class="ai-call" id="aiCallBtn" type="button" style="display:none" title="Call this lead straight from the app">📞 Call</button>
           <div class="ai-src" id="aiSrc"></div>
         </div>
         <button class="ai-close" id="aiClose" type="button" aria-label="Close Ask Gemini">×</button>
@@ -739,6 +775,23 @@
       </form>
     </aside>
 
+    <!-- In-browser call state (WebRTC dialing): status + hang-up + the
+         ring-my-cell fallback when the mic/browser can't do WebRTC. -->
+    <div id="rtcWidget" aria-live="polite">
+      <div class="rtc-head"><span class="rtc-dot"></span> <span id="rtcState">Calling…</span></div>
+      <div class="rtc-num" id="rtcNum"></div>
+      <div class="rtc-actions">
+        <button class="btn rtc-hangup" id="rtcHangupBtn" type="button">End call</button>
+        <button class="btn rtc-cell" id="rtcCellBtn" type="button" style="display:none" title="Fallback: ring Moshe's cell first, then bridge the lead">📱 Ring my cell</button>
+      </div>
+      <div class="rtc-status" id="rtcStatus"></div>
+    </div>
+
+    <!-- Remote-audio sink for the Telnyx WebRTC dialer: the SDK attaches the
+         call's audio to this element (set via client.remoteElement). -->
+    <audio id="telnyx-remote-audio" autoplay></audio>
+
+    <script src="vendor/telnyx-webrtc.js" defer></script>
     <script src="app.js"></script>
   </body>
 </html>

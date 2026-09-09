@@ -324,17 +324,21 @@
         <div class="card-tools">
           <button class="btn-preview" id="remergeBtn" title="Re-merge every pending touch for this lead with their CURRENT CRM name/company — use it right after fixing a typo or renaming the contact">↻ Refresh contact info</button>
           <button class="btn-preview" id="previewBtn">Preview final ✉</button>
+          ${a.personId ? `<a class="btn-preview" href="/object/person/${encodeURIComponent(a.personId)}" target="_blank" rel="noopener" title="Open this contact's full CRM record in a new browser tab — use Chrome's own Gemini sidebar there if you want it">↗ Open contact</a>` : ''}
           <button class="ai-open-btn" data-ai="${esc(a.recipientEmail || '')}" data-ai-name="${esc(a.leadName || '')}" type="button" title="Gemini sidebar with this lead's full CRM history — sent emails, call transcripts, notes">✨ Ask Gemini</button>
         </div>
         ${
           unenrollMode
             ? renderOutcomeBox(a)
-            : `<div class="actions">
-                <button class="btn btn-send" id="sendBtn">Send ✓</button>
-                <button class="btn btn-edit" id="editBtn">Edit</button>
-                <button class="btn btn-skip" id="skipBtn">Skip</button>
-                <button class="btn btn-unenroll" id="unenrollBtn" title="End this lead's whole sequence — for not-interested leads. Skip only postpones this one touch.">Unenroll</button>
-              </div>`
+            : calledMode
+              ? renderCalledBox(a)
+              : `<div class="actions">
+                  <button class="btn btn-send" id="sendBtn">Send ✓</button>
+                  <button class="btn btn-edit" id="editBtn">Edit</button>
+                  <button class="btn btn-skip" id="skipBtn">Skip</button>
+                  <button class="btn btn-edit" id="calledBtn" title="Log a phone call in place of this email — the touch counts, no email goes out">📞 Called instead…</button>
+                  <button class="btn btn-unenroll" id="unenrollBtn" title="End this lead's whole sequence — for not-interested leads. Skip only postpones this one touch.">Unenroll</button>
+                </div>`
         }
       </div>`;
 
@@ -343,6 +347,9 @@
     if (el('skipBtn')) el('skipBtn').addEventListener('click', onSkip);
     if (el('editBtn')) el('editBtn').addEventListener('click', () => { editing = true; renderTriage(); });
     el('previewBtn').addEventListener('click', () => { previewing = true; renderTriage(); });
+    if (el('calledBtn')) el('calledBtn').addEventListener('click', () => { calledMode = true; renderTriage(); });
+    if (el('calledCancel')) el('calledCancel').addEventListener('click', () => { calledMode = false; renderTriage(); });
+    if (el('calledConfirm')) el('calledConfirm').addEventListener('click', onCalledInstead);
     if (el('unenrollBtn')) el('unenrollBtn').addEventListener('click', onUnenroll);
     if (el('outCancel')) el('outCancel').addEventListener('click', () => { unenrollMode = false; renderTriage(); });
     if (el('outWon')) el('outWon').addEventListener('click', () => commitDismiss(a, 'won', ''));
@@ -427,6 +434,7 @@
     editing = false;
     previewing = false;
     unenrollMode = false;
+    calledMode = false;
     // Critical: the action handlers setBusy(true) before their POST resolves,
     // and renderTriage() re-renders fresh (enabled-looking) buttons WITHOUT
     // touching the busy flag. Until this reset, every action after the first
@@ -520,6 +528,7 @@
   // 📕 timeline note), or a plain end. All three end the sequence the same way
   // (reject every pending touch).
   let unenrollMode = false;
+  let calledMode = false;
 
   function onUnenroll() {
     if (busy) return;
@@ -543,6 +552,39 @@
         </div>
         <div class="outcome-hint">Won sets their contact type to Customer. Lost saves your reason on their timeline. All options end the sequence.</div>
       </div>`;
+  }
+
+  // "I called instead of emailing" (board card 2026-09-09): "Instead of this
+  // email, say that I called… enter a note… counted as a touch and go to the
+  // next email — I keep it to twelve touches." The server marks THIS touch
+  // COMPLETED (no email sent — the cascade schedules the next touch from
+  // today, exactly like a completed email) and writes the note on the timeline.
+  function renderCalledBox(a) {
+    return `
+      <div class="outcome-box">
+        <div class="outcome-title">📞 Called ${esc(a.leadName || a.recipientEmail)} instead of this email?</div>
+        <input class="outcome-reason" id="calledNote" placeholder="What happened on the call? (saved on their timeline)" />
+        <div class="outcome-row">
+          <button class="btn" id="calledConfirm" style="background:var(--green);border-color:var(--green);color:#fff;flex:2;">Count this touch as a call ✓</button>
+          <button class="btn btn-skip" id="calledCancel">Cancel</button>
+        </div>
+        <div class="outcome-hint">No email is sent. This touch is marked done — the sequence keeps its 12 touches — and the next email is scheduled from today.</div>
+      </div>`;
+  }
+
+  async function onCalledInstead() {
+    if (busy) return;
+    const a = queue[cursor];
+    const note = (el('calledNote') && el('calledNote').value || '').trim();
+    setBusy(true);
+    try {
+      await apiPost(`/approval/${a.id}/called`, { note });
+      toast('Logged as a call ✓ — touch counted, email skipped');
+      advance();
+    } catch (e) {
+      toast('Could not log the call: ' + e.message, true);
+      setBusy(false);
+    }
   }
 
   async function commitDismiss(a, outcome, reason) {
@@ -611,7 +653,7 @@
         const callBtn = el('ctxCallBtn');
         if (callBtn) {
           callBtn.addEventListener('click', () => {
-            dialLead(ctx.phone, callBtn);
+            rtcDial(ctx.phone);
           });
         }
       })
@@ -692,6 +734,7 @@
       editing = false;
       previewing = false;
       unenrollMode = false;
+      calledMode = false;
       busy = false;
       renderTriage();
     } catch (e) {
@@ -1296,7 +1339,7 @@
         btn.addEventListener('click', () => markCallDone(btn.getAttribute('data-done'), btn));
       });
       mount.querySelectorAll('[data-dial]').forEach((btn) => {
-        btn.addEventListener('click', () => dialLead(btn.getAttribute('data-dial'), btn));
+        btn.addEventListener('click', () => rtcDial(btn.getAttribute('data-dial')));
       });
     } catch (e) {
       mount.innerHTML =
@@ -1370,6 +1413,169 @@
   }
 
   el('refreshCalls').addEventListener('click', loadCalls);
+
+  // ---- IN-BROWSER CALLING, WebRTC (board card 2026-09-09) -------------------
+  //
+  // "I press call and it's calling to my phone — why can't it ring directly
+  // from the app? Same way I can call directly from the contact page." The
+  // CRM's contact page dials through Telnyx WebRTC (browser mic + speaker).
+  // The Command Center now does the same: the CRM's public /telnyx/webrtc-token
+  // endpoint (same origin) issues the JWT and the vendored Telnyx SDK (in
+  // public/vendor/) places the call from the business line. The old
+  // ring-my-cell bridge (dialLead) stays as the in-widget fallback whenever
+  // the browser says no — e.g. mic permission denied in the embedded frame
+  // until the CRM ships allow="microphone" on its iframe.
+
+  const RTC_FROM_NUMBER = '+15142702784'; // the business line the CRM dialer uses
+  const rtc = {
+    client: null,
+    ready: false,
+    connecting: null,
+    call: null,
+    timer: null,
+    connectedAt: 0,
+    phone: null,
+    hideTimer: null,
+  };
+
+  function rtcSetUi(stateText, live, statusText) {
+    el('rtcState').textContent = stateText;
+    el('rtcWidget').classList.toggle('live', !!live);
+    el('rtcStatus').textContent = statusText || '';
+  }
+
+  function rtcStartTimer() {
+    rtcStopTimer();
+    rtc.timer = setInterval(() => {
+      const secs = Math.max(0, Math.floor((Date.now() - rtc.connectedAt) / 1000));
+      const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+      const ss = String(secs % 60).padStart(2, '0');
+      el('rtcState').textContent = `Live · ${mm}:${ss}`;
+    }, 1000);
+  }
+  function rtcStopTimer() {
+    if (rtc.timer) {
+      clearInterval(rtc.timer);
+      rtc.timer = null;
+    }
+  }
+
+  function rtcShow(phone) {
+    clearTimeout(rtc.hideTimer);
+    rtc.phone = phone;
+    el('rtcNum').textContent = phone || '';
+    el('rtcCellBtn').style.display = '';
+    el('rtcWidget').classList.add('show');
+  }
+
+  function rtcHideSoon(delayMs) {
+    clearTimeout(rtc.hideTimer);
+    rtc.hideTimer = setTimeout(() => {
+      el('rtcWidget').classList.remove('show');
+    }, delayMs);
+  }
+
+  // Event wiring shared by the one client we keep (audio sink BEFORE connect,
+  // same lesson as the CRM's CallProvider: without remoteElement the call
+  // connects but plays silence).
+  function rtcAttach(client) {
+    client.remoteElement = 'telnyx-remote-audio';
+    client.on('telnyx.error', (err) => {
+      rtc.ready = false;
+      rtc.client = null;
+      if (rtc.call) {
+        rtcSetUi('Connection dropped', false, (err && err.message) || '');
+        rtcHideSoon(4000);
+      }
+    });
+    client.on('telnyx.notification', (notification) => {
+      if (!notification || notification.type !== 'callUpdate') return;
+      const call = notification.call || {};
+      if (call.state === 'ringing') {
+        rtcSetUi('Ringing…', false, '');
+      } else if (call.state === 'active') {
+        rtc.connectedAt = Date.now();
+        rtcSetUi('Live · 00:00', true, '');
+        rtcStartTimer();
+      } else if (call.state === 'done' || call.state === 'hangup' || call.state === 'destroy') {
+        rtc.call = null;
+        rtcStopTimer();
+        rtcSetUi('Call ended', false, '');
+        rtcHideSoon(2500);
+      }
+    });
+  }
+
+  async function rtcEnsureClient() {
+    if (rtc.client && rtc.ready) return rtc.client;
+    if (rtc.connecting) return rtc.connecting;
+    rtc.connecting = (async () => {
+      if (!window.TelnyxWebRTC) throw new Error('Dialer SDK not loaded');
+      const res = await fetch('/telnyx/webrtc-token');
+      const data = await res.json().catch(() => ({}));
+      if (!data || !data.token) throw new Error('CRM did not issue a dialer token');
+      const client = new window.TelnyxWebRTC.TelnyxRTC({ login_token: data.token });
+      rtcAttach(client);
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error('Dialer connection timeout')),
+          9000,
+        );
+        client.on('telnyx.ready', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+        client.connect();
+      });
+      rtc.client = client;
+      rtc.ready = true;
+      return client;
+    })().finally(() => {
+      rtc.connecting = null;
+    });
+    return rtc.connecting;
+  }
+
+  // Ring the lead straight from this browser tab. Any failure (no mic access,
+  // SDK/token trouble) keeps the widget open with the ring-my-cell fallback.
+  async function rtcDial(phone) {
+    if (!phone) return;
+    rtcShow(phone);
+    rtcSetUi('Connecting…', false, 'allow microphone access if asked');
+    try {
+      const client = await rtcEnsureClient();
+      if (rtc.call) {
+        try { rtc.call.hangup(); } catch (_e) { /* stale call */ }
+      }
+      rtc.call = client.newCall({
+        destinationNumber: String(phone).replace(/[^\d+]/g, ''),
+        callerNumber: RTC_FROM_NUMBER,
+        audio: true,
+      });
+      rtcSetUi('Calling…', false, '');
+    } catch (e) {
+      rtc.call = null;
+      rtcSetUi(
+        "Couldn't dial from the browser",
+        false,
+        (e.message || 'microphone unavailable') + ' — tap 📱 Ring my cell instead',
+      );
+    }
+  }
+
+  el('rtcHangupBtn').addEventListener('click', () => {
+    if (rtc.call) {
+      try { rtc.call.hangup(); } catch (_e) { /* already gone */ }
+    } else {
+      rtcStopTimer();
+      el('rtcWidget').classList.remove('show');
+    }
+  });
+  el('rtcCellBtn').addEventListener('click', () => {
+    const phone = rtc.phone;
+    el('rtcWidget').classList.remove('show');
+    if (phone) dialLead(phone, el('rtcCellBtn'));
+  });
 
   // ---- ROADMAP -------------------------------------------------------------
 
@@ -1738,6 +1944,7 @@
     ai.name = contact.name || contact.email;
     if (!sameLead) ai.history = [];
     el('aiName').textContent = ai.name;
+    el('aiCallBtn').style.display = 'none'; // shown once the dossier has a phone
     el('aiSrc').textContent = 'reading their CRM history…';
     el('aiLog').innerHTML = '';
     aiRenderChips();
@@ -1746,6 +1953,10 @@
     side.setAttribute('aria-hidden', 'false');
 
     // Warm the dossier and show what Gemini was given (quiet on failure).
+    // Board card 2026-09-09 ("in my app the name is clickable and I have the
+    // call button — I should have it here as well"): once the dossier lands,
+    // the header name deep-links into the CRM record and a Call button dials
+    // the lead straight from the browser.
     apiGet(`/ai/dossier?email=${encodeURIComponent(ai.email)}`)
       .then((d) => {
         if (ai.email !== contact.email.toLowerCase()) return;
@@ -1757,6 +1968,21 @@
         if (s.notes) bits.push(`${s.notes} note${s.notes === 1 ? '' : 's'}`);
         if (s.pendingTouch) bits.push('next touch queued');
         el('aiSrc').textContent = bits.length ? bits.join(' · ') : 'no history on file';
+
+        const nameEl = el('aiName');
+        if (d.personId) {
+          nameEl.innerHTML =
+            `<a class="ai-name" href="/object/person/${encodeURIComponent(d.personId)}" target="_top" rel="noopener" title="Open this contact's CRM record">${esc(ai.name)}</a>`;
+        } else {
+          nameEl.textContent = ai.name;
+        }
+        const callBtn = el('aiCallBtn');
+        if (d.phone) {
+          callBtn.style.display = '';
+          callBtn.onclick = () => rtcDial(d.phone);
+        } else {
+          callBtn.style.display = 'none';
+        }
       })
       .catch(() => {
         if (ai.email === contact.email.toLowerCase()) el('aiSrc').textContent = '';

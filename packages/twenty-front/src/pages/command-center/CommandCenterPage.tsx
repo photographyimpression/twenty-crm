@@ -40,7 +40,7 @@ export const CommandCenterPage = () => (
     <PageTitle title="Command Center" />
     {/* eslint-disable-next-line lingui/no-unlocalized-strings */}
     <PageHeader title="Command Center" Icon={IconListCheck} />
-    <StyledFrameWrapper>
+      <StyledFrameWrapper>
       <StyledFrame
         src="/command-center/?embed=1"
         title="Command Center"
@@ -49,6 +49,11 @@ export const CommandCenterPage = () => (
         // allow-top-navigation-by-user-activation lets lead-name links open
         // the person's CRM profile in the top window (a click, not a script).
         sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-top-navigation-by-user-activation"
+        // Board card 2026-09-09 ("why can't it ring directly from the app?"):
+        // the tool's Call buttons dial via Telnyx WebRTC from the browser —
+        // without this, the embedded frame is denied microphone access and
+        // calls fall back to ringing Moshe's cell instead.
+        allow="microphone"
       />
     </StyledFrameWrapper>
   </PageContainer>
