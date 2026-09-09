@@ -1418,6 +1418,59 @@ async function unenrollStaleTagSequences(approvals) {
   return rejected;
 }
 
+// ---- Niche before/after link auto-fill (board card 2026-09-09) --------------
+//
+// "This email of the sequence I don't like — it's too time consuming to have
+// before and after pictures and go choose industry specific ones." The
+// 'Quick before/after' touch ships with a [BEFORE_AFTER_LINK] placeholder that
+// used to need a hand-picked gallery per industry on every send. The CC now
+// fills it automatically from the lead's niche (person niche first, then the
+// touch's productType, then PRODUCT) — same precedence as the signature
+// picker — pointing at the studio's real niche galleries (URLs verified live
+// 2026-09-09). Idempotent: once the token is gone there's nothing to do.
+const NICHE_BEFORE_AFTER_LINKS = {
+  CLOTHING: 'https://clothingphotography.ca/',
+  JEWEL: 'https://impressionjewelry.ca/',
+  AMAZON: 'https://www.impressionphotography.ca/portfolio?amazon',
+  PPM: 'https://productphotographymontreal.ca/',
+  PRODUCT: 'https://www.impressionphotography.ca/portfolio',
+};
+const BEFORE_AFTER_TOKEN = '[BEFORE_AFTER_LINK]';
+
+async function autoFillBeforeAfterLinks(approvals) {
+  const targets = (approvals || []).filter(
+    (a) =>
+      a.approvalStatus === 'PENDING' &&
+      typeof a.emailBody === 'string' &&
+      a.emailBody.includes(BEFORE_AFTER_TOKEN),
+  );
+  if (targets.length === 0) return 0;
+  const contextByEmail = await fetchPersonContextByEmails(
+    targets.map((a) => a.recipientEmail),
+  );
+  let filled = 0;
+  for (const a of targets) {
+    try {
+      const email = String(a.recipientEmail || '').toLowerCase();
+      const personNiche = (contextByEmail.get(email) || {}).niche || null;
+      const niche =
+        personNiche || normalizeNiche(a.productType) || DEFAULT_NICHE;
+      const link =
+        NICHE_BEFORE_AFTER_LINKS[niche] || NICHE_BEFORE_AFTER_LINKS[DEFAULT_NICHE];
+      await updateApproval(a.id, {
+        emailBody: a.emailBody.split(BEFORE_AFTER_TOKEN).join(link),
+      });
+      filled += 1;
+      console.log(
+        `[before-after] filled ${niche} link for touch ${a.touchNumber} of ${email}`,
+      );
+    } catch (e) {
+      console.error(`[before-after] fill failed for approval ${a.id} (continuing): ${e.message}`);
+    }
+  }
+  return filled;
+}
+
 async function reconcile() {
   // Coalesce concurrent reconciles (page-load + timer) into one run.
   if (reconcileInFlight) return reconcileInFlight;
@@ -1452,6 +1505,16 @@ async function reconcile() {
       console.error('[reconcile] auto-unenroll pass failed (continuing):', e.message);
     }
 
+    // Auto-fill [BEFORE_AFTER_LINK] per niche (board card 2026-09-09). Fast and
+    // idempotent, so it's awaited here — a fresh touch is never sent with the
+    // raw token even if it was created seconds ago.
+    let beforeAfterFilled = 0;
+    try {
+      beforeAfterFilled = await autoFillBeforeAfterLinks(approvals);
+    } catch (e) {
+      console.error('[reconcile] before/after fill failed (continuing):', e.message);
+    }
+
     // Lazy, best-effort AI-opener fill for Pre-Phone touches 4-6. Started, NOT
     // awaited: generation runs for tens of seconds per touch on this CPU-only
     // box, and awaiting it here put that latency directly in front of every
@@ -1467,6 +1530,7 @@ async function reconcile() {
       newlyPaused: replyResult.pausedNow.length,
       openersRunning,
       unenrolled,
+      beforeAfterFilled,
     };
   })();
   try {
@@ -2291,6 +2355,18 @@ api.post('/approval/:id/send', async (req, res) => {
     const all = await fetchAllApprovals();
     const current = all.find((a) => a.id === req.params.id);
     if (!current) return res.status(404).json({ error: 'Approval not found' });
+    // The before/after token is machine-fillable (niche gallery link) — fill it
+    // now rather than bouncing to the editor. All other placeholders stay
+    // human-only and are enforced below.
+    if (current.approvalStatus === 'PENDING' && (current.emailBody || '').includes(BEFORE_AFTER_TOKEN)) {
+      try {
+        await autoFillBeforeAfterLinks([current]);
+        const refreshed = (await fetchAllApprovals()).find((a) => a.id === current.id);
+        if (refreshed) current.emailBody = refreshed.emailBody;
+      } catch (_e) {
+        /* the placeholder guard below still catches it */
+      }
+    }
     const placeholderHit = `${current.emailSubject || ''}\n${current.emailBody || ''}`.match(PLACEHOLDER_RE);
     if (placeholderHit) {
       return res.status(422).json({
