@@ -3,21 +3,23 @@
 // pinned beside the timeline so "is this person going cold?" is one glance.
 import { useTimelineActivities } from '@/activities/timeline-activities/hooks/useTimelineActivities';
 import { getTimelineEventCategory } from '@/activities/timeline-activities/utils/getTimelineEventCategory';
+import { getPrimaryPhoneE164 } from '@/calls/utils/getPrimaryPhoneE164';
 import { useObjectMetadataItems } from '@/object-metadata/hooks/useObjectMetadataItems';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
+import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 import { type ObjectRecord } from '@/object-record/types/ObjectRecord';
 import { recordStoreFamilyState } from '@/object-record/record-store/states/recordStoreFamilyState';
 import { useAtomFamilyStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomFamilyStateValue';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 import { isNonEmptyString } from '@sniptt/guards';
 import { isDefined } from 'twenty-shared/utils';
 import { Tag } from 'twenty-ui/components';
-import { Avatar } from 'twenty-ui/display';
+import { Avatar, IconCoins } from 'twenty-ui/display';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 import { dateLocaleState } from '~/localization/states/dateLocaleState';
 import { convertCurrencyMicrosToCurrencyAmount } from '~/utils/convertCurrencyToCurrencyMicros';
@@ -143,6 +145,114 @@ const OverviewCard = ({ rows }: { rows: OverviewRow[] }) => (
   </StyledCard>
 );
 
+// LOCAL-PATCH (2026-09-11, direct request): "Add to QuickBooks" — flips
+// Contact Type to Customer and hands name / email / phone / company to the
+// studio-Mac QuickBooks bridge (tools/quickbooks-bridge), which drives the
+// logged-in Safari session to create the customer in QuickBooks Online.
+const QUICKBOOKS_BRIDGE_URL = 'http://127.0.0.1:8788/quickbooks';
+
+const StyledQuickBooksButton = styled.button`
+  align-items: center;
+  background: ${themeCssVariables.background.primary};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.primary};
+  cursor: pointer;
+  display: flex;
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  gap: ${themeCssVariables.spacing[2]};
+  justify-content: center;
+  padding: ${themeCssVariables.spacing[2]};
+
+  &:hover:enabled {
+    background: ${themeCssVariables.background.tertiary};
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+`;
+
+const StyledQuickBooksHint = styled.span`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.xs};
+  text-align: center;
+`;
+
+const QuickBooksCard = ({
+  recordId,
+  firstName,
+  lastName,
+  displayName,
+  companyName,
+  email,
+  phone,
+  isCustomer,
+}: {
+  recordId: string;
+  firstName: string | null;
+  lastName: string | null;
+  displayName: string | null;
+  companyName: string | null;
+  email: string | null;
+  phone: string | null;
+  isCustomer: boolean;
+}) => {
+  const { updateOneRecord } = useUpdateOneRecord();
+  const [busy, setBusy] = useState(false);
+
+  const handleAddToQuickBooks = () => {
+    if (!isCustomer) {
+      void updateOneRecord({
+        objectNameSingular: CoreObjectNameSingular.Person,
+        idToUpdate: recordId,
+        updateOneRecordInput: { contactType: 'CUSTOMER' },
+      }).catch(() => undefined);
+    }
+
+    const params = new URLSearchParams();
+    if (isNonEmptyString(displayName)) params.set('name', displayName);
+    if (isNonEmptyString(firstName)) params.set('first', firstName);
+    if (isNonEmptyString(lastName)) params.set('last', lastName);
+    if (isNonEmptyString(companyName)) params.set('company', companyName);
+    if (isNonEmptyString(email)) params.set('email', email);
+    if (isNonEmptyString(phone)) params.set('phone', phone);
+
+    const popup = window.open(
+      `${QUICKBOOKS_BRIDGE_URL}?${params.toString()}`,
+      'crm-quickbooks',
+      'popup=yes,width=520,height=380',
+    );
+    if (popup) {
+      setBusy(true);
+      const startedAt = Date.now();
+      const timer = window.setInterval(() => {
+        if (popup.closed || Date.now() - startedAt > 120_000) {
+          window.clearInterval(timer);
+          setBusy(false);
+        }
+      }, 700);
+    }
+  };
+
+  return (
+    <StyledCard>
+      <StyledCardHeader>{t`QuickBooks`}</StyledCardHeader>
+      <StyledQuickBooksButton onClick={handleAddToQuickBooks} disabled={busy}>
+        <IconCoins size={15} />
+        {busy ? t`Adding…` : t`Add to QuickBooks`}
+      </StyledQuickBooksButton>
+      <StyledQuickBooksHint>
+        {isCustomer
+          ? t`Creates this customer in QuickBooks (via Safari).`
+          : t`Sets Contact Type to Customer and creates them in QuickBooks (via Safari).`}
+      </StyledQuickBooksHint>
+    </StyledCard>
+  );
+};
+
 export const RecordShowContextRail = ({
   objectNameSingular,
   objectRecordId,
@@ -238,6 +348,19 @@ export const RecordShowContextRail = ({
   const companyId = asNonEmptyString(company?.id);
   const companyName = asNonEmptyString(company?.name);
 
+  const personName = recordStore?.name as
+    | { firstName?: string | null; lastName?: string | null }
+    | null
+    | undefined;
+  const personFirstName = asNonEmptyString(personName?.firstName);
+  const personLastName = asNonEmptyString(personName?.lastName);
+  const personDisplayName =
+    asNonEmptyString(
+      [personFirstName, personLastName].filter(isDefined).join(' ').trim(),
+    ) ?? companyName;
+  const personEmail = asNonEmptyString(recordStore?.emails?.primaryEmail);
+  const personPhone = getPrimaryPhoneE164(recordStore?.phones);
+
   const formatAmount = (deal: ObjectRecord): string => {
     const amountMicros = deal.amount?.amountMicros;
 
@@ -253,6 +376,19 @@ export const RecordShowContextRail = ({
   return (
     <StyledRail>
       <OverviewCard rows={overviewRows} />
+
+      {isPerson && (
+        <QuickBooksCard
+          recordId={objectRecordId}
+          firstName={personFirstName}
+          lastName={personLastName}
+          displayName={personDisplayName}
+          companyName={companyName}
+          email={personEmail}
+          phone={personPhone}
+          isCustomer={asNonEmptyString(recordStore?.contactType) === 'CUSTOMER'}
+        />
+      )}
 
       {isPerson && (
         <StyledCard>

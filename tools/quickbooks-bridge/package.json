@@ -1,0 +1,13 @@
+{
+  "name": "quickbooks-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Studio-Mac helper: drives Safari (logged into QuickBooks) so the CRM's Add to QuickBooks button can create customers. Runs as a LaunchAgent, zero dependencies.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
