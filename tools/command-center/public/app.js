@@ -324,7 +324,7 @@
         <div class="card-tools">
           <button class="btn-preview" id="remergeBtn" title="Re-merge every pending touch for this lead with their CURRENT CRM name/company — use it right after fixing a typo or renaming the contact">↻ Refresh contact info</button>
           <button class="btn-preview" id="previewBtn">Preview final ✉</button>
-          ${a.personId ? `<a class="btn-preview" href="/object/person/${encodeURIComponent(a.personId)}" target="_blank" rel="noopener" title="Open this contact's full CRM record in a new browser tab — use Chrome's own Gemini sidebar there if you want it">↗ Open contact</a>` : ''}
+          ${a.personId ? `<a class="btn-preview" href="/object/person/${encodeURIComponent(a.personId)}" target="_blank" rel="noopener" onclick="event.preventDefault(); try { window.top.open(this.href, '_blank'); } catch (e) { window.open(this.href, '_blank'); } return false;" title="Open this contact's full CRM record in a new BROWSER tab (Chrome)">↗ Open contact</a>` : ''}
           <button class="ai-open-btn" data-ai="${esc(a.recipientEmail || '')}" data-ai-name="${esc(a.leadName || '')}" type="button" title="Gemini sidebar with this lead's full CRM history — sent emails, call transcripts, notes">✨ Ask Gemini</button>
         </div>
         ${
