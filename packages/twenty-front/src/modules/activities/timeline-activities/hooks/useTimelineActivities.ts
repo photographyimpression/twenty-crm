@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 import { useLinkedObjectsTitle } from '@/activities/timeline-activities/hooks/useLinkedObjectsTitle';
 import { type TimelineActivity } from '@/activities/timeline-activities/types/TimelineActivity';
 import { type ActivityTargetableObject } from '@/activities/types/ActivityTargetableEntity';
@@ -38,6 +40,7 @@ export const useTimelineActivities = (
     records: timelineActivities,
     loading: loadingTimelineActivities,
     fetchMoreRecords,
+    refetch: refetchTimelineActivities,
   } = useFindManyRecords<TimelineActivity>({
     skip: !hasTimelineActivityField,
     objectNameSingular: CoreObjectNameSingular.TimelineActivity,
@@ -54,6 +57,19 @@ export const useTimelineActivities = (
     recordGqlFields: depthOneRecordGqlFields,
     fetchPolicy: 'cache-and-network',
   });
+
+  // LOCAL-PATCH (board card 18c3aba7 — "the transcript should pop into the
+  // timeline automatically"): call/SMS notes are created server-side at
+  // hangup, but the open page never re-fetched, so nothing appeared until a
+  // manual reload. Poll the open record's timeline every 20s — cheap (one
+  // paginated query) and scoped to the timeline widget only.
+  useEffect(() => {
+    if (!hasTimelineActivityField) return;
+    const interval = setInterval(() => {
+      void refetchTimelineActivities();
+    }, 20_000);
+    return () => clearInterval(interval);
+  }, [hasTimelineActivityField, refetchTimelineActivities]);
 
   const activityIds = timelineActivities
     .filter((timelineActivity) => timelineActivity.name.match(/note|task/i))
