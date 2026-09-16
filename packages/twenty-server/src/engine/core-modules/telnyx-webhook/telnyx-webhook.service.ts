@@ -427,11 +427,18 @@ export class TelnyxWebhookService {
       if (routed) {
         // "ATT Avi" handled by the ZMN assistant — Avi IS the reply.
       } else if (this.isFamilyNumber(fromNumber)) {
-        // Our own / the wife's cell: recorded + on the timeline above, but no
-        // email forward ("I'm the one who sent the text"), no auto-reply, no
-        // workflow — the thread is waiting in the office, nothing else fires.
+        // Our own / the wife's cell: recorded + on the timeline above, and
+        // forwarded to email (Moshe texts the company line as a
+        // notes-to-self inbox and wants them in his mailbox — direct request
+        // 2026-09-16), but still no auto-reply (billed) and no
+        // sms.received workflow.
         this.logger.log(
-          `Family number ${fromNumber}: recorded only — no forward, no auto-reply, no workflow`,
+          `Family number ${fromNumber}: recorded + emailed — no auto-reply, no workflow`,
+        );
+        await this.forwardSmsToEmail(
+          fromNumber,
+          toNumber,
+          payload.text || '',
         );
       } else {
         // Fire any "sms.received" workflow first (gives the user a per-run
@@ -1702,14 +1709,15 @@ export class TelnyxWebhookService {
 
   // --- Family numbers -------------------------------------------------------
   // Moshe's and his wife's own cell phones (board cards 2026-08-28 + 2026-08-30:
-  // "I'm the one who sent the text — I don't need it in my email", "we don't
-  // need auto reply, just costing extra money"). Texts FROM these numbers are
-  // still recorded on the timeline (he reads the thread in the office), but
-  // never email-forwarded, never auto-replied, and never handed to the
-  // sms.received workflow — no pings, no spend. The boss number stays routable
-  // to the ZMN assistant ("ATT Avi …") because the family check runs AFTER the
-  // ZMN route. Env-overridable as a comma list, same digits normalization as
-  // the blocklist.
+  // "we don't need auto reply, just costing extra money"). Texts FROM these
+  // numbers are recorded on the timeline and forwarded to email (direct
+  // request 2026-09-16: he texts the company line as a notes-to-self inbox
+  // and wants them in his mailbox — reverses the 2026-08-28 no-email part),
+  // but never auto-replied and never handed to the sms.received workflow —
+  // no spend. The boss number stays routable to the ZMN assistant
+  // ("ATT Avi …") because the family check runs AFTER the ZMN route.
+  // Env-overridable as a comma list, same digits normalization as the
+  // blocklist.
   private familyNumbers = new Set<string>(
     (process.env['SMS_FAMILY_NUMBERS'] || '+15148947978,+14387637978')
       .split(',')
