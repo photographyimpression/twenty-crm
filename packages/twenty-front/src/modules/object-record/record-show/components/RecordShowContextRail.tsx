@@ -239,15 +239,18 @@ const QuickBooksCard = ({
 
   return (
     <StyledCard>
-      <StyledCardHeader>{t`QuickBooks`}</StyledCardHeader>
+      {/* Plain literals, not t`…`: LOCAL-PATCH strings are not in the
+          compiled Lingui catalogs, so the t macro renders as a raw message
+          id (same reason the AI briefing button uses plain strings). */}
+      <StyledCardHeader>QuickBooks</StyledCardHeader>
       <StyledQuickBooksButton onClick={handleAddToQuickBooks} disabled={busy}>
         <IconCoins size={15} />
-        {busy ? t`Adding…` : t`Add to QuickBooks`}
+        {busy ? 'Adding…' : 'Add to QuickBooks'}
       </StyledQuickBooksButton>
       <StyledQuickBooksHint>
         {isCustomer
-          ? t`Creates this customer in QuickBooks (via Safari).`
-          : t`Sets Contact Type to Customer and creates them in QuickBooks (via Safari).`}
+          ? 'Creates this customer in QuickBooks (via Safari).'
+          : 'Sets Contact Type to Customer and creates them in QuickBooks (via Safari).'}
       </StyledQuickBooksHint>
     </StyledCard>
   );
