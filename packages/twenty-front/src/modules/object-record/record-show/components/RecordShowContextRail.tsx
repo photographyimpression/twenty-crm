@@ -13,7 +13,7 @@ import { useAtomFamilyStateValue } from '@/ui/utilities/state/jotai/hooks/useAto
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 import { isNonEmptyString } from '@sniptt/guards';
@@ -149,7 +149,10 @@ const OverviewCard = ({ rows }: { rows: OverviewRow[] }) => (
 // Contact Type to Customer and hands name / email / phone / company to the
 // studio-Mac QuickBooks bridge (tools/quickbooks-bridge), which drives the
 // logged-in Safari session to create the customer in QuickBooks Online.
-const QUICKBOOKS_BRIDGE_URL = 'http://127.0.0.1:8788/quickbooks';
+// v2 (2026-09-23): once the person's QuickBooks customer id is known
+// (quickbooksNameId, stored automatically after a successful push), the card
+// switches to "Open in QuickBooks" + "Create invoice".
+const QUICKBOOKS_BRIDGE_ORIGIN = 'http://127.0.0.1:8788';
 
 const StyledQuickBooksButton = styled.button`
   align-items: center;
@@ -159,6 +162,7 @@ const StyledQuickBooksButton = styled.button`
   color: ${themeCssVariables.font.color.primary};
   cursor: pointer;
   display: flex;
+  flex: 1;
   font-size: ${themeCssVariables.font.size.sm};
   font-weight: ${themeCssVariables.font.weight.medium};
   gap: ${themeCssVariables.spacing[2]};
@@ -175,11 +179,42 @@ const StyledQuickBooksButton = styled.button`
   }
 `;
 
+const StyledQuickBooksButtonRow = styled.div`
+  display: flex;
+  gap: ${themeCssVariables.spacing[2]};
+`;
+
 const StyledQuickBooksHint = styled.span`
   color: ${themeCssVariables.font.color.tertiary};
   font-size: ${themeCssVariables.font.size.xs};
   text-align: center;
 `;
+
+// Opens a bridge popup and keeps `busy` true until it closes.
+const useQuickBooksPopup = () => {
+  const [busy, setBusy] = useState(false);
+
+  const open = (path: string, params: URLSearchParams) => {
+    params.set('o', window.location.origin);
+    const popup = window.open(
+      `${QUICKBOOKS_BRIDGE_ORIGIN}${path}?${params.toString()}`,
+      'crm-quickbooks',
+      'popup=yes,width=520,height=380',
+    );
+    if (popup) {
+      setBusy(true);
+      const startedAt = Date.now();
+      const timer = window.setInterval(() => {
+        if (popup.closed || Date.now() - startedAt > 120_000) {
+          window.clearInterval(timer);
+          setBusy(false);
+        }
+      }, 700);
+    }
+  };
+
+  return { busy, open };
+};
 
 const QuickBooksCard = ({
   recordId,
@@ -190,6 +225,7 @@ const QuickBooksCard = ({
   email,
   phone,
   isCustomer,
+  quickbooksNameId,
 }: {
   recordId: string;
   firstName: string | null;
@@ -199,9 +235,33 @@ const QuickBooksCard = ({
   email: string | null;
   phone: string | null;
   isCustomer: boolean;
+  quickbooksNameId: string | null;
 }) => {
   const { updateOneRecord } = useUpdateOneRecord();
-  const [busy, setBusy] = useState(false);
+  const { busy, open } = useQuickBooksPopup();
+
+  // The bridge popup reports the outcome; when a save produced a QuickBooks
+  // customer id, persist it so this card upgrades to Open / Create invoice.
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== QUICKBOOKS_BRIDGE_ORIGIN) return;
+      const data = event.data as {
+        source?: string;
+        status?: string;
+        nameId?: string | null;
+      } | null;
+      if (data?.source !== 'crm-quickbooks-bridge') return;
+      if (data.status === 'saved' && isNonEmptyString(data.nameId)) {
+        void updateOneRecord({
+          objectNameSingular: CoreObjectNameSingular.Person,
+          idToUpdate: recordId,
+          updateOneRecordInput: { quickbooksNameId: data.nameId },
+        }).catch(() => undefined);
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [recordId, updateOneRecord]);
 
   const handleAddToQuickBooks = () => {
     if (!isCustomer) {
@@ -220,21 +280,16 @@ const QuickBooksCard = ({
     if (isNonEmptyString(email)) params.set('email', email);
     if (isNonEmptyString(phone)) params.set('phone', phone);
 
-    const popup = window.open(
-      `${QUICKBOOKS_BRIDGE_URL}?${params.toString()}`,
-      'crm-quickbooks',
-      'popup=yes,width=520,height=380',
-    );
-    if (popup) {
-      setBusy(true);
-      const startedAt = Date.now();
-      const timer = window.setInterval(() => {
-        if (popup.closed || Date.now() - startedAt > 120_000) {
-          window.clearInterval(timer);
-          setBusy(false);
-        }
-      }, 700);
+    open('/quickbooks', params);
+  };
+
+  const handleBridgeAction = (path: 'open' | 'invoice') => {
+    const params = new URLSearchParams();
+    if (isNonEmptyString(quickbooksNameId)) {
+      params.set('nameId', quickbooksNameId);
     }
+    if (isNonEmptyString(displayName)) params.set('name', displayName);
+    open(`/${path}`, params);
   };
 
   return (
@@ -243,15 +298,43 @@ const QuickBooksCard = ({
           compiled Lingui catalogs, so the t macro renders as a raw message
           id (same reason the AI briefing button uses plain strings). */}
       <StyledCardHeader>QuickBooks</StyledCardHeader>
-      <StyledQuickBooksButton onClick={handleAddToQuickBooks} disabled={busy}>
-        <IconCoins size={15} />
-        {busy ? 'Adding…' : 'Add to QuickBooks'}
-      </StyledQuickBooksButton>
-      <StyledQuickBooksHint>
-        {isCustomer
-          ? 'Creates this customer in QuickBooks (via Safari).'
-          : 'Sets Contact Type to Customer and creates them in QuickBooks (via Safari).'}
-      </StyledQuickBooksHint>
+      {isNonEmptyString(quickbooksNameId) ? (
+        <>
+          <StyledQuickBooksButtonRow>
+            <StyledQuickBooksButton
+              onClick={() => handleBridgeAction('open')}
+              disabled={busy}
+            >
+              Open in QuickBooks
+            </StyledQuickBooksButton>
+            <StyledQuickBooksButton
+              onClick={() => handleBridgeAction('invoice')}
+              disabled={busy}
+            >
+              Create invoice
+            </StyledQuickBooksButton>
+          </StyledQuickBooksButtonRow>
+          <StyledQuickBooksHint>
+            Already in QuickBooks — open their page or start an invoice with
+            them pre-selected (finishes in Safari).
+          </StyledQuickBooksHint>
+        </>
+      ) : (
+        <>
+          <StyledQuickBooksButton
+            onClick={handleAddToQuickBooks}
+            disabled={busy}
+          >
+            <IconCoins size={15} />
+            {busy ? 'Adding…' : 'Add to QuickBooks'}
+          </StyledQuickBooksButton>
+          <StyledQuickBooksHint>
+            {isCustomer
+              ? 'Creates this customer in QuickBooks (via Safari).'
+              : 'Sets Contact Type to Customer and creates them in QuickBooks (via Safari).'}
+          </StyledQuickBooksHint>
+        </>
+      )}
     </StyledCard>
   );
 };
@@ -390,6 +473,9 @@ export const RecordShowContextRail = ({
           email={personEmail}
           phone={personPhone}
           isCustomer={asNonEmptyString(recordStore?.contactType) === 'CUSTOMER'}
+          quickbooksNameId={asNonEmptyString(
+            recordStore?.quickbooksNameId as string | null | undefined,
+          )}
         />
       )}
 

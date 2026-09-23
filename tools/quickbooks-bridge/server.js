@@ -59,17 +59,25 @@ fs.writeFileSync(
       if tb is not missing value then exit repeat
     end repeat
     if tb is missing value then
-      repeat with w in windows
-        repeat with t in tabs of w
-          try
-            if (do JavaScript "window.name" in t) is "${TAB_MARKER}" then
-              set tb to contents of t
+      -- QuickBooks' router strips the #crm-bridge hash on in-app
+      -- navigation, so fall back to the tracked tab identity written by
+      -- open-tab. NEVER probe other tabs with do JavaScript — pages can be
+      -- busy and block the event indefinitely.
+      try
+        set wid to (system attribute "QB_WINID") as integer
+        set tidx to (system attribute "QB_TABIDX") as integer
+        if tidx > 0 then
+          repeat with w in windows
+            if (id of w) is wid then
+              if tidx is less than or equal to (count of tabs of w) then
+                set cand to tab tidx of w
+                if (URL of cand) begins with "https://qbo.intuit.com" then set tb to cand
+              end if
               exit repeat
             end if
-          end try
-        end repeat
-        if tb is not missing value then exit repeat
-      end repeat
+          end repeat
+        end if
+      end try
     end if
     if tb is missing value then return "<<QB_NO_TAB>>"
     try
@@ -87,21 +95,47 @@ fs.writeFileSync(
   OPEN_TAB_SCPT,
   `on run
   set theURL to (system attribute "QB_URL")
+  set stateFile to (system attribute "QB_STATE")
   tell application "Safari"
-    -- Reuse the bridge tab from a previous run when it is still around, so
-    -- repeated clicks do not pile up tabs.
     set tb to missing value
-    repeat with w in windows
-      repeat with t in tabs of w
-        try
-          if (URL of t) contains "#${TAB_MARKER}" then
-            set tb to contents of t
-            exit repeat
-          end if
-        end try
+    set wt to missing value
+    -- 1) the tracked bridge tab from a previous run
+    try
+      if (system attribute "QB_WINID") is not "" then
+        set wid to (system attribute "QB_WINID") as integer
+        set tidx to (system attribute "QB_TABIDX") as integer
+        if tidx > 0 then
+          repeat with w in windows
+            if (id of w) is wid then
+              if tidx is less than or equal to (count of tabs of w) then
+                set cand to tab tidx of w
+                if (URL of cand) begins with "https://qbo.intuit.com" then
+                  set tb to cand
+                  set wt to contents of w
+                end if
+              end if
+              exit repeat
+            end if
+          end repeat
+        end if
+      end if
+    end try
+    -- 2) a tab still carrying the #crm-bridge hash
+    if tb is missing value then
+      repeat with w in windows
+        repeat with t in tabs of w
+          try
+            if (URL of t) contains "#${TAB_MARKER}" then
+              set tb to contents of t
+              set wt to contents of w
+              exit repeat
+            end if
+          end try
+        end repeat
+        if tb is not missing value then exit repeat
       end repeat
-      if tb is not missing value then exit repeat
-    end repeat
+    end if
+    -- 3) nothing reusable: create a fresh bridge tab
     if tb is missing value then
       set wtarget to missing value
       repeat with w in windows
@@ -112,19 +146,34 @@ fs.writeFileSync(
       end repeat
       if wtarget is missing value then
         set tb to make new document with properties {URL:theURL}
+        set wt to window 1
       else
         set tb to make new tab with properties {URL:theURL} at end of tabs of wtarget
+        set wt to wtarget
       end if
     else
       set URL of tb to theURL
     end if
-    -- Mark the tab we just made/reused — never "current tab", which in a
-    -- background window is whatever the user was looking at. window.name
-    -- survives later in-page navigation even if the URL hash is lost.
-    delay 0.3
+    -- QuickBooks only renders forms in the ACTIVE tab; switch within the
+    -- window but never activate Safari itself — whatever Moshe is working
+    -- on stays frontmost.
     try
-      do JavaScript "window.name='${TAB_MARKER}'" in tb
+      set current tab of wt to tb
     end try
+    -- Remember which tab is ours as (window id, tab index): QuickBooks
+    -- strips the URL hash after in-app navigation, and probing window.name
+    -- on unknown tabs can hang on busy pages.
+    set tIdxOut to 0
+    try
+      repeat with i from 1 to count of tabs of wt
+        if (tab i of wt) is tb then
+          set tIdxOut to i
+          exit repeat
+        end if
+      end repeat
+    end try
+    set wIdOut to id of wt
+    do shell script "echo " & (wIdOut as string) & " " & (tIdxOut as string) & " > " & quoted form of stateFile
     return "OK"
   end tell
 end run
@@ -159,8 +208,41 @@ const writeJs = (body) => {
   return file;
 };
 
+const TAB_STATE_FILE = path.join(WORK_DIR, 'tab-state.txt');
+
+const readTabState = () => {
+  try {
+    const [winId, tabIdx] = fs
+      .readFileSync(TAB_STATE_FILE, 'utf8')
+      .trim()
+      .split(/\s+/);
+    return { winId: winId || '', tabIdx: tabIdx || '' };
+  } catch {
+    return { winId: '', tabIdx: '' };
+  }
+};
+
+const openBridgeTab = (targetUrl) => {
+  const state = readTabState();
+  return osa(OPEN_TAB_SCPT, {
+    QB_URL: targetUrl,
+    QB_STATE: TAB_STATE_FILE,
+    QB_WINID: state.winId,
+    QB_TABIDX: state.tabIdx,
+  });
+};
+
 const runJs = async (body) => {
-  const result = await osa(RUN_JS_SCPT, { QB_JS_FILE: writeJs(body) });
+  const state = readTabState();
+  const result = await osa(
+    RUN_JS_SCPT,
+    {
+      QB_JS_FILE: writeJs(body),
+      QB_WINID: state.winId,
+      QB_TABIDX: state.tabIdx,
+    },
+    12000,
+  );
   if (!result.ok) {
     throw new Error(`Safari AppleScript failed: ${result.stderr.slice(0, 300)}`);
   }
@@ -216,7 +298,9 @@ const LABEL_FINDER = `
 let queue = Promise.resolve();
 
 const addToQuickBooks = async (contact) => {
-  const opened = await osa(OPEN_TAB_SCPT, { QB_URL: QBO_CUSTOMERS_URL });
+  const startedAt = Date.now();
+  const outOfBudget = () => Date.now() - startedAt > 150000;
+  const opened = await openBridgeTab(QBO_CUSTOMERS_URL);
   if (!opened.ok || opened.stdout !== 'OK') {
     return {
       status: 'error',
@@ -347,7 +431,11 @@ const addToQuickBooks = async (contact) => {
         errs: errBits.slice(0,4)
       });`,
     );
-    if (!state) continue;
+    if (!state) {
+      if (outOfBudget()) break;
+      continue;
+    }
+    if (outOfBudget()) break;
     const errText = (state.errs || []).join(' ');
     if (/already (exists|in use|using)|duplicate/i.test(errText)) {
       return {
@@ -359,9 +447,11 @@ const addToQuickBooks = async (contact) => {
       state.href.includes('/app/customerdetail') ||
       (state.formGone && state.href.includes('/app/customers'));
     if (landed) {
+      const nameId = (state.href.match(/nameId=(\d+)/) || [])[1] || null;
       return {
         status: 'saved',
         message: `${contact.name} saved in QuickBooks. The Safari tab is open if you want a quick look.`,
+        nameId,
         detail: fillResult,
       };
     }
@@ -375,11 +465,56 @@ const addToQuickBooks = async (contact) => {
   };
 };
 
+// "Open in QuickBooks" / "Create invoice": deep-link the bridge tab to the
+// customer page or a prefilled invoice form. The invoice form only mounts in
+// an ACTIVE tab, so open-tab.scpt makes the bridge tab current first.
+const openOrInvoice = async (mode, nameId, name) => {
+  const target =
+    mode === 'invoice'
+      ? `https://qbo.intuit.com/app/invoice?nameId=${nameId}`
+      : `https://qbo.intuit.com/app/customerdetail?nameId=${nameId}`;
+  const opened = await openBridgeTab(target);
+  if (!opened.ok || opened.stdout !== 'OK') {
+    return {
+      status: 'error',
+      message: `Could not open a Safari tab (${opened.stderr.slice(0, 200) || 'Safari did not respond'})`,
+    };
+  }
+  if (mode === 'open') {
+    return {
+      status: 'opened',
+      message: `Opening ${name || 'the customer'} in QuickBooks.`,
+      nameId,
+    };
+  }
+  // Do NOT probe the invoice page: while it mounts, do JavaScript can block
+  // for minutes. The ?nameId= prefill is applied by QuickBooks itself when
+  // the form loads in the active tab (verified live), so wait a beat for the
+  // navigation to settle and report ready.
+  await sleep(5000);
+  return {
+    status: 'invoice-ready',
+    message: `Invoice started for ${name || 'this customer'} — add the lines and Save in Safari.`,
+    nameId,
+  };
+};
+
 const enqueueAdd = (contact) =>
   new Promise((resolve) => {
     queue = queue.then(async () => {
       try {
         resolve(await addToQuickBooks(contact));
+      } catch (error) {
+        resolve({ status: 'error', message: String(error.message || error) });
+      }
+    });
+  });
+
+const enqueueAction = (mode, nameId, name) =>
+  new Promise((resolve) => {
+    queue = queue.then(async () => {
+      try {
+        resolve(await openOrInvoice(mode, nameId, name));
       } catch (error) {
         resolve({ status: 'error', message: String(error.message || error) });
       }
@@ -418,7 +553,15 @@ const isAllowed = (req) => {
 const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-const statusPage = (contact) => `<!doctype html>
+// The CRM passes its own origin as ?o=… so the popup can postMessage the
+// result back; the opener then stores the QuickBooks customer id on the
+// person. Anything malformed falls back to the CRM origin.
+const readOrigin = (query) =>
+  /^https?:\/\/[A-Za-z0-9.-]+(:\d+)?$/.test(query.get('o') || '')
+    ? query.get('o')
+    : 'https://crm.impressionphotography.ca';
+
+const page = ({ heading, running, runUrl, origin, closeMs }) => `<!doctype html>
 <html><head><meta charset="utf-8"><title>QuickBooks</title>
 <style>
   body { font: 14px -apple-system, "SF Pro Text", sans-serif; margin: 0; padding: 20px;
@@ -430,27 +573,34 @@ const statusPage = (contact) => `<!doctype html>
           animation: r 0.8s linear infinite; }
   @keyframes r { to { transform: rotate(360deg); } }
   .ok #st { color: #2ca01c; font-size: 26px; }
+  .info #st { color: #2b6cb0; font-size: 26px; }
   .bad #st { color: #d52b1e; font-size: 26px; }
   #st { font-size: 26px; margin-bottom: 6px; }
 </style></head>
 <body>
   <div id="st" class="spin"></div>
-  <h1>Adding ${escapeHtml(contact.name)} to QuickBooks…</h1>
-  <div id="msg">Driving Safari — this usually takes 15–30 seconds.</div>
+  <h1>${escapeHtml(heading)}</h1>
+  <div id="msg">${escapeHtml(running)}</div>
   <script>
-    fetch('/run' + location.search)
+    var OK = ['saved', 'opened', 'invoice-ready'];
+    fetch(${JSON.stringify(runUrl)})
       .then((r) => r.json())
       .then((res) => {
+        var ok = OK.indexOf(res.status) !== -1;
         document.querySelector('#st').className = '';
-        document.querySelector('#st').textContent =
-          res.status === 'saved' ? '✓' : res.status === 'duplicate' ? 'ℹ' : '✕';
-        if (res.status === 'saved') document.body.className = 'ok';
-        else if (res.status !== 'duplicate') document.body.className = 'bad';
+        document.body.className = ok ? 'ok' : res.status === 'duplicate' ? 'info' : 'bad';
+        document.querySelector('#st').textContent = ok ? '✓' : res.status === 'duplicate' ? 'ℹ' : '✕';
         document.querySelector('h1').textContent = 'QuickBooks';
         document.querySelector('#msg').textContent = res.message || res.status;
-        if (res.status === 'saved') setTimeout(() => window.close(), 4500);
+        try {
+          if (window.opener) window.opener.postMessage(
+            { source: 'crm-quickbooks-bridge', status: res.status, nameId: res.nameId || null },
+            ${JSON.stringify(origin)}
+          );
+        } catch (e) {}
+        if (ok) setTimeout(() => window.close(), ${closeMs});
       })
-      .catch((e) => {
+      .catch(() => {
         document.body.className = 'bad';
         document.querySelector('#st').className = '';
         document.querySelector('#st').textContent = '✕';
@@ -472,6 +622,11 @@ const server = http.createServer((req, res) => {
     res.end('forbidden');
     return;
   }
+  const sendHtml = (html) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  };
+
   if (url.pathname === '/quickbooks') {
     const contact = readContact(url.searchParams);
     if (!contact) {
@@ -479,11 +634,59 @@ const server = http.createServer((req, res) => {
       res.end('missing name');
       return;
     }
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(statusPage(contact));
+    sendHtml(
+      page({
+        heading: `Adding ${contact.name} to QuickBooks…`,
+        running: 'Driving Safari — this usually takes 15–30 seconds.',
+        runUrl: `/run${url.search}`,
+        origin: readOrigin(url.searchParams),
+        closeMs: 4500,
+      }),
+    );
+    return;
+  }
+  if (url.pathname === '/open' || url.pathname === '/invoice') {
+    const nameId = (url.searchParams.get('nameId') || '').replace(/\D/g, '');
+    const name = (url.searchParams.get('name') || '').slice(0, 120);
+    if (!nameId) {
+      res.writeHead(400, { 'content-type': 'text/plain' });
+      res.end('missing nameId');
+      return;
+    }
+    const mode = url.pathname === '/invoice' ? 'invoice' : 'open';
+    sendHtml(
+      page({
+        heading:
+          mode === 'invoice'
+            ? `Starting an invoice for ${name || 'this customer'}…`
+            : `Opening ${name || 'this customer'} in QuickBooks…`,
+        running:
+          mode === 'invoice'
+            ? 'Opening Safari with the customer already selected.'
+            : 'Opening Safari.',
+        runUrl: `/run?mode=${mode}&nameId=${nameId}`,
+        origin: readOrigin(url.searchParams),
+        closeMs: mode === 'invoice' ? 5000 : 900,
+      }),
+    );
     return;
   }
   if (url.pathname === '/run' && req.method === 'GET') {
+    const mode = url.searchParams.get('mode') || 'add';
+    if (mode === 'open' || mode === 'invoice') {
+      const nameId = (url.searchParams.get('nameId') || '').replace(/\D/g, '');
+      const name = (url.searchParams.get('name') || '').slice(0, 120);
+      if (!nameId) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ status: 'error', message: 'missing nameId' }));
+        return;
+      }
+      enqueueAction(mode, nameId, name).then((result) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(result));
+      });
+      return;
+    }
     const contact = readContact(url.searchParams);
     if (!contact) {
       res.writeHead(400, { 'content-type': 'application/json' });
