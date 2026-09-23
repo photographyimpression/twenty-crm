@@ -99,28 +99,9 @@ fs.writeFileSync(
   tell application "Safari"
     set tb to missing value
     set wt to missing value
-    -- 1) the tracked bridge tab from a previous run
-    try
-      if (system attribute "QB_WINID") is not "" then
-        set wid to (system attribute "QB_WINID") as integer
-        set tidx to (system attribute "QB_TABIDX") as integer
-        if tidx > 0 then
-          repeat with w in windows
-            if (id of w) is wid then
-              if tidx is less than or equal to (count of tabs of w) then
-                set cand to tab tidx of w
-                if (URL of cand) begins with "https://qbo.intuit.com" then
-                  set tb to cand
-                  set wt to contents of w
-                end if
-              end if
-              exit repeat
-            end if
-          end repeat
-        end if
-      end if
-    end try
-    -- 2) a tab still carrying the #crm-bridge hash
+    -- 1) a tab still carrying the #crm-bridge hash (cross-run identity; the
+    -- add flow re-stamps the hash after each save so this normally hits)
+    -- 2) anything else: create a fresh bridge tab
     if tb is missing value then
       repeat with w in windows
         repeat with t in tabs of w
@@ -173,7 +154,8 @@ fs.writeFileSync(
       end repeat
     end try
     set wIdOut to id of wt
-    do shell script "echo " & (wIdOut as string) & " " & (tIdxOut as string) & " > " & quoted form of stateFile
+    set runTok to (system attribute "QB_TOKEN")
+    do shell script "echo " & runTok & " " & (wIdOut as string) & " " & (tIdxOut as string) & " > " & quoted form of stateFile
     return "OK"
   end tell
 end run
@@ -210,38 +192,51 @@ const writeJs = (body) => {
 
 const TAB_STATE_FILE = path.join(WORK_DIR, 'tab-state.txt');
 
-const readTabState = () => {
-  try {
-    const [winId, tabIdx] = fs
-      .readFileSync(TAB_STATE_FILE, 'utf8')
-      .trim()
-      .split(/\s+/);
-    return { winId: winId || '', tabIdx: tabIdx || '' };
-  } catch {
-    return { winId: '', tabIdx: '' };
-  }
+// Tab identity is only valid WITHIN one flow: the state file carries a
+// per-run token so a stale (window id, tab index) from a previous run can
+// never point at one of the user's own QuickBooks tabs after they move
+// things around.
+let currentRun = { token: '', winId: '', tabIdx: '' };
+
+const beginRun = () => {
+  currentRun = {
+    token: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    winId: '',
+    tabIdx: '',
+  };
 };
 
-const openBridgeTab = (targetUrl) => {
-  const state = readTabState();
-  return osa(OPEN_TAB_SCPT, {
+const openBridgeTab = async (targetUrl) => {
+  const result = await osa(OPEN_TAB_SCPT, {
     QB_URL: targetUrl,
     QB_STATE: TAB_STATE_FILE,
-    QB_WINID: state.winId,
-    QB_TABIDX: state.tabIdx,
+    QB_TOKEN: currentRun.token,
   });
+  if (result.ok && result.stdout === 'OK') {
+    try {
+      const [token, winId, tabIdx] = fs
+        .readFileSync(TAB_STATE_FILE, 'utf8')
+        .trim()
+        .split(/\s+/);
+      if (token === currentRun.token) {
+        currentRun = { ...currentRun, winId, tabIdx };
+      }
+    } catch {
+      // state unreadable — hash targeting still works
+    }
+  }
+  return result;
 };
 
 const runJs = async (body) => {
-  const state = readTabState();
   const result = await osa(
     RUN_JS_SCPT,
     {
       QB_JS_FILE: writeJs(body),
-      QB_WINID: state.winId,
-      QB_TABIDX: state.tabIdx,
+      QB_WINID: currentRun.winId,
+      QB_TABIDX: currentRun.tabIdx,
     },
-    12000,
+    55000,
   );
   if (!result.ok) {
     throw new Error(`Safari AppleScript failed: ${result.stderr.slice(0, 300)}`);
@@ -298,6 +293,7 @@ const LABEL_FINDER = `
 let queue = Promise.resolve();
 
 const addToQuickBooks = async (contact) => {
+  beginRun();
   const startedAt = Date.now();
   const outOfBudget = () => Date.now() - startedAt > 150000;
   const opened = await openBridgeTab(QBO_CUSTOMERS_URL);
@@ -448,6 +444,13 @@ const addToQuickBooks = async (contact) => {
       (state.formGone && state.href.includes('/app/customers'));
     if (landed) {
       const nameId = (state.href.match(/nameId=(\d+)/) || [])[1] || null;
+      // Re-stamp the hash so the NEXT run's hash scan finds this tab
+      // instead of creating a new one (QuickBooks strips it on save).
+      try {
+        await runJs(`location.hash = '${TAB_MARKER}'; return 'STAMPED';`);
+      } catch {
+        // best-effort only
+      }
       return {
         status: 'saved',
         message: `${contact.name} saved in QuickBooks. The Safari tab is open if you want a quick look.`,
@@ -469,10 +472,11 @@ const addToQuickBooks = async (contact) => {
 // customer page or a prefilled invoice form. The invoice form only mounts in
 // an ACTIVE tab, so open-tab.scpt makes the bridge tab current first.
 const openOrInvoice = async (mode, nameId, name) => {
+  beginRun();
   const target =
     mode === 'invoice'
-      ? `https://qbo.intuit.com/app/invoice?nameId=${nameId}`
-      : `https://qbo.intuit.com/app/customerdetail?nameId=${nameId}`;
+      ? `https://qbo.intuit.com/app/invoice?nameId=${nameId}#${TAB_MARKER}`
+      : `https://qbo.intuit.com/app/customerdetail?nameId=${nameId}#${TAB_MARKER}`;
   const opened = await openBridgeTab(target);
   if (!opened.ok || opened.stdout !== 'OK') {
     return {
