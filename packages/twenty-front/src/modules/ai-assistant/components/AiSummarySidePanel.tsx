@@ -2,18 +2,21 @@
 // like the Claude right panel that is in Chrome… summaries of my contact that
 // I have open… so I don't have to read it all through").
 //
-// A ✨ AI button on every PERSON page opens a right-hand drawer that briefs
-// you on the contact: who they are, what they want, where it stands, next
-// move. The record's own data (person fields + recent timeline) is assembled
-// client-side and POSTed to the CRM server's /ai/contact-summary endpoint,
-// which streams a summary from the box's own Ollama models — nothing leaves
-// the server, no external API keys.
+// v2 (board card 2026-09-24 — "Take away this AI thing. It's just taking
+// long… I'm just running it in Microsoft Edge and using the built-in
+// Microsoft AI. It's much faster"): the drawer no longer calls the CRM
+// server's Ollama endpoint — that model took a long time to even start
+// thinking. It now runs on the BROWSER'S built-in AI (Edge/Chrome Prompt
+// API: the LanguageModel global, falling back to the older window.ai
+// languageModel), which starts immediately and never leaves the machine.
+// When the browser has no built-in AI (Safari, Firefox…), the button is
+// simply not rendered — "taken away", per the card.
 //
 // Deliberately self-contained like StatusStrip: inline lucide-path SVG, no app
 // atoms beyond the data hooks, Linaria styling. Re-apply on Twenty upgrades.
 
 import { styled } from '@linaria/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { type TimelineActivity } from '@/activities/timeline-activities/types/TimelineActivity';
@@ -21,22 +24,56 @@ import { useTimelineActivities } from '@/activities/timeline-activities/hooks/us
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 
-type Flavor = 'fast' | 'balanced' | 'deep';
+// --- browser built-in AI (Prompt API), typed locally -----------------------------
 
-const FLAVOR_LABELS: Record<Flavor, string> = {
-  fast: '⚡ Fast',
-  balanced: '⚖️ Balanced',
-  deep: '🧠 Deep',
+type PromptApiSession = {
+  prompt: (input: string) => Promise<string>;
+  destroy?: () => void;
 };
 
-// Matches the SMS page's server resolution: same origin in prod.
-const getServerUrl = (): string => {
-  const fromEnv = (
-    import.meta as unknown as { env?: { REACT_APP_SERVER_BASE_URL?: string } }
-  ).env?.REACT_APP_SERVER_BASE_URL;
-
-  return fromEnv || window.location.origin;
+type PromptApiModel = {
+  // Current spec shape: async availability().
+  availability?: () => Promise<
+    'unavailable' | 'downloadable' | 'downloading' | 'available'
+  >;
+  // Legacy Edge shape: sync capabilities().available.
+  capabilities?: () => { available?: 'readily' | 'after-download' | 'no' };
+  create: (options?: {
+    initialPrompts?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  }) => Promise<PromptApiSession>;
 };
+
+const getPromptApi = (): PromptApiModel | null => {
+  const w = window as unknown as {
+    LanguageModel?: PromptApiModel;
+    ai?: { languageModel?: PromptApiModel };
+  };
+
+  return w.LanguageModel ?? w.ai?.languageModel ?? null;
+};
+
+// True only when a local model is ready to answer right away. Anything else
+// (no API, model not downloaded) means the button stays hidden.
+const isPromptApiReady = async (api: PromptApiModel): Promise<boolean> => {
+  try {
+    if (typeof api.availability === 'function') {
+      return (await api.availability()) === 'available';
+    }
+    if (typeof api.capabilities === 'function') {
+      return api.capabilities()?.available === 'readily';
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+};
+
+const SYSTEM_PROMPT =
+  'You are a briefing assistant for a photography studio CRM. Using only the ' +
+  'record data provided, write a concise briefing about this contact: who ' +
+  'they are, what they want, where things stand, and the suggested next ' +
+  'move. Short and concrete — a few plain sentences or bullet lines, no preamble.';
 
 // --- inline lucide-path sparkles icon ----------------------------------------
 
@@ -131,6 +168,13 @@ const StyledDrawerHeader = styled.div`
   padding: 12px 14px;
 `;
 
+const StyledDrawerSubheader = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: 11px;
+  font-weight: ${themeCssVariables.font.weight.regular};
+  white-space: nowrap;
+`;
+
 const StyledDrawerClose = styled.button`
   background: none;
   border: none;
@@ -142,33 +186,6 @@ const StyledDrawerClose = styled.button`
   &:hover {
     color: ${themeCssVariables.font.color.primary};
   }
-`;
-
-const StyledFlavorRow = styled.div`
-  display: flex;
-  gap: 6px;
-  padding: 12px 14px 0;
-`;
-
-const StyledFlavorButton = styled.button<{ isActive: boolean }>`
-  background: ${({ isActive }) =>
-    isActive ? themeCssVariables.color.violet : 'transparent'};
-  border: 1px solid
-    ${({ isActive }) =>
-      isActive
-        ? themeCssVariables.color.violet
-        : themeCssVariables.border.color.medium};
-  border-radius: ${themeCssVariables.border.radius.sm};
-  color: ${({ isActive }) =>
-    isActive
-      ? themeCssVariables.grayScale.gray1
-      : themeCssVariables.font.color.secondary};
-  cursor: pointer;
-  flex: 1;
-  font-family: ${themeCssVariables.font.family};
-  font-size: 12px;
-  font-weight: ${themeCssVariables.font.weight.medium};
-  padding: 7px 0;
 `;
 
 const StyledSummaryArea = styled.div`
@@ -300,11 +317,30 @@ export const AiSummarySidePanel = ({
   personId: string | undefined;
 }) => {
   const [open, setOpen] = useState(false);
-  const [flavor, setFlavor] = useState<Flavor>('fast');
   const [summary, setSummary] = useState('');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
-  const runTokenRef = useRef(0);
+
+  // The browser either has built-in AI ready (Edge/Chrome with the Prompt
+  // API) or the whole button stays hidden — board card 2026-09-24: no slow
+  // server round-trip, no waiting-for-Ollama spinner.
+  const [aiReady, setAiReady] = useState(false);
+
+  useEffect(() => {
+    const api = getPromptApi();
+
+    if (!api) return;
+
+    let cancelled = false;
+
+    void isPromptApiReady(api).then((ready) => {
+      if (!cancelled) setAiReady(ready);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load the person + their timeline unconditionally (cheap, cached by Apollo
   // — the record page already fetched both); the AI call only happens on run.
@@ -335,70 +371,40 @@ export const AiSummarySidePanel = ({
     [person, timelineActivities],
   );
 
-  const run = useCallback(
-    async (selectedFlavor: Flavor) => {
-      if (!context.trim()) {
-        setError('Nothing to summarize yet on this record.');
-        return;
-      }
-      const token = ++runTokenRef.current;
-      setRunning(true);
-      setError('');
-      setSummary('');
-      try {
-        const response = await fetch(
-          `${getServerUrl()}/ai/contact-summary`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ context, flavor: selectedFlavor }),
-          },
-        );
+  const run = useCallback(async () => {
+    if (!context.trim()) {
+      setError('Nothing to summarize yet on this record.');
+      return;
+    }
+    const api = getPromptApi();
 
-        if (!response.ok) {
-          const data = (await response.json().catch(() => null)) as {
-            error?: string;
-          } | null;
+    if (!api) {
+      setError("This browser has no built-in AI available.");
+      return;
+    }
+    setRunning(true);
+    setError('');
+    setSummary('');
+    try {
+      const session = await api.create({
+        initialPrompts: [{ role: 'system', content: SYSTEM_PROMPT }],
+      });
+      const text = await session.prompt(context);
+      session.destroy?.();
 
-          throw new Error(data?.error || `Request failed (${response.status})`);
-        }
-        if (!response.body) {
-          throw new Error('No response stream');
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let text = '';
-
-        for (;;) {
-          const { done, value } = await reader.read();
-
-          if (done) break;
-
-          text += decoder.decode(value, { stream: true });
-
-          if (runTokenRef.current === token) {
-            setSummary(text);
-          }
-        }
-      } catch (err) {
-        if (runTokenRef.current === token) {
-          setError((err as Error).message || 'The summary failed.');
-        }
-      } finally {
-        if (runTokenRef.current === token) {
-          setRunning(false);
-        }
-      }
-    },
-    [context],
-  );
+      setSummary(text.trim());
+    } catch (err) {
+      setError((err as Error).message || 'The summary failed.');
+    } finally {
+      setRunning(false);
+    }
+  }, [context]);
 
   // First open of a contact auto-runs the briefing — the whole point is
   // "open the panel, read the brief".
   useEffect(() => {
     if (open && !running && !summary && !error) {
-      void run(flavor);
+      void run();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -416,12 +422,7 @@ export const AiSummarySidePanel = ({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
-  const onFlavorChange = (nextFlavor: Flavor) => {
-    setFlavor(nextFlavor);
-    setSummary('');
-    setError('');
-    void run(nextFlavor);
-  };
+  if (!aiReady) return null;
 
   return (
     <>
@@ -446,6 +447,9 @@ export const AiSummarySidePanel = ({
               >
                 <IconSparkles />
                 AI briefing
+                <StyledDrawerSubheader>
+                  this browser&apos;s built-in AI
+                </StyledDrawerSubheader>
               </span>
               <StyledDrawerClose
                 aria-label="Close"
@@ -455,18 +459,6 @@ export const AiSummarySidePanel = ({
                 <IconX />
               </StyledDrawerClose>
             </StyledDrawerHeader>
-            <StyledFlavorRow>
-              {(Object.keys(FLAVOR_LABELS) as Flavor[]).map((key) => (
-                <StyledFlavorButton
-                  isActive={key === flavor}
-                  key={key}
-                  onClick={() => onFlavorChange(key)}
-                  type="button"
-                >
-                  {FLAVOR_LABELS[key]}
-                </StyledFlavorButton>
-              ))}
-            </StyledFlavorRow>
             <StyledError>{error}</StyledError>
             <StyledSummaryArea>
               {summary ? (
@@ -474,8 +466,7 @@ export const AiSummarySidePanel = ({
               ) : running ? (
                 <StyledEmpty>
                   <IconSparkles size={22} />
-                  Reading this contact&apos;s history… (the studio&apos;s own
-                  AI, it takes a moment)
+                  Thinking… (runs instantly, right on this machine)
                 </StyledEmpty>
               ) : (
                 <StyledEmpty>Run a briefing for this contact.</StyledEmpty>
@@ -483,7 +474,7 @@ export const AiSummarySidePanel = ({
             </StyledSummaryArea>
             <StyledRunButton
               disabled={running || !context.trim()}
-              onClick={() => void run(flavor)}
+              onClick={() => void run()}
               type="button"
             >
               {running ? 'Thinking…' : summary ? 'Regenerate' : 'Summarize'}
