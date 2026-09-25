@@ -79,6 +79,13 @@ const StyledPageLayoutTabListContainer = styled.div`
 
 const StyledScrollWrapperContainer = styled.div`
   flex: 1;
+  /* Without this, the flex item's automatic minimum size is its content
+     height: it can't shrink below a long timeline, the ScrollWrapper inside
+     (height: 100%) gets sized to the content instead of the viewport, never
+     overflows, and the parent's overflow: hidden clips it — no scrollbar
+     anywhere (board card e56623c5: "I can't scroll down time line"). The
+     context-rail container below uses the same pattern. */
+  min-height: 0;
 `;
 
 export const PageLayoutRendererContent = () => {
