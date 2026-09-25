@@ -117,6 +117,21 @@ export class TelnyxSmsMediaController {
     }
 
     res.setHeader('Cache-Control', 'private, max-age=86400');
-    res.sendFile(filePath);
+
+    // dotfiles:'allow' is REQUIRED: the files live under .local-storage (a
+    // dot-directory), and express's send default ("ignore") 404s any path
+    // with a dotfile segment. The error callback keeps a failure visible —
+    // without it the UnhandledExceptionFilter swallows stream errors.
+    res.sendFile(filePath, { dotfiles: 'allow' }, (error) => {
+      if (error) {
+        this.logger.error(`Failed to stream MMS media ${filePath}: ${error}`);
+
+        if (!res.headersSent) {
+          res.status(500);
+        }
+
+        res.end();
+      }
+    });
   }
 }
