@@ -711,7 +711,10 @@ export class TelnyxWebhookController {
       return { ok: false, error: 'not a usable phone number' };
     }
 
-    return { ok: true, blocked: this.telnyxWebhookService.listBlockedNumbers() };
+    return {
+      ok: true,
+      blocked: this.telnyxWebhookService.listBlockedNumbers(),
+    };
   }
 
   @Post('blocked/remove')
@@ -723,7 +726,10 @@ export class TelnyxWebhookController {
   } {
     this.telnyxWebhookService.unblockNumber((body?.number ?? '').trim());
 
-    return { ok: true, blocked: this.telnyxWebhookService.listBlockedNumbers() };
+    return {
+      ok: true,
+      blocked: this.telnyxWebhookService.listBlockedNumbers(),
+    };
   }
 
   @Post('sms/send')

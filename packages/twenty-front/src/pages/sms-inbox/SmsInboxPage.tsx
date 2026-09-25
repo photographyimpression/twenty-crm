@@ -21,6 +21,12 @@ import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
 
+type SmsMediaItem = {
+  url: string;
+  contentType: string;
+  localFile?: string;
+};
+
 type SmsRecord = {
   id: string;
   from: string | { phone_number?: string } | null;
@@ -33,6 +39,7 @@ type SmsRecord = {
   direction: 'inbound' | 'outbound';
   timestamp: string;
   status: string;
+  media?: SmsMediaItem[];
 };
 
 type SmsThread = {
@@ -308,6 +315,31 @@ const StyledBubbleTime = styled.div`
   margin-top: 2px;
 `;
 
+const StyledMediaGroup = styled.div<{ hasCaption: boolean }>`
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[1]};
+  margin-bottom: ${({ hasCaption }) =>
+    hasCaption ? themeCssVariables.spacing[2] : 0};
+`;
+
+const StyledMediaImg = styled.img`
+  border-radius: 8px;
+  display: block;
+  max-height: 280px;
+  max-width: 100%;
+  object-fit: contain;
+`;
+
+const StyledMediaLink = styled.a<{ isOutbound: boolean }>`
+  color: ${({ isOutbound }) =>
+    isOutbound
+      ? themeCssVariables.font.color.inverted
+      : themeCssVariables.color.blue};
+  font-size: ${themeCssVariables.font.size.sm};
+  text-decoration: underline;
+`;
+
 const StyledComposer = styled.form`
   align-items: center;
   border-top: 1px solid ${themeCssVariables.border.color.light};
@@ -439,6 +471,57 @@ const formatBubbleTime = (timestamp: string): string => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+// MMS attachments are served by the API from the persisted copy (the
+// Telnyx download URL expires), falling back to the original URL for the
+// rare case the webhook-time download failed.
+const mediaSrc = (serverUrl: string, item: SmsMediaItem): string =>
+  item.localFile
+    ? `${serverUrl}/telnyx/sms-media/${item.localFile}`
+    : item.url;
+
+const previewText = (record: SmsRecord): string => {
+  if (!record.text && record.media && record.media.length > 0) {
+    return record.media.length > 1
+      ? `📷 ${record.media.length} photos`
+      : '📷 Photo';
+  }
+
+  return record.text;
+};
+
+// Image bubble for an MMS attachment. Falls back to a link when the
+// browser can't decode the format (e.g. HEIC outside Safari).
+const SmsMediaImage = ({
+  src,
+  isOutbound,
+}: {
+  src: string;
+  isOutbound: boolean;
+}) => {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <StyledMediaLink
+        isOutbound={isOutbound}
+        href={src}
+        target="_blank"
+        rel="noreferrer"
+      >
+        📷 View photo
+      </StyledMediaLink>
+    );
+  }
+
+  return (
+    <StyledMediaImg
+      src={src}
+      alt="MMS photo"
+      onError={() => setFailed(true)}
+    />
+  );
 };
 
 const groupBySmsThreads = (records: SmsRecord[]): SmsThread[] => {
@@ -899,8 +982,8 @@ export const SmsInboxPage = () => {
                         </StyledThreadHeader>
                         <StyledThreadPreview isUnread={isUnread}>
                           {thread.lastMessage.direction === 'outbound'
-                            ? `${t`You`}: ${thread.lastMessage.text}`
-                            : thread.lastMessage.text}
+                            ? `${t`You`}: ${previewText(thread.lastMessage)}`
+                            : previewText(thread.lastMessage)}
                         </StyledThreadPreview>
                       </StyledThreadRow>
                     );
@@ -947,6 +1030,31 @@ export const SmsInboxPage = () => {
                     isOutbound={msg.direction === 'outbound'}
                   >
                     <StyledBubble isOutbound={msg.direction === 'outbound'}>
+                      {msg.media && msg.media.length > 0 && (
+                        <StyledMediaGroup hasCaption={msg.text.length > 0}>
+                          {msg.media.map((item, index) =>
+                            item.contentType.startsWith('image/') ? (
+                              <SmsMediaImage
+                                // eslint-disable-next-line react/no-array-index-key
+                                key={`${msg.id}-media-${index}`}
+                                src={mediaSrc(serverUrl, item)}
+                                isOutbound={msg.direction === 'outbound'}
+                              />
+                            ) : (
+                              <StyledMediaLink
+                                // eslint-disable-next-line react/no-array-index-key
+                                key={`${msg.id}-media-${index}`}
+                                isOutbound={msg.direction === 'outbound'}
+                                href={mediaSrc(serverUrl, item)}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                📎 Attachment ({item.contentType})
+                              </StyledMediaLink>
+                            ),
+                          )}
+                        </StyledMediaGroup>
+                      )}
                       {msg.text}
                     </StyledBubble>
                     <StyledBubbleTime>

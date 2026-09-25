@@ -6,13 +6,20 @@ import {
   Param,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+
+import * as path from 'path';
+import { type Response } from 'express';
 
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { PublicEndpointGuard } from 'src/engine/guards/public-endpoint.guard';
 
-import { TelnyxWebhookService } from './telnyx-webhook.service';
+import {
+  contentTypeForExtension,
+  TelnyxWebhookService,
+} from './telnyx-webhook.service';
 
 @Controller('telnyx/call-records')
 export class TelnyxCallRecordsController {
@@ -80,5 +87,36 @@ export class TelnyxSmsRecordsController {
     return {
       data: this.telnyxWebhookService.getSmsRecords(contact),
     };
+  }
+}
+
+// Serves MMS attachments persisted by the SMS webhook. The filename is the
+// webhook event id + index + extension — unguessable in practice, which is
+// the same auth posture as the sms-records list itself.
+@Controller('telnyx/sms-media')
+export class TelnyxSmsMediaController {
+  protected readonly logger = new Logger(TelnyxSmsMediaController.name);
+
+  constructor(private readonly telnyxWebhookService: TelnyxWebhookService) {}
+
+  @Get(':filename')
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  getMedia(@Param('filename') filename: string, @Res() res: Response) {
+    const filePath = this.telnyxWebhookService.getMediaFilePath(filename);
+
+    if (!filePath) {
+      res.status(404).json({ error: 'Media not found' });
+
+      return;
+    }
+
+    const contentType = contentTypeForExtension(path.extname(filePath));
+
+    if (contentType) {
+      res.setHeader('Content-Type', contentType);
+    }
+
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.sendFile(filePath);
   }
 }

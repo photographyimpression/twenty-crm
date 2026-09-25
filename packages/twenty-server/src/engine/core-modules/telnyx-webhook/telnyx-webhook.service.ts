@@ -100,12 +100,73 @@ type SmsRecord = {
   direction: 'inbound' | 'outbound';
   timestamp: string;
   status: string;
+  // MMS attachments. Telnyx delivers them as short-lived download URLs in
+  // payload.media — we download each one at webhook time and keep it on
+  // disk (localFile, served at /telnyx/sms-media/:localFile) because the
+  // original url expires within hours.
+  media?: SmsMediaItem[];
+};
+
+type SmsMediaItem = {
+  url: string;
+  contentType: string;
+  localFile?: string;
 };
 
 const MAX_CALL_RECORDS = 1000;
 const MAX_SMS_RECORDS = 5000;
 const STALE_RECORD_HOURS = 72;
 const MAX_TRANSCRIPTION_RETRIES = 2;
+// MMS media: cap count/size so a hostile or malformed webhook can't fill
+// the disk, and bound the download so the webhook still answers fast.
+const MAX_MMS_MEDIA_ITEMS = 5;
+const MAX_MMS_MEDIA_BYTES = 15 * 1024 * 1024;
+const MMS_MEDIA_DOWNLOAD_TIMEOUT_MS = 15_000;
+
+// Telnyx content types → file extensions for MMS media we persist.
+const MEDIA_EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'image/heif': 'heic',
+  'image/bmp': 'bmp',
+  'video/mp4': 'mp4',
+  'video/3gpp': '3gp',
+  'audio/amr': 'amr',
+  'audio/mpeg': 'mp3',
+  'audio/mp4': 'm4a',
+  'application/pdf': 'pdf',
+  'text/vcard': 'vcf',
+  'text/x-vcard': 'vcf',
+};
+
+const MEDIA_CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  bmp: 'image/bmp',
+  mp4: 'video/mp4',
+  '3gp': 'video/3gpp',
+  amr: 'audio/amr',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  pdf: 'application/pdf',
+  vcf: 'text/vcard',
+};
+
+const extensionForContentType = (contentType: string): string =>
+  MEDIA_EXTENSION_BY_CONTENT_TYPE[contentType.toLowerCase().split(';')[0]] ??
+  'bin';
+
+export const contentTypeForExtension = (
+  extension: string,
+): string | undefined =>
+  MEDIA_CONTENT_TYPE_BY_EXTENSION[extension.replace('.', '').toLowerCase()];
 // Only auto-reply once per inbound number per this many hours, so a chatty
 // lead (or a stuck carrier loopback) can't trigger a flood of auto-replies.
 const AUTO_REPLY_COOLDOWN_HOURS = 12;
@@ -128,6 +189,8 @@ export class TelnyxWebhookService {
   // worst case after a restart we send one extra auto-reply to a sender.
   private readonly lastAutoReplyAt = new Map<string, number>();
   private readonly dataDir: string;
+  // Downloaded MMS attachments (see SmsMediaItem.localFile).
+  private readonly mediaDir: string;
   // Persists per-contact Message-ID chains so each SMS notification
   // email threads under the previous one in Outlook.
   private smsThreadState!: SmsThreadStateStore;
@@ -151,6 +214,12 @@ export class TelnyxWebhookService {
       path.join(process.cwd(), '.local-storage', 'twenty-call-recordings');
 
     this.dataDir = this.ensureWritableDir(preferredDir);
+
+    // MMS attachments live next to the record JSON so they share its volume
+    // (and its /tmp fallback if the preferred dir isn't writable).
+    this.mediaDir = this.ensureWritableDir(
+      path.join(this.dataDir, 'mms-media'),
+    );
 
     // One-time migration: copy any records from the legacy $HOME location
     // (which Docker rebuilds wiped) so existing data isn't lost on upgrade.
@@ -386,7 +455,19 @@ export class TelnyxWebhookService {
     );
 
     if (eventType === 'message.received') {
-      this.logger.log(`Incoming SMS from ${fromNumber}: ${payload.text}`);
+      this.logger.log(
+        `Incoming SMS from ${fromNumber}: ${payload.text || ''}` +
+          (Array.isArray(payload.media) && payload.media.length > 0
+            ? ` (+${payload.media.length} MMS attachment(s))`
+            : ''),
+      );
+
+      // Download MMS attachments NOW — Telnyx media URLs expire, so this
+      // webhook is the only moment the picture is reliably fetchable.
+      const media = await this.persistInboundMedia(
+        eventId || `sms-${Date.now()}`,
+        payload.media,
+      );
 
       const smsRecord: SmsRecord = {
         id: eventId || `sms-${Date.now()}`,
@@ -396,6 +477,7 @@ export class TelnyxWebhookService {
         direction: 'inbound',
         timestamp: body?.data?.occurred_at || new Date().toISOString(),
         status: 'received',
+        ...(media.length > 0 ? { media } : {}),
       };
 
       // Store the inbound SMS with normalized phone numbers
@@ -439,6 +521,7 @@ export class TelnyxWebhookService {
           fromNumber,
           toNumber,
           payload.text || '',
+          smsRecord.media,
         );
       } else {
         // Fire any "sms.received" workflow first (gives the user a per-run
@@ -452,6 +535,7 @@ export class TelnyxWebhookService {
             fromNumber,
             toNumber,
             payload.text || '',
+            smsRecord.media,
           );
         }
 
@@ -649,6 +733,144 @@ export class TelnyxWebhookService {
     }
 
     return [...this.smsRecords];
+  }
+
+  // Download the MMS attachments of an inbound message into mediaDir.
+  // Returns the persisted metadata (localFile set on success); failures
+  // degrade to the bare remote url so the record still shows "a photo
+  // existed" even when the download didn't make it.
+  private async persistInboundMedia(
+    recordId: string,
+    media?: Array<{ url?: string; content_type?: string }>,
+  ): Promise<SmsMediaItem[]> {
+    if (!Array.isArray(media) || media.length === 0) return [];
+
+    const safeId = recordId.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 64) || 'sms';
+    const items = media
+      .filter(
+        (item) =>
+          typeof item?.url === 'string' &&
+          (item.url as string).startsWith('http'),
+      )
+      .slice(0, MAX_MMS_MEDIA_ITEMS);
+
+    const results: SmsMediaItem[] = [];
+
+    for (const [index, item] of items.entries()) {
+      const url = item.url as string;
+      const contentType = item.content_type || 'application/octet-stream';
+      const localFile = `${safeId}-${index}.${extensionForContentType(contentType)}`;
+
+      if (await this.downloadMediaFile(url, localFile)) {
+        results.push({ url, contentType, localFile });
+      } else {
+        results.push({ url, contentType });
+      }
+    }
+
+    return results;
+  }
+
+  private async downloadMediaFile(
+    url: string,
+    localFile: string,
+  ): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      MMS_MEDIA_DOWNLOAD_TIMEOUT_MS,
+    );
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+
+      if (!response.ok) {
+        this.logger.warn(
+          `MMS media download failed (${response.status}): ${url}`,
+        );
+
+        return false;
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+
+      if (buffer.length === 0 || buffer.length > MAX_MMS_MEDIA_BYTES) {
+        this.logger.warn(
+          `MMS media is ${buffer.length} bytes (outside ${MAX_MMS_MEDIA_BYTES} cap): ${url}`,
+        );
+
+        return false;
+      }
+
+      fs.writeFileSync(path.join(this.mediaDir, localFile), buffer);
+      this.logger.log(
+        `Saved MMS media ${localFile} (${buffer.length} bytes, ${url})`,
+      );
+
+      return true;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.warn(`MMS media download error (${url}): ${errorMessage}`);
+
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Resolve a media filename (as stored on an SmsRecord) to its absolute
+  // path for the sms-media controller. Filename is validated to a strict
+  // charset and re-checked to stay inside mediaDir — no traversal.
+  getMediaFilePath(filename: string): string | null {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(filename)) return null;
+
+    const filePath = path.join(this.mediaDir, filename);
+
+    if (!filePath.startsWith(this.mediaDir + path.sep)) return null;
+
+    return fs.existsSync(filePath) ? filePath : null;
+  }
+
+  // Load persisted MMS media as email attachments (skips items whose
+  // download failed at webhook time).
+  private loadMediaAsAttachments(
+    media?: SmsMediaItem[],
+  ): Array<{ filename: string; contentType: string; content: Buffer }> {
+    if (!media || media.length === 0) return [];
+
+    const attachments: Array<{
+      filename: string;
+      contentType: string;
+      content: Buffer;
+    }> = [];
+
+    for (const [index, item] of media.entries()) {
+      if (!item.localFile) continue;
+
+      const filePath = this.getMediaFilePath(item.localFile);
+
+      if (!filePath) continue;
+
+      try {
+        const content = fs.readFileSync(filePath);
+
+        if (content.length === 0) continue;
+
+        attachments.push({
+          filename: `mms-${index + 1}${path.extname(item.localFile) || '.bin'}`,
+          contentType: item.contentType,
+          content,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Could not read MMS media ${item.localFile} for attachment: ${error}`,
+        );
+      }
+    }
+
+    return attachments;
   }
 
   async handleRecordingSaved(
@@ -1229,6 +1451,7 @@ export class TelnyxWebhookService {
     from: string,
     to: string,
     text: string,
+    media?: SmsMediaItem[],
   ): Promise<void> {
     const forwardEmail =
       process.env['SMS_FORWARD_EMAIL'] || 'moshe@impressionphotography.ca';
@@ -1236,6 +1459,16 @@ export class TelnyxWebhookService {
     const localTime = new Date().toLocaleString('en-CA', {
       timeZone: 'America/Toronto',
     });
+
+    // MMS pictures ride along as real attachments so they're visible
+    // inline in Outlook without any clicks.
+    const attachments = this.loadMediaAsAttachments(media);
+    const attachmentNote =
+      attachments.length > 0
+        ? `\n📷 ${attachments.length} photo${
+            attachments.length > 1 ? 's' : ''
+          } attached.`
+        : '';
 
     // Look up the contact's display name so the email reads like a
     // human conversation instead of a raw phone-number alert.
@@ -1273,7 +1506,7 @@ export class TelnyxWebhookService {
     // shape of this footer is load-bearing — tools/sms-reply-bridge strips it
     // by matching that exact prefix, so keep those two lines as they are.
     const bodyText =
-      `${text}\n` +
+      `${text}${attachmentNote}\n` +
       `\n` +
       `—\n` +
       `From: ${senderLabel}\n` +
@@ -1331,6 +1564,7 @@ export class TelnyxWebhookService {
       // No replyTo: the old sms-reply+<token>@… address can never receive
       // mail (port 25 closed), so advertising it silently ate replies.
       headers: graphHeaders,
+      attachments,
     });
 
     if (graphResult.ok) {
@@ -1365,6 +1599,11 @@ export class TelnyxWebhookService {
         messageId: threadHeaders.messageId,
         inReplyTo: threadHeaders.inReplyTo,
         headers: smtpHeaders,
+        attachments: attachments.map((attachment) => ({
+          filename: attachment.filename,
+          content: attachment.content,
+          contentType: attachment.contentType,
+        })),
       });
 
       this.logger.log(`SMS forwarded to ${forwardEmail} via SMTP`);
@@ -1406,7 +1645,9 @@ export class TelnyxWebhookService {
     const geminiKey = process.env['GEMINI_API_KEY'];
     let autoReplyText: string;
 
-    if (geminiKey) {
+    // Media-only MMS has no caption to riff on — go straight to the static
+    // reply instead of asking Gemini about an empty string.
+    if (geminiKey && incomingText.trim().length > 0) {
       const aiText = await this.generateAiReply(geminiKey, incomingText);
 
       autoReplyText = this.isReplyTextSane(aiText)
@@ -2290,13 +2531,44 @@ export class TelnyxWebhookService {
     }
 
     const directionIcon = smsRecord.direction === 'inbound' ? '📥' : '📤';
-    const title = `${directionIcon} SMS ${smsRecord.direction === 'inbound' ? 'Received' : 'Sent'}`;
+    const title = `${directionIcon} SMS ${
+      smsRecord.direction === 'inbound' ? 'Received' : 'Sent'
+    }`;
     const time = new Date(smsRecord.timestamp).toLocaleString('en-CA', {
       timeZone: 'America/Toronto',
     });
 
-    const body = `${smsRecord.direction === 'inbound' ? 'From' : 'To'}: ${contactPhone}\nTime: ${time}\n\n${smsRecord.text}`;
+    const body =
+      `${smsRecord.direction === 'inbound' ? 'From' : 'To'}: ${contactPhone}\n` +
+      `Time: ${time}\n\n${smsRecord.text}`;
 
-    await this.createTimelineNote(personId, title, body);
+    await this.createTimelineNote(
+      personId,
+      title,
+      this.appendTimelineMediaLinks(body, smsRecord.media),
+    );
+  }
+
+  // Append 📷 lines with durable in-CRM links for any MMS attachments.
+  // The Telnyx URLs expire, so only locally-persisted files get a link.
+  private appendTimelineMediaLinks(
+    body: string,
+    media?: SmsMediaItem[],
+  ): string {
+    const withLocalFile = (media ?? []).filter((item) => item.localFile);
+
+    if (withLocalFile.length === 0) return body;
+
+    const crmBaseUrl = (
+      process.env['FRONTEND_URL'] ||
+      process.env['SERVER_URL'] ||
+      'https://crm.impressionphotography.ca'
+    ).replace(/\/+$/, '');
+
+    const links = withLocalFile
+      .map((item) => `${crmBaseUrl}/telnyx/sms-media/${item.localFile}`)
+      .join('\n');
+
+    return `${body}\n\n📷 Photo${withLocalFile.length > 1 ? 's' : ''}:\n${links}`;
   }
 }

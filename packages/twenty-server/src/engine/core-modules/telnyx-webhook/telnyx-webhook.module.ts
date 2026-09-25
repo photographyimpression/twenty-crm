@@ -9,6 +9,7 @@ import { TwentyORMModule } from 'src/engine/twenty-orm/twenty-orm.module';
 
 import {
   TelnyxCallRecordsController,
+  TelnyxSmsMediaController,
   TelnyxSmsRecordsController,
 } from './telnyx-call-records.controller';
 import { TelnyxWebhookController } from './telnyx-webhook.controller';
@@ -26,6 +27,7 @@ import { TelnyxWebhookService } from './telnyx-webhook.service';
     TelnyxWebhookController,
     TelnyxCallRecordsController,
     TelnyxSmsRecordsController,
+    TelnyxSmsMediaController,
   ],
   providers: [TelnyxWebhookService],
   exports: [TelnyxWebhookService],

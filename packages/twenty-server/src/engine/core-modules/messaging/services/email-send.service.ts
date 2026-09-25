@@ -149,6 +149,7 @@ export class EmailSendService {
     bodyHtml,
     replyTo,
     headers,
+    attachments,
   }: {
     to: string;
     subject: string;
@@ -156,6 +157,12 @@ export class EmailSendService {
     bodyHtml?: string;
     replyTo?: string;
     headers?: Record<string, string>;
+    // Binary attachments (used by the SMS forwarder for inbound MMS photos).
+    attachments?: Array<{
+      filename: string;
+      contentType: string;
+      content: Buffer;
+    }>;
   }): Promise<{ ok: boolean; error?: string }> {
     const workspace = await this.workspaceRepository.findOne({ where: {} });
 
@@ -223,6 +230,15 @@ export class EmailSendService {
 
           if (internetMessageHeaders && internetMessageHeaders.length > 0) {
             message.internetMessageHeaders = internetMessageHeaders;
+          }
+
+          if (attachments && attachments.length > 0) {
+            message.attachments = attachments.map((attachment) => ({
+              '@odata.type': '#microsoft.graph.fileAttachment',
+              name: attachment.filename,
+              contentType: attachment.contentType,
+              contentBytes: attachment.content.toString('base64'),
+            }));
           }
 
           await client.api('/me/sendMail').post({
