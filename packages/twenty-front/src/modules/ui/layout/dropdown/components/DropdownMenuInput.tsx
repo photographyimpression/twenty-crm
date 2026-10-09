@@ -100,6 +100,7 @@ export const DropdownMenuInput = forwardRef<
       onClickOutside,
       onEnter = () => {},
       onEscape = () => {},
+      onKeyDown,
       onShiftTab,
       onTab,
       rightComponent,
@@ -140,6 +141,7 @@ export const DropdownMenuInput = forwardRef<
               value={value}
               placeholder={placeholder}
               onChange={onChange}
+              onKeyDown={onKeyDown}
               ref={combinedRef}
               withRightComponent={isDefined(rightComponent)}
             />

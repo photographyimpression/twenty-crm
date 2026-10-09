@@ -1,4 +1,9 @@
-import { type ChangeEvent, useCallback, useState } from 'react';
+import {
+  type ChangeEvent,
+  type KeyboardEvent,
+  useCallback,
+  useState,
+} from 'react';
 
 import { useApplyObjectFilterDropdownFilterValue } from '@/object-record/object-filter-dropdown/hooks/useApplyObjectFilterDropdownFilterValue';
 import { useObjectFilterDropdownFilterValue } from '@/object-record/object-filter-dropdown/hooks/useObjectFilterDropdownFilterValue';
@@ -46,6 +51,22 @@ export const ObjectFilterDropdownTextInput = ({
     applyObjectFilterDropdownFilterValue(newValue);
   };
 
+  // LOCAL-PATCH (board card 2026-10-07): Enter must submit the value AND
+  // close the filter box. The hotkey-based onEnter path depends on the
+  // focus-stack state and could silently no-op; a direct keydown handler on
+  // the input always runs.
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+
+      applyObjectFilterDropdownFilterValue(
+        objectFilterDropdownFilterValue ?? '',
+      );
+      closeDropdown(filterDropdownId);
+    }
+  };
+
   return (
     <DropdownMenuItemsContainer>
       <DropdownMenuInput
@@ -56,6 +77,7 @@ export const ObjectFilterDropdownTextInput = ({
         type="text"
         placeholder={fieldMetadataItemUsedInDropdown?.label}
         onChange={handleInputChange}
+        onKeyDown={handleInputKeyDown}
         onEnter={() => {
           closeDropdown(filterDropdownId);
         }}
