@@ -525,8 +525,8 @@ export class TelnyxWebhookService {
         );
       } else {
         // Fire any "sms.received" workflow first (gives the user a per-run
-        // execution log in the Workflows UI). Only fall back to the
-        // hardcoded forwarder if no workflow is configured.
+        // execution log in the Workflows UI). Only fall back to the hardcoded
+        // forwarder if no workflow is configured.
         const workflowsFired =
           await this.dispatchSmsReceivedWorkflow(smsRecord);
 
@@ -538,6 +538,12 @@ export class TelnyxWebhookService {
             smsRecord.media,
           );
         }
+
+        // LOCAL-PATCH (board card 2026-10-07): mirror the inbound text to
+        // the owner's regular cell as an SMS so after-hours texts reach him
+        // on his flip phone (no web access). Runs for every customer text,
+        // independent of the email forward / workflow above.
+        await this.forwardSmsToCell(fromNumber, smsRecord);
 
         // AI auto-reply — guarded against self-echoes, marketing loopbacks,
         // and floods (see shouldSendAutoReply for the full guard list).
@@ -1623,6 +1629,96 @@ export class TelnyxWebhookService {
     "We've got your message and will reply shortly. " +
     'Urgent? Call +1 (514) 894-7978.';
 
+  // Forward an inbound customer SMS to the owner's regular cell phone as a
+  // plain text message (board card 2026-10-07: "if someone sends me a text on
+  // my CRM number I would love to receive it on my regular cell phone … it's
+  // a kosher flip phone without web access"). Target is env-overridable
+  // because the owner sometimes swaps SIMs — SMS_FORWARD_TO_CELL='' disables.
+  // Media can't ride along without re-uploading to Telnyx, so photos become
+  // a "(open in CRM)" hint; the full thread stays in the SMS inbox.
+  private async forwardSmsToCell(
+    from: string,
+    smsRecord: SmsRecord,
+  ): Promise<void> {
+    const targetCell = process.env['SMS_FORWARD_TO_CELL'] || '+15148947978';
+
+    if (!targetCell) {
+      return;
+    }
+
+    const telnyxApiKey = process.env['TELNYX_API_KEY'];
+    const fromNumber = process.env['TELNYX_FROM_NUMBER'] || '+15142702784';
+    const messagingProfileId = process.env['TELNYX_MESSAGING_PROFILE_ID'];
+
+    if (!telnyxApiKey || !messagingProfileId) {
+      this.logger.warn(
+        'Missing TELNYX_API_KEY or TELNYX_MESSAGING_PROFILE_ID for cell forward',
+      );
+
+      return;
+    }
+
+    // Prefer the contact's name so the flip phone shows who texted; fall
+    // back to the raw number.
+    let senderLabel = from;
+
+    try {
+      const contactName = await this.findPersonNameByPhone(from);
+      if (contactName) {
+        senderLabel = `${contactName} (${from})`;
+      }
+    } catch (error) {
+      this.logger.warn(`Person lookup for cell forward failed: ${error}`);
+    }
+
+    const photoCount = (smsRecord.media ?? []).length;
+    const mediaNote =
+      photoCount > 0
+        ? ` [+${photoCount} photo${photoCount > 1 ? 's' : ''} — open CRM]`
+        : '';
+
+    // Keep it tight: flip phones render long texts poorly and multi-segment
+    // SMS costs more.
+    const maxBodyChars = 480;
+    const rawText = smsRecord.text || '';
+    const truncatedText =
+      rawText.length > maxBodyChars
+        ? `${rawText.slice(0, maxBodyChars)}…`
+        : rawText;
+    const forwardText = `[CRM SMS] ${senderLabel}: ${truncatedText}${mediaNote}`;
+
+    try {
+      const response = await fetch('https://api.telnyx.com/v2/messages', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${telnyxApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromNumber,
+          to: targetCell,
+          text: forwardText,
+          messaging_profile_id: messagingProfileId,
+        }),
+      });
+
+      if (response.ok) {
+        this.logger.log(
+          `Forwarded inbound SMS from ${from} to cell ${targetCell}`,
+        );
+      } else {
+        const errorText = await response.text();
+        this.logger.error(
+          `Cell forward to ${targetCell} failed (${response.status}): ${errorText}`,
+        );
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(`Cell forward error: ${errorMessage}`);
+    }
+  }
+
   private async sendAutoReply(
     from: string,
     incomingText: string,
@@ -2211,18 +2307,15 @@ export class TelnyxWebhookService {
                 { shouldBypassPermissionChecks: true },
               );
 
-            // Create the note with rich text body
+            // Create the note with rich text body. bodyV2 is a composite of
+            // {blocknote, markdown} — writing a ProseMirror doc shape here
+            // silently stored NULL bodies after the upstream RICH_TEXT_V2
+            // migration (board card 2026-10-07: call transcripts never showed
+            // on the timeline). Markdown alone renders fine in the timeline
+            // preview and the side-panel editor (same as imported notes).
             const noteInsert = await noteRepository.insert({
               title,
-              bodyV2: {
-                type: 'doc',
-                content: [
-                  {
-                    type: 'paragraph',
-                    content: [{ type: 'text', text: body }],
-                  },
-                ],
-              },
+              bodyV2: { markdown: body },
               position: 0,
             } as any);
 
@@ -2491,15 +2584,9 @@ export class TelnyxWebhookService {
           await noteRepository.update(
             { id: noteId } as any,
             {
-              bodyV2: {
-                type: 'doc',
-                content: [
-                  {
-                    type: 'paragraph',
-                    content: [{ type: 'text', text: body }],
-                  },
-                ],
-              },
+              // Same composite shape as createTimelineNote — see the note
+              // there about why markdown-only (not a ProseMirror doc).
+              bodyV2: { markdown: body },
             } as any,
           );
         },
