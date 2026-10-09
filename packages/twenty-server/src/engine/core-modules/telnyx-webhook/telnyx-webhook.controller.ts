@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Logger,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -694,6 +695,43 @@ export class TelnyxWebhookController {
   @UseGuards(PublicEndpointGuard, NoPermissionGuard)
   getBlockedNumbers(): { blocked: string[] } {
     return { blocked: this.telnyxWebhookService.listBlockedNumbers() };
+  }
+
+  // Resolve a phone number to the matching person record. Used by the SMS
+  // inbox so a conversation can deep-link to the customer's record (board
+  // card 2026-10-07: "from this page I want to go directly to the customer,
+  // let's say if I want to call him").
+  @Get('person-by-phone')
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async getPersonByPhone(
+    @Query('phone') phone: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const trimmed = (phone ?? '').trim();
+
+    if (!trimmed) {
+      res.json({ personId: null, name: null });
+      return;
+    }
+
+    try {
+      const personId =
+        await this.telnyxWebhookService.findPersonByPhone(trimmed);
+
+      if (!personId) {
+        res.json({ personId: null, name: null });
+        return;
+      }
+
+      const name =
+        await this.telnyxWebhookService.findPersonNameByPhone(trimmed);
+
+      res.json({ personId, name });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`person-by-phone lookup failed: ${message}`);
+      res.status(500).json({ error: message });
+    }
   }
 
   @Post('blocked')

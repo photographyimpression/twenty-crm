@@ -1,8 +1,14 @@
 import { styled } from '@linaria/react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { IconMessage, IconSearch, IconSend, IconX } from 'twenty-ui/display';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  IconMessage,
+  IconSearch,
+  IconSend,
+  IconUser,
+  IconX,
+} from 'twenty-ui/display';
 import {
   AnimatedPlaceholder,
   AnimatedPlaceholderEmptyContainer,
@@ -47,6 +53,12 @@ type SmsThread = {
   counterpartyDisplay: string;
   lastMessage: SmsRecord;
   messages: SmsRecord[];
+};
+
+type ThreadCustomer = {
+  digits: string;
+  personId: string | null;
+  name: string | null;
 };
 
 const POLL_INTERVAL_MS = 5000;
@@ -245,6 +257,29 @@ const StyledDetailHeaderText = styled.div`
   white-space: nowrap;
 `;
 
+const StyledCustomerButton = styled.button`
+  align-items: center;
+  background: transparent;
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.secondary};
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: ${themeCssVariables.font.size.xs};
+  gap: ${themeCssVariables.spacing[1]};
+  max-width: 200px;
+  overflow: hidden;
+  padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    border-color: ${themeCssVariables.color.blue};
+    color: ${themeCssVariables.color.blue};
+  }
+`;
+
 const StyledBlockButton = styled.button`
   background: transparent;
   border: 1px solid ${themeCssVariables.border.color.medium};
@@ -259,7 +294,7 @@ const StyledBlockButton = styled.button`
 
   &:hover {
     border-color: ${themeCssVariables.border.color.strong};
-    color: ${themeCssVariables.font.color.danger};
+    color: ${themeCssVariables.color.red};
   }
 `;
 
@@ -477,9 +512,7 @@ const formatBubbleTime = (timestamp: string): string => {
 // Telnyx download URL expires), falling back to the original URL for the
 // rare case the webhook-time download failed.
 const mediaSrc = (serverUrl: string, item: SmsMediaItem): string =>
-  item.localFile
-    ? `${serverUrl}/telnyx/sms-media/${item.localFile}`
-    : item.url;
+  item.localFile ? `${serverUrl}/telnyx/sms-media/${item.localFile}` : item.url;
 
 const previewText = (record: SmsRecord): string => {
   if (!record.text && record.media && record.media.length > 0) {
@@ -516,11 +549,7 @@ const SmsMediaImage = ({
   }
 
   return (
-    <StyledMediaImg
-      src={src}
-      alt="MMS photo"
-      onError={() => setFailed(true)}
-    />
+    <StyledMediaImg src={src} alt="MMS photo" onError={() => setFailed(true)} />
   );
 };
 
@@ -625,7 +654,11 @@ export const SmsInboxPage = () => {
   const [composerText, setComposerText] = useState('');
   const [sending, setSending] = useState(false);
   const [statusText, setStatusText] = useState('');
+  const [threadCustomer, setThreadCustomer] = useState<ThreadCustomer | null>(
+    null,
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   const serverUrl = getServerUrl();
 
@@ -768,6 +801,51 @@ export const SmsInboxPage = () => {
         : null,
     [selectedDigits, threads],
   );
+
+  // Resolve the counterparty to a person record so the conversation header
+  // can deep-link to the customer (board card 2026-10-07). Unknown numbers
+  // just show no button.
+  useEffect(() => {
+    if (!selectedDigits) {
+      setThreadCustomer(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    setThreadCustomer({ digits: selectedDigits, personId: null, name: null });
+
+    void fetch(
+      `${serverUrl}/telnyx/person-by-phone?phone=${encodeURIComponent(
+        selectedDigits,
+      )}`,
+    )
+      .then((response) => (response.ok ? response.json() : null))
+      .then(
+        (data: { personId?: string | null; name?: string | null } | null) => {
+          if (cancelled) return;
+
+          setThreadCustomer({
+            digits: selectedDigits,
+            personId: data?.personId ?? null,
+            name: data?.name ?? null,
+          });
+        },
+      )
+      .catch(() => {
+        if (!cancelled) {
+          setThreadCustomer({
+            digits: selectedDigits,
+            personId: null,
+            name: null,
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDigits, serverUrl]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -998,6 +1076,26 @@ export const SmsInboxPage = () => {
                 <StyledDetailHeaderText>
                   {selectedThread.counterpartyDisplay}
                 </StyledDetailHeaderText>
+                {threadCustomer?.personId &&
+                  threadCustomer.digits ===
+                    selectedThread.counterpartyDigits && (
+                    <StyledCustomerButton
+                      type="button"
+                      title={
+                        threadCustomer.name
+                          ? t`Open ${threadCustomer.name}'s record`
+                          : t`Open customer record`
+                      }
+                      onClick={() =>
+                        navigate(
+                          `/object/person/${threadCustomer.personId}?from=sms`,
+                        )
+                      }
+                    >
+                      <IconUser size={13} />
+                      {threadCustomer.name ?? t`Customer`}
+                    </StyledCustomerButton>
+                  )}
                 <StyledBlockButton
                   type="button"
                   onClick={() =>
