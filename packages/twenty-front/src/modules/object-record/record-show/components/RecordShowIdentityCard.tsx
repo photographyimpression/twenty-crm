@@ -5,6 +5,7 @@
 // "Job Title · Company", the meta rows, socials, then the round action bar.
 import { allowRequestsToTwentyIconsState } from '@/client-config/states/allowRequestsToTwentyIcons';
 import { useOpenCreateActivityDrawer } from '@/activities/hooks/useOpenCreateActivityDrawer';
+import { EmailComposerWidget } from '@/email/components/EmailComposerWidget';
 import { useCallContext } from '@/calls/contexts/CallProvider';
 import { getPrimaryPhoneE164 } from '@/calls/utils/getPrimaryPhoneE164';
 import { useLabelIdentifierFieldMetadataItem } from '@/object-metadata/hooks/useLabelIdentifierFieldMetadataItem';
@@ -27,7 +28,7 @@ import { useAtomFamilyStateValue } from '@/ui/utilities/state/jotai/hooks/useAto
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
-import { type ChangeEvent, useRef } from 'react';
+import { type ChangeEvent, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 import { isNonEmptyString } from '@sniptt/guards';
@@ -296,6 +297,11 @@ export const RecordShowIdentityCard = ({
   const { dial } = useCallContext();
   const { openComposer } = useSmsContext();
 
+  // LOCAL-PATCH (board card 2026-10-07): "Send email" opens the in-app
+  // composer (sends through the connected Microsoft account) instead of a
+  // mailto: URL that shunts you out to the OS mail handler.
+  const [isEmailComposerOpen, setIsEmailComposerOpen] = useState(false);
+
   const inputFileRef = useRef<HTMLInputElement>(null);
 
   const isPerson = objectNameSingular === CoreObjectNameSingular.Person;
@@ -372,9 +378,7 @@ export const RecordShowIdentityCard = ({
       key: 'email',
       Icon: IconMail,
       label: t`Send email`,
-      onClick: primaryEmail
-        ? () => window.open(`mailto:${primaryEmail}`, '_self')
-        : undefined,
+      onClick: primaryEmail ? () => setIsEmailComposerOpen(true) : undefined,
     },
     {
       key: 'call',
@@ -569,6 +573,14 @@ export const RecordShowIdentityCard = ({
             </StyledActionButton>
           ))}
         </StyledActionRow>
+      )}
+
+      {isEmailComposerOpen && primaryEmail && (
+        <EmailComposerWidget
+          toEmail={primaryEmail}
+          contactName={recordIdentifier?.name ?? undefined}
+          onClose={() => setIsEmailComposerOpen(false)}
+        />
       )}
     </StyledCard>
   );
