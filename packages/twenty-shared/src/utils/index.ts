@@ -105,6 +105,8 @@ export {
 } from './filter/utils/fieldRatingConvertors';
 export { filterSelectOptionsOfFieldMetadataItem } from './filter/utils/filterSelectOptionsOfFieldMetadataItem';
 export {
+  escapeIlikePattern,
+  exactIlikePattern,
   generateILikeFiltersForCompositeFields,
   generateTokenGroupedILikeFiltersForCompositeFields,
 } from './filter/utils/generateILikeFiltersForCompositeFields';

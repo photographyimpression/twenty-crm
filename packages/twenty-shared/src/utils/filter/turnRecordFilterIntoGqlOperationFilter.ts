@@ -31,6 +31,7 @@ import {
   convertGreaterThanOrEqualRatingToArrayOfRatingValues,
   convertLessThanOrEqualRatingToArrayOfRatingValues,
   convertRatingToRatingValue,
+  exactIlikePattern,
   generateTokenGroupedILikeFiltersForCompositeFields,
   getEmptyRecordGqlOperationFilter,
   isExpectedSubFieldName,
@@ -125,6 +126,23 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
             not: {
               [correspondingFieldMetadataItem.name]: {
                 ilike: `%${recordFilter.value}%`,
+              } as StringFilter,
+            },
+          };
+        // Exact match (board card 2026-10-07): ILIKE with no wildcards is a
+        // case-insensitive equality, so "JACOB" matches "Jacob" but not
+        // "Jacobos".
+        case RecordFilterOperand.IS:
+          return {
+            [correspondingFieldMetadataItem.name]: {
+              ilike: exactIlikePattern(recordFilter.value),
+            } as StringFilter,
+          };
+        case RecordFilterOperand.IS_NOT:
+          return {
+            not: {
+              [correspondingFieldMetadataItem.name]: {
+                ilike: exactIlikePattern(recordFilter.value),
               } as StringFilter,
             },
           };
@@ -656,14 +674,21 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
       // One OR-group per whitespace-separated token. CONTAINS requires every token
       // to match (AND of the groups), so "Melissa de Repentigny" no longer matches
       // anyone whose name merely contains the common token "de".
+      // IS reuses the same grouping but with wildcard-free (exact,
+      // case-insensitive) per-token matching.
+      const isExactMatchOperand =
+        recordFilter.operand === RecordFilterOperand.IS ||
+        recordFilter.operand === RecordFilterOperand.IS_NOT;
       const fullNameTokenGroups =
         generateTokenGroupedILikeFiltersForCompositeFields(
           recordFilter.value,
           correspondingFieldMetadataItem.name,
           ['firstName', 'lastName'],
+          isExactMatchOperand,
         );
       switch (recordFilter.operand) {
         case RecordFilterOperand.CONTAINS:
+        case RecordFilterOperand.IS:
           if (!isSubFieldFilter) {
             if (fullNameTokenGroups.length === 0) {
               return {};
@@ -680,18 +705,21 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
             return {
               [correspondingFieldMetadataItem.name]: {
                 [subFieldName]: {
-                  ilike: `%${recordFilter.value}%`,
+                  ilike: isExactMatchOperand
+                    ? exactIlikePattern(recordFilter.value)
+                    : `%${recordFilter.value}%`,
                 },
               },
             };
           }
         case RecordFilterOperand.DOES_NOT_CONTAIN:
+        case RecordFilterOperand.IS_NOT:
           if (!isSubFieldFilter) {
             if (fullNameTokenGroups.length === 0) {
               return {};
             }
 
-            // Negate the whole CONTAINS match: exclude records that contain every
+            // Negate the whole match: exclude records that match every
             // token. Negating each token group individually would wrongly exclude
             // records that match only some tokens.
             return {
@@ -705,7 +733,9 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
               not: {
                 [correspondingFieldMetadataItem.name]: {
                   [subFieldName]: {
-                    ilike: `%${recordFilter.value}%`,
+                    ilike: isExactMatchOperand
+                      ? exactIlikePattern(recordFilter.value)
+                      : `%${recordFilter.value}%`,
                   },
                 },
               },
@@ -717,55 +747,45 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
           );
       }
     }
-    case 'ADDRESS':
+    case 'ADDRESS': {
+      // Subfield order is pinned by tests; the historical difference between
+      // the positive and negated lists is preserved as-is.
+      const addressSubFields = [
+        'addressStreet1',
+        'addressStreet2',
+        'addressCity',
+        'addressState',
+        'addressCountry',
+        'addressPostcode',
+      ];
+      const addressSubFieldsNegated = [
+        'addressStreet1',
+        'addressStreet2',
+        'addressCity',
+        'addressState',
+        'addressPostcode',
+        'addressCountry',
+      ];
+      // Exact (wildcard-free, case-insensitive) pattern for IS/IS_NOT.
+      const isExactMatchAddressOperand =
+        recordFilter.operand === RecordFilterOperand.IS ||
+        recordFilter.operand === RecordFilterOperand.IS_NOT;
+      const addressPattern = isExactMatchAddressOperand
+        ? exactIlikePattern(recordFilter.value)
+        : `%${recordFilter.value}%`;
+
       switch (recordFilter.operand) {
         case RecordFilterOperand.CONTAINS:
+        case RecordFilterOperand.IS:
           if (!isSubFieldFilter) {
             return {
-              or: [
-                {
-                  [correspondingFieldMetadataItem.name]: {
-                    addressStreet1: {
-                      ilike: `%${recordFilter.value}%`,
-                    },
-                  } as AddressFilter,
-                },
-                {
-                  [correspondingFieldMetadataItem.name]: {
-                    addressStreet2: {
-                      ilike: `%${recordFilter.value}%`,
-                    },
-                  } as AddressFilter,
-                },
-                {
-                  [correspondingFieldMetadataItem.name]: {
-                    addressCity: {
-                      ilike: `%${recordFilter.value}%`,
-                    },
-                  } as AddressFilter,
-                },
-                {
-                  [correspondingFieldMetadataItem.name]: {
-                    addressState: {
-                      ilike: `%${recordFilter.value}%`,
-                    },
-                  } as AddressFilter,
-                },
-                {
-                  [correspondingFieldMetadataItem.name]: {
-                    addressCountry: {
-                      ilike: `%${recordFilter.value}%`,
-                    },
-                  } as AddressFilter,
-                },
-                {
-                  [correspondingFieldMetadataItem.name]: {
-                    addressPostcode: {
-                      ilike: `%${recordFilter.value}%`,
-                    },
-                  } as AddressFilter,
-                },
-              ],
+              or: addressSubFields.map((subField) => ({
+                [correspondingFieldMetadataItem.name]: {
+                  [subField]: {
+                    ilike: addressPattern,
+                  },
+                } as AddressFilter,
+              })),
             };
           } else {
             if (subFieldName === 'addressCountry') {
@@ -789,136 +809,35 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
             return {
               [correspondingFieldMetadataItem.name]: {
                 [subFieldName]: {
-                  ilike: `%${recordFilter.value}%`,
+                  ilike: addressPattern,
                 } as AddressFilter,
               },
             };
           }
         case RecordFilterOperand.DOES_NOT_CONTAIN:
+        case RecordFilterOperand.IS_NOT:
           if (!isSubFieldFilter) {
             return {
-              and: [
-                {
-                  or: [
-                    {
-                      not: {
-                        [correspondingFieldMetadataItem.name]: {
-                          addressStreet1: {
-                            ilike: `%${recordFilter.value}%`,
-                          },
-                        } as AddressFilter,
-                      },
-                    },
-                    {
+              and: addressSubFieldsNegated.map((subField) => ({
+                or: [
+                  {
+                    not: {
                       [correspondingFieldMetadataItem.name]: {
-                        addressStreet1: {
-                          is: 'NULL',
+                        [subField]: {
+                          ilike: addressPattern,
                         },
-                      },
+                      } as AddressFilter,
                     },
-                  ],
-                },
-                {
-                  or: [
-                    {
-                      not: {
-                        [correspondingFieldMetadataItem.name]: {
-                          addressStreet2: {
-                            ilike: `%${recordFilter.value}%`,
-                          },
-                        } as AddressFilter,
+                  },
+                  {
+                    [correspondingFieldMetadataItem.name]: {
+                      [subField]: {
+                        is: 'NULL',
                       },
-                    },
-                    {
-                      [correspondingFieldMetadataItem.name]: {
-                        addressStreet2: {
-                          is: 'NULL',
-                        },
-                      },
-                    },
-                  ],
-                },
-                {
-                  or: [
-                    {
-                      not: {
-                        [correspondingFieldMetadataItem.name]: {
-                          addressCity: {
-                            ilike: `%${recordFilter.value}%`,
-                          },
-                        } as AddressFilter,
-                      },
-                    },
-                    {
-                      [correspondingFieldMetadataItem.name]: {
-                        addressCity: {
-                          is: 'NULL',
-                        },
-                      },
-                    },
-                  ],
-                },
-                {
-                  or: [
-                    {
-                      not: {
-                        [correspondingFieldMetadataItem.name]: {
-                          addressState: {
-                            ilike: `%${recordFilter.value}%`,
-                          },
-                        } as AddressFilter,
-                      },
-                    },
-                    {
-                      [correspondingFieldMetadataItem.name]: {
-                        addressState: {
-                          is: 'NULL',
-                        },
-                      },
-                    },
-                  ],
-                },
-                {
-                  or: [
-                    {
-                      not: {
-                        [correspondingFieldMetadataItem.name]: {
-                          addressPostcode: {
-                            ilike: `%${recordFilter.value}%`,
-                          },
-                        } as AddressFilter,
-                      },
-                    },
-                    {
-                      [correspondingFieldMetadataItem.name]: {
-                        addressPostcode: {
-                          is: 'NULL',
-                        },
-                      },
-                    },
-                  ],
-                },
-                {
-                  or: [
-                    {
-                      not: {
-                        [correspondingFieldMetadataItem.name]: {
-                          addressCountry: {
-                            ilike: `%${recordFilter.value}%`,
-                          },
-                        } as AddressFilter,
-                      },
-                    },
-                    {
-                      [correspondingFieldMetadataItem.name]: {
-                        addressCountry: {
-                          is: 'NULL',
-                        },
-                      },
-                    },
-                  ],
-                },
-              ],
+                    } as AddressFilter,
+                  },
+                ],
+              })),
             };
           } else {
             if (subFieldName === 'addressCountry') {
@@ -961,7 +880,7 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
                   not: {
                     [correspondingFieldMetadataItem.name]: {
                       [subFieldName]: {
-                        ilike: `%${recordFilter.value}%`,
+                        ilike: addressPattern,
                       } as AddressFilter,
                     },
                   },
@@ -981,6 +900,7 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
             `Unknown operand ${recordFilter.operand} for ${filterType} filter`,
           );
       }
+    }
     case 'MULTI_SELECT': {
       const options = arrayOfStringsOrVariablesSchema.parse(recordFilter.value);
 
@@ -1289,41 +1209,52 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
           return;
         }
 
+        // Exact (wildcard-free) pattern for IS/IS_NOT — digits only, so no
+        // wildcards can occur anyway, but kept for symmetry.
+        const isExactMatchPhonesOperand =
+          recordFilter.operand === RecordFilterOperand.IS ||
+          recordFilter.operand === RecordFilterOperand.IS_NOT;
+        const phonesPattern = isExactMatchPhonesOperand
+          ? filterValue
+          : `%${filterValue}%`;
+
         switch (recordFilter.operand) {
           case RecordFilterOperand.CONTAINS:
+          case RecordFilterOperand.IS:
             return {
               or: [
                 {
                   [correspondingFieldMetadataItem.name]: {
                     primaryPhoneNumber: {
-                      ilike: `%${filterValue}%`,
+                      ilike: phonesPattern,
                     },
                   } as PhonesFilter,
                 },
                 {
                   [correspondingFieldMetadataItem.name]: {
                     primaryPhoneCallingCode: {
-                      ilike: `%${filterValue}%`,
+                      ilike: phonesPattern,
                     },
                   } as PhonesFilter,
                 },
                 {
                   [correspondingFieldMetadataItem.name]: {
                     additionalPhones: {
-                      like: `%${filterValue}%`,
+                      like: phonesPattern,
                     },
                   } as PhonesFilter,
                 },
               ],
             };
           case RecordFilterOperand.DOES_NOT_CONTAIN:
+          case RecordFilterOperand.IS_NOT:
             return {
               and: [
                 {
                   not: {
                     [correspondingFieldMetadataItem.name]: {
                       primaryPhoneNumber: {
-                        ilike: `%${filterValue}%`,
+                        ilike: phonesPattern,
                       },
                     } as PhonesFilter,
                   },
@@ -1332,7 +1263,7 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
                   not: {
                     [correspondingFieldMetadataItem.name]: {
                       primaryPhoneCallingCode: {
-                        ilike: `%${filterValue}%`,
+                        ilike: phonesPattern,
                       },
                     } as PhonesFilter,
                   },
@@ -1343,7 +1274,7 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
                       not: {
                         [correspondingFieldMetadataItem.name]: {
                           additionalPhones: {
-                            like: `%${filterValue}%`,
+                            like: phonesPattern,
                           },
                         } as PhonesFilter,
                       },
@@ -1368,29 +1299,39 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
 
       const filterValue = recordFilter.value;
 
+      // Exact (wildcard-free, case-insensitive) pattern for IS/IS_NOT.
+      const isExactMatchPhonesSubFieldOperand =
+        recordFilter.operand === RecordFilterOperand.IS ||
+        recordFilter.operand === RecordFilterOperand.IS_NOT;
+      const phonesSubFieldPattern = isExactMatchPhonesSubFieldOperand
+        ? exactIlikePattern(filterValue)
+        : `%${filterValue}%`;
+
       switch (subFieldName) {
         case 'additionalPhones': {
           switch (recordFilter.operand) {
             case RecordFilterOperand.CONTAINS:
+            case RecordFilterOperand.IS:
               return {
                 or: [
                   {
                     [correspondingFieldMetadataItem.name]: {
                       additionalPhones: {
-                        like: `%${filterValue}%`,
+                        like: phonesSubFieldPattern,
                       },
                     } as PhonesFilter,
                   },
                 ],
               };
             case RecordFilterOperand.DOES_NOT_CONTAIN:
+            case RecordFilterOperand.IS_NOT:
               return {
                 or: [
                   {
                     not: {
                       [correspondingFieldMetadataItem.name]: {
                         additionalPhones: {
-                          like: `%${filterValue}%`,
+                          like: phonesSubFieldPattern,
                         },
                       } as PhonesFilter,
                     },
@@ -1413,19 +1354,21 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
         case 'primaryPhoneNumber': {
           switch (recordFilter.operand) {
             case RecordFilterOperand.CONTAINS:
+            case RecordFilterOperand.IS:
               return {
                 [correspondingFieldMetadataItem.name]: {
                   primaryPhoneNumber: {
-                    ilike: `%${filterValue}%`,
+                    ilike: phonesSubFieldPattern,
                   },
                 } as PhonesFilter,
               };
             case RecordFilterOperand.DOES_NOT_CONTAIN:
+            case RecordFilterOperand.IS_NOT:
               return {
                 not: {
                   [correspondingFieldMetadataItem.name]: {
                     primaryPhoneNumber: {
-                      ilike: `%${filterValue}%`,
+                      ilike: phonesSubFieldPattern,
                     },
                   } as PhonesFilter,
                 },
@@ -1439,19 +1382,21 @@ export const turnRecordFilterIntoRecordGqlOperationFilter = ({
         case 'primaryPhoneCallingCode': {
           switch (recordFilter.operand) {
             case RecordFilterOperand.CONTAINS:
+            case RecordFilterOperand.IS:
               return {
                 [correspondingFieldMetadataItem.name]: {
                   primaryPhoneCallingCode: {
-                    ilike: `%${filterValue}%`,
+                    ilike: phonesSubFieldPattern,
                   },
                 } as PhonesFilter,
               };
             case RecordFilterOperand.DOES_NOT_CONTAIN:
+            case RecordFilterOperand.IS_NOT:
               return {
                 not: {
                   [correspondingFieldMetadataItem.name]: {
                     primaryPhoneCallingCode: {
-                      ilike: `%${filterValue}%`,
+                      ilike: phonesSubFieldPattern,
                     },
                   } as PhonesFilter,
                 },

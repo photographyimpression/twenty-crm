@@ -8,6 +8,7 @@ import {
 import { CustomError } from '@/utils/errors';
 
 import { type RecordFilter } from '@/utils/filter/turnRecordFilterGroupIntoGqlOperationFilter';
+import { exactIlikePattern } from '@/utils/filter/utils/generateILikeFiltersForCompositeFields';
 import { isNonEmptyString } from '@sniptt/guards';
 
 export const computeGqlOperationFilterForEmails = ({
@@ -24,24 +25,34 @@ export const computeGqlOperationFilterForEmails = ({
 }): RecordGqlOperationFilter => {
   const isSubFieldFilter = isNonEmptyString(subFieldName);
 
+  // Exact (wildcard-free, case-insensitive) pattern for IS/IS_NOT.
+  const isExactMatchOperand =
+    recordFilter.operand === RecordFilterOperand.IS ||
+    recordFilter.operand === RecordFilterOperand.IS_NOT;
+  const emailPattern = isExactMatchOperand
+    ? exactIlikePattern(recordFilter.value)
+    : `%${recordFilter.value}%`;
+
   if (isSubFieldFilter) {
     switch (subFieldName) {
       case 'primaryEmail': {
         switch (recordFilter.operand) {
           case RecordFilterOperand.CONTAINS:
+          case RecordFilterOperand.IS:
             return {
               [correspondingFieldMetadataItem.name]: {
                 primaryEmail: {
-                  ilike: `%${recordFilter.value}%`,
+                  ilike: emailPattern,
                 },
               } satisfies EmailsFilter,
             };
           case RecordFilterOperand.DOES_NOT_CONTAIN:
+          case RecordFilterOperand.IS_NOT:
             return {
               not: {
                 [correspondingFieldMetadataItem.name]: {
                   primaryEmail: {
-                    ilike: `%${recordFilter.value}%`,
+                    ilike: emailPattern,
                   },
                 } satisfies EmailsFilter,
               },
@@ -55,21 +66,23 @@ export const computeGqlOperationFilterForEmails = ({
       case 'additionalEmails': {
         switch (recordFilter.operand) {
           case RecordFilterOperand.CONTAINS:
+          case RecordFilterOperand.IS:
             return {
               [correspondingFieldMetadataItem.name]: {
                 additionalEmails: {
-                  like: `%${recordFilter.value}%`,
+                  like: emailPattern,
                 },
               } satisfies EmailsFilter,
             };
           case RecordFilterOperand.DOES_NOT_CONTAIN:
+          case RecordFilterOperand.IS_NOT:
             return {
               or: [
                 {
                   not: {
                     [correspondingFieldMetadataItem.name]: {
                       additionalEmails: {
-                        like: `%${recordFilter.value}%`,
+                        like: emailPattern,
                       },
                     } satisfies EmailsFilter,
                   },
@@ -101,32 +114,34 @@ export const computeGqlOperationFilterForEmails = ({
 
   switch (recordFilter.operand) {
     case RecordFilterOperand.CONTAINS:
+    case RecordFilterOperand.IS:
       return {
         or: [
           {
             [correspondingFieldMetadataItem.name]: {
               primaryEmail: {
-                ilike: `%${recordFilter.value}%`,
+                ilike: emailPattern,
               },
             } satisfies EmailsFilter,
           },
           {
             [correspondingFieldMetadataItem.name]: {
               additionalEmails: {
-                like: `%${recordFilter.value}%`,
+                like: emailPattern,
               },
             } satisfies EmailsFilter,
           },
         ],
       };
     case RecordFilterOperand.DOES_NOT_CONTAIN:
+    case RecordFilterOperand.IS_NOT:
       return {
         and: [
           {
             not: {
               [correspondingFieldMetadataItem.name]: {
                 primaryEmail: {
-                  ilike: `%${recordFilter.value}%`,
+                  ilike: emailPattern,
                 },
               } satisfies EmailsFilter,
             },
@@ -137,7 +152,7 @@ export const computeGqlOperationFilterForEmails = ({
                 not: {
                   [correspondingFieldMetadataItem.name]: {
                     additionalEmails: {
-                      like: `%${recordFilter.value}%`,
+                      like: emailPattern,
                     },
                   } satisfies EmailsFilter,
                 },

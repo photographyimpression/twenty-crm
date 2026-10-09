@@ -6,6 +6,7 @@ import {
 } from '@/types';
 import { CustomError } from '@/utils/errors';
 import { type RecordFilter } from '@/utils/filter/turnRecordFilterGroupIntoGqlOperationFilter';
+import { exactIlikePattern } from '@/utils/filter/utils/generateILikeFiltersForCompositeFields';
 import { isNonEmptyString } from '@sniptt/guards';
 
 export const computeGqlOperationFilterForLinks = ({
@@ -22,25 +23,35 @@ export const computeGqlOperationFilterForLinks = ({
 }) => {
   const isSubFieldFilter = isNonEmptyString(subFieldName);
 
+  // Exact (wildcard-free, case-insensitive) pattern for IS/IS_NOT.
+  const isExactMatchOperand =
+    recordFilter.operand === RecordFilterOperand.IS ||
+    recordFilter.operand === RecordFilterOperand.IS_NOT;
+  const linkPattern = isExactMatchOperand
+    ? exactIlikePattern(recordFilter.value)
+    : `%${recordFilter.value}%`;
+
   if (isSubFieldFilter) {
     switch (subFieldName) {
       case 'primaryLinkLabel':
       case 'primaryLinkUrl': {
         switch (recordFilter.operand) {
           case RecordFilterOperand.CONTAINS:
+          case RecordFilterOperand.IS:
             return {
               [correspondingFieldMetadataItem.name]: {
                 [subFieldName]: {
-                  ilike: `%${recordFilter.value}%`,
+                  ilike: linkPattern,
                 },
               } satisfies LinksFilter,
             };
           case RecordFilterOperand.DOES_NOT_CONTAIN:
+          case RecordFilterOperand.IS_NOT:
             return {
               not: {
                 [correspondingFieldMetadataItem.name]: {
                   [subFieldName]: {
-                    ilike: `%${recordFilter.value}%`,
+                    ilike: linkPattern,
                   },
                 } satisfies LinksFilter,
               },
@@ -55,21 +66,23 @@ export const computeGqlOperationFilterForLinks = ({
       case 'secondaryLinks': {
         switch (recordFilter.operand) {
           case RecordFilterOperand.CONTAINS:
+          case RecordFilterOperand.IS:
             return {
               [correspondingFieldMetadataItem.name]: {
                 secondaryLinks: {
-                  like: `%${recordFilter.value}%`,
+                  like: linkPattern,
                 },
               } satisfies LinksFilter,
             };
           case RecordFilterOperand.DOES_NOT_CONTAIN:
+          case RecordFilterOperand.IS_NOT:
             return {
               or: [
                 {
                   not: {
                     [correspondingFieldMetadataItem.name]: {
                       secondaryLinks: {
-                        like: `%${recordFilter.value}%`,
+                        like: linkPattern,
                       },
                     } satisfies LinksFilter,
                   },
@@ -100,39 +113,41 @@ export const computeGqlOperationFilterForLinks = ({
 
   switch (recordFilter.operand) {
     case RecordFilterOperand.CONTAINS:
+    case RecordFilterOperand.IS:
       return {
         or: [
           {
             [correspondingFieldMetadataItem.name]: {
               primaryLinkUrl: {
-                ilike: `%${recordFilter.value}%`,
+                ilike: linkPattern,
               },
             } satisfies LinksFilter,
           },
           {
             [correspondingFieldMetadataItem.name]: {
               primaryLinkLabel: {
-                ilike: `%${recordFilter.value}%`,
+                ilike: linkPattern,
               },
             } satisfies LinksFilter,
           },
           {
             [correspondingFieldMetadataItem.name]: {
               secondaryLinks: {
-                like: `%${recordFilter.value}%`,
+                like: linkPattern,
               },
             } satisfies LinksFilter,
           },
         ],
       };
     case RecordFilterOperand.DOES_NOT_CONTAIN:
+    case RecordFilterOperand.IS_NOT:
       return {
         and: [
           {
             not: {
               [correspondingFieldMetadataItem.name]: {
                 primaryLinkLabel: {
-                  ilike: `%${recordFilter.value}%`,
+                  ilike: linkPattern,
                 },
               } satisfies LinksFilter,
             },
@@ -141,7 +156,7 @@ export const computeGqlOperationFilterForLinks = ({
             not: {
               [correspondingFieldMetadataItem.name]: {
                 primaryLinkUrl: {
-                  ilike: `%${recordFilter.value}%`,
+                  ilike: linkPattern,
                 },
               } satisfies LinksFilter,
             },
@@ -152,7 +167,7 @@ export const computeGqlOperationFilterForLinks = ({
                 not: {
                   [correspondingFieldMetadataItem.name]: {
                     secondaryLinks: {
-                      like: `%${recordFilter.value}%`,
+                      like: linkPattern,
                     },
                   } satisfies LinksFilter,
                 },

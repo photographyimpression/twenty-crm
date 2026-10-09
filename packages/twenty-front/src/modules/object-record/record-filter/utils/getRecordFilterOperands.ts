@@ -38,34 +38,50 @@ type CompositeFieldFilterOperandMap = {
 };
 
 export const FILTER_OPERANDS_MAP = {
+  // LOCAL-PATCH (board card 2026-10-07): IS / IS_NOT on text-family fields
+  // are exact, case-insensitive matches ("JACOB" matches "Jacob" but not
+  // "Jacobos") — implemented as wildcard-free ILIKE in the shared filter
+  // translator.
   TEXT: [
     RecordFilterOperand.CONTAINS,
     RecordFilterOperand.DOES_NOT_CONTAIN,
+    RecordFilterOperand.IS,
+    RecordFilterOperand.IS_NOT,
     ...emptyOperands,
   ],
   EMAILS: [
     RecordFilterOperand.CONTAINS,
     RecordFilterOperand.DOES_NOT_CONTAIN,
+    RecordFilterOperand.IS,
+    RecordFilterOperand.IS_NOT,
     ...emptyOperands,
   ],
   FULL_NAME: [
     RecordFilterOperand.CONTAINS,
     RecordFilterOperand.DOES_NOT_CONTAIN,
+    RecordFilterOperand.IS,
+    RecordFilterOperand.IS_NOT,
     ...emptyOperands,
   ],
   ADDRESS: [
     RecordFilterOperand.CONTAINS,
     RecordFilterOperand.DOES_NOT_CONTAIN,
+    RecordFilterOperand.IS,
+    RecordFilterOperand.IS_NOT,
     ...emptyOperands,
   ],
   LINKS: [
     RecordFilterOperand.CONTAINS,
     RecordFilterOperand.DOES_NOT_CONTAIN,
+    RecordFilterOperand.IS,
+    RecordFilterOperand.IS_NOT,
     ...emptyOperands,
   ],
   PHONES: [
     RecordFilterOperand.CONTAINS,
     RecordFilterOperand.DOES_NOT_CONTAIN,
+    RecordFilterOperand.IS,
+    RecordFilterOperand.IS_NOT,
     ...emptyOperands,
   ],
   CURRENCY: [

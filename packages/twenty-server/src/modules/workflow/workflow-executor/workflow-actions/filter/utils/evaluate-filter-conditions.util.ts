@@ -181,6 +181,18 @@ function evaluateTextAndArrayFilter(
         (isDefined(nullEquivalentRightValue) &&
           isNotEmptyTextOrArray(filter.leftOperand))
       );
+    // Exact (case-insensitive) match — mirrors the view-filter IS operand on
+    // text-family fields (wildcard-free ILIKE).
+    case ViewFilterOperand.IS:
+      return (
+        String(filter.leftOperand ?? '').toLowerCase() ===
+        String(filter.rightOperand ?? '').toLowerCase()
+      );
+    case ViewFilterOperand.IS_NOT:
+      return (
+        String(filter.leftOperand ?? '').toLowerCase() !==
+        String(filter.rightOperand ?? '').toLowerCase()
+      );
     case ViewFilterOperand.IS_EMPTY:
       return !isNotEmptyTextOrArray(filter.leftOperand);
 

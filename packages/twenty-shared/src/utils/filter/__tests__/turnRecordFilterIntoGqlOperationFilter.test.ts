@@ -759,6 +759,85 @@ describe('turnRecordFilterIntoRecordGqlOperationFilter', () => {
         },
       });
     });
+
+    // Board card 2026-10-07: IS = exact (wildcard-free, case-insensitive)
+    // match — "JACOB" must match people named exactly Jacob, not "Jacobos".
+    it('should use a wildcard-free ilike for a single-token IS', () => {
+      const result = turnRecordFilterIntoRecordGqlOperationFilter({
+        filterValueDependencies,
+        recordFilter: makeFilter('f-fullname', RecordFilterOperand.IS, 'Jacob'),
+        fieldMetadataItems: fields,
+      });
+
+      expect(result).toEqual({
+        or: [
+          { fullName: { firstName: { ilike: 'Jacob' } } },
+          { fullName: { lastName: { ilike: 'Jacob' } } },
+        ],
+      });
+    });
+
+    it('should escape like wildcards in an IS value', () => {
+      const result = turnRecordFilterIntoRecordGqlOperationFilter({
+        filterValueDependencies,
+        recordFilter: makeFilter('f-text', RecordFilterOperand.IS, '50%_off'),
+        fieldMetadataItems: fields,
+      });
+
+      expect(result).toEqual({
+        name: { ilike: '50\\%\\_off' },
+      });
+    });
+
+    it('should AND exact token groups for a multi-word IS', () => {
+      const result = turnRecordFilterIntoRecordGqlOperationFilter({
+        filterValueDependencies,
+        recordFilter: makeFilter(
+          'f-fullname',
+          RecordFilterOperand.IS,
+          'Melissa Repentigny',
+        ),
+        fieldMetadataItems: fields,
+      });
+
+      expect(result).toEqual({
+        and: [
+          {
+            or: [
+              { fullName: { firstName: { ilike: 'Melissa' } } },
+              { fullName: { lastName: { ilike: 'Melissa' } } },
+            ],
+          },
+          {
+            or: [
+              { fullName: { firstName: { ilike: 'Repentigny' } } },
+              { fullName: { lastName: { ilike: 'Repentigny' } } },
+            ],
+          },
+        ],
+      });
+    });
+
+    it('should negate the exact match for IS_NOT', () => {
+      const result = turnRecordFilterIntoRecordGqlOperationFilter({
+        filterValueDependencies,
+        recordFilter: makeFilter(
+          'f-fullname',
+          RecordFilterOperand.IS_NOT,
+          'Jacob',
+        ),
+        fieldMetadataItems: fields,
+      });
+
+      expect(result).toEqual({
+        not: {
+          or: [
+            { fullName: { firstName: { ilike: 'Jacob' } } },
+            { fullName: { lastName: { ilike: 'Jacob' } } },
+          ],
+        },
+      });
+    });
   });
 
   describe('ADDRESS filter', () => {
