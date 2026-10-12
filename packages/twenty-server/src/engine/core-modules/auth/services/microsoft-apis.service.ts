@@ -181,13 +181,35 @@ export class MicrosoftAPIsService {
                 newOrExistingConnectedAccountId,
               );
 
+              // These reset helpers take CHANNEL ids, not connected-account ids.
+              // Passing the account id made the reset a silent no-op, leaving
+              // channels stuck in FAILED_INSUFFICIENT_PERMISSIONS after a
+              // reconnect (seen 2026-10-12 after the Azure secret rollover).
+              const messageChannelIds = (
+                await messageChannelRepository.find({
+                  select: ['id'],
+                  where: {
+                    connectedAccountId: newOrExistingConnectedAccountId,
+                  },
+                })
+              ).map((messageChannel) => messageChannel.id);
+
               await this.messagingChannelSyncStatusService.resetAndMarkAsMessagesListFetchPending(
-                [newOrExistingConnectedAccountId],
+                messageChannelIds,
                 workspaceId,
               );
 
+              const calendarChannelIds = (
+                await calendarChannelRepository.find({
+                  select: ['id'],
+                  where: {
+                    connectedAccountId: newOrExistingConnectedAccountId,
+                  },
+                })
+              ).map((calendarChannel) => calendarChannel.id);
+
               await this.calendarChannelSyncStatusService.resetAndMarkAsCalendarEventListFetchPending(
-                [newOrExistingConnectedAccountId],
+                calendarChannelIds,
                 workspaceId,
               );
             }
