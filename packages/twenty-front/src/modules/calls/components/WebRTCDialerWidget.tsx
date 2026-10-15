@@ -1,5 +1,6 @@
 import styled from '@emotion/styled';
 import React, { useEffect, useRef, useState } from 'react';
+import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { useCallContext } from '../contexts/CallProvider';
 import { useCallTranscription } from '../hooks/useCallTranscription';
@@ -13,7 +14,7 @@ const WidgetContainer = styled.div`
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
   padding: 16px;
   width: 360px;
-  max-height: 500px;
+  max-height: 580px;
   z-index: 9999;
   display: flex;
   flex-direction: column;
@@ -68,7 +69,7 @@ const ActionButton = styled.button<{ variant?: 'danger' | 'primary' }>`
 `;
 
 const TranscriptContainer = styled.div`
-  max-height: 200px;
+  max-height: 160px;
   overflow-y: auto;
   border-top: 1px solid #eee;
   padding-top: 8px;
@@ -131,6 +132,37 @@ const InterimText = styled.span`
   font-style: italic;
 `;
 
+// Board card 3327e023 — "need to be able to enter notes while on call". The
+// side panel's note editor sits under this widget, so the notes box lives
+// in the widget itself; the text rides along with the live transcript at
+// hangup and lands at the top of the call's timeline note.
+const StyledNotesLabel = styled.label`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+`;
+
+const StyledNotesTextarea = styled.textarea`
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: ${themeCssVariables.font.color.primary};
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+  width: 100%;
+
+  &:focus {
+    border-color: ${themeCssVariables.color.blue};
+    outline: none;
+  }
+`;
+
 const formatDuration = (ms: number): string => {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -163,6 +195,7 @@ export const WebRTCDialerWidget: React.FC = () => {
   } = useCallTranscription(inCall);
 
   const [elapsed, setElapsed] = useState(0);
+  const [callNotes, setCallNotes] = useState('');
 
   // Call timer
   useEffect(() => {
@@ -194,8 +227,11 @@ export const WebRTCDialerWidget: React.FC = () => {
     postedTranscriptRef.current = true;
 
     const fullTranscript = getFullTranscript();
+    const notes = callNotes.trim();
 
-    if (!fullTranscript || !callSessionId) return;
+    setCallNotes('');
+
+    if ((!fullTranscript && !notes) || !callSessionId) return;
 
     const serverUrl =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -208,6 +244,7 @@ export const WebRTCDialerWidget: React.FC = () => {
       body: JSON.stringify({
         sessionId: callSessionId,
         transcript: fullTranscript,
+        notes,
         // The peer number lets the server match the call record when the
         // WebRTC session id differs from the voice-webhook's session key.
         peerPhone: activeNumber ?? undefined,
@@ -215,7 +252,7 @@ export const WebRTCDialerWidget: React.FC = () => {
     }).catch(() => {
       // Best-effort — the server-side recording transcript is the backup.
     });
-  }, [inCall, callSessionId, activeNumber, getFullTranscript]);
+  }, [inCall, callSessionId, activeNumber, getFullTranscript, callNotes]);
 
   if (!isRinging && !inCall && !error) {
     return null;
@@ -265,6 +302,17 @@ export const WebRTCDialerWidget: React.FC = () => {
 
       {inCall && (
         <>
+          <StyledNotesLabel htmlFor="call-notes">Notes</StyledNotesLabel>
+          <StyledNotesTextarea
+            id="call-notes"
+            value={callNotes}
+            placeholder="Type notes during the call — they're saved to this contact's timeline when you hang up."
+            onChange={(event) => setCallNotes(event.target.value)}
+            onKeyDown={(event) => {
+              // Keep the CRM's single-key shortcuts from firing while typing.
+              if (!event.metaKey && !event.ctrlKey) event.stopPropagation();
+            }}
+          />
           <TranscriptHeader>
             <span>Live Transcript</span>
             <TranscriptIndicator active={isTranscribing}>

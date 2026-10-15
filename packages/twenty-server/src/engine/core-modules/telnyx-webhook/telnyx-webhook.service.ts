@@ -82,6 +82,8 @@ type CallRecord = {
   transcription: string | null;
   // Live (browser-side, mic) transcript posted by the dialer on hangup.
   liveTranscript?: string | null;
+  // Notes typed in the dialer during the call, posted with the transcript.
+  callNotes?: string | null;
   status: string;
   // The timeline note created at hangup — kept so the late-arriving
   // transcription can UPDATE that note instead of adding a duplicate.
@@ -2502,7 +2504,10 @@ export class TelnyxWebhookService {
         ? `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`
         : 'N/A';
 
-    let body = `Direction: ${record.direction}\nDuration: ${durationStr}\n`;
+    // Notes typed during the call go first — they're what Moshe wrote down.
+    let body = record.callNotes ? `🗒️ Notes:\n${record.callNotes}\n\n` : '';
+
+    body += `Direction: ${record.direction}\nDuration: ${durationStr}\n`;
     body += `From: ${record.from}\nTo: ${record.to}\n`;
     body += `Time: ${new Date(record.startTime).toLocaleString('en-CA', { timeZone: 'America/Toronto' })}`;
 
@@ -2581,6 +2586,7 @@ export class TelnyxWebhookService {
     sessionId: string,
     transcript: string | null,
     peerPhone?: string | null,
+    notes?: string | null,
   ) {
     let record =
       this.callRecords.get(sessionId) ??
@@ -2633,10 +2639,12 @@ export class TelnyxWebhookService {
     }
 
     const text = (transcript ?? '').trim();
+    const typedNotes = (notes ?? '').trim();
 
-    if (!text) return;
+    if (!text && !typedNotes) return;
 
-    record.liveTranscript = text;
+    if (text) record.liveTranscript = text;
+    if (typedNotes) record.callNotes = typedNotes;
     this.saveCallRecords();
     await this.updateCallTimelineNote(record);
   }

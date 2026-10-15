@@ -59,6 +59,8 @@ export class TelnyxCallRecordsController {
       sessionId?: string;
       transcript?: string;
       peerPhone?: string;
+      // Notes typed in the dialer during the call (board card 3327e023).
+      notes?: string;
     },
   ) {
     if (!body?.sessionId) {
@@ -69,6 +71,7 @@ export class TelnyxCallRecordsController {
       body.sessionId,
       body.transcript ?? null,
       body.peerPhone ?? null,
+      typeof body.notes === 'string' ? body.notes.slice(0, 20000) : null,
     );
 
     return { data: 'ok' };
