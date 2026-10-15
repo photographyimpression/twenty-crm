@@ -2276,10 +2276,8 @@ export class TelnyxWebhookService {
           authContext,
         );
 
-      const matches: Record<
-        string,
-        { personId: string; name: string | null }
-      > = {};
+      const matches: Record<string, { personId: string; name: string | null }> =
+        {};
 
       for (const digits of wanted) {
         const person = people.find((candidate) =>

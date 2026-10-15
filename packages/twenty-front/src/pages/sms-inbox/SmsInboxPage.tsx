@@ -1,7 +1,8 @@
 import { styled } from '@linaria/react';
+import { isNonEmptyString } from '@sniptt/guards';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IconMessage,
   IconSearch,
@@ -19,6 +20,7 @@ import {
   Section,
 } from 'twenty-ui/layout';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
+import { isDefined } from 'twenty-shared/utils';
 
 import { ActivityList } from '@/activities/components/ActivityList';
 import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
@@ -283,7 +285,7 @@ const StyledDetailHeaderText = styled.div`
   white-space: nowrap;
 `;
 
-const StyledCustomerButton = styled.button`
+const StyledCustomerLink = styled(Link)`
   align-items: center;
   background: transparent;
   border: 1px solid ${themeCssVariables.border.color.medium};
@@ -297,6 +299,7 @@ const StyledCustomerButton = styled.button`
   max-width: 200px;
   overflow: hidden;
   padding: ${themeCssVariables.spacing[1]} ${themeCssVariables.spacing[2]};
+  text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
 
@@ -629,7 +632,7 @@ const groupBySmsThreads = (records: SmsRecord[]): SmsThread[] => {
 const filterThreads = (
   threads: SmsThread[],
   search: string,
-  peopleByDigits: Record<string, PersonMatch>,
+  peopleByDigits: Record<string, PersonMatch | null>,
 ): SmsThread[] => {
   if (search.trim().length === 0) {
     return threads;
@@ -696,12 +699,12 @@ export const SmsInboxPage = () => {
     null,
   );
   // CRM names for every conversation in the list (board card e50e78f5),
-  // keyed by counterparty digits. Each number is looked up once per page
-  // visit — the 5s poll only asks about numbers it hasn't seen yet.
+  // keyed by counterparty digits; null = looked up, no CRM match. Each
+  // number is looked up once per page visit — the 5s poll only asks about
+  // numbers that have no entry yet.
   const [peopleByDigits, setPeopleByDigits] = useState<
-    Record<string, PersonMatch>
+    Record<string, PersonMatch | null>
   >({});
-  const lookedUpDigitsRef = useRef<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -740,13 +743,16 @@ export const SmsInboxPage = () => {
   useEffect(() => {
     const newDigits = threads
       .map((thread) => thread.counterpartyDigits)
-      .filter((digits) => !lookedUpDigitsRef.current.has(digits));
+      .filter((digits) => !(digits in peopleByDigits));
 
     if (newDigits.length === 0) {
       return;
     }
 
-    newDigits.forEach((digits) => lookedUpDigitsRef.current.add(digits));
+    setPeopleByDigits((previous) => ({
+      ...previous,
+      ...Object.fromEntries(newDigits.map((digits) => [digits, null])),
+    }));
 
     void fetch(`${serverUrl}/telnyx/people-by-phones`, {
       method: 'POST',
@@ -755,17 +761,23 @@ export const SmsInboxPage = () => {
     })
       .then((response) => (response.ok ? response.json() : null))
       .then((data: { matches?: Record<string, PersonMatch> } | null) => {
-        if (data?.matches && Object.keys(data.matches).length > 0) {
-          setPeopleByDigits((previous) => ({ ...previous, ...data.matches }));
+        const matches = data?.matches;
+
+        if (isDefined(matches) && Object.keys(matches).length > 0) {
+          setPeopleByDigits((previous) => ({ ...previous, ...matches }));
         }
       })
       .catch(() => {
         // Let the next poll try these numbers again.
-        newDigits.forEach((digits) =>
-          lookedUpDigitsRef.current.delete(digits),
+        setPeopleByDigits((previous) =>
+          Object.fromEntries(
+            Object.entries(previous).filter(
+              ([digits]) => !newDigits.includes(digits),
+            ),
+          ),
         );
       });
-  }, [threads, serverUrl]);
+  }, [threads, serverUrl, peopleByDigits]);
 
   // Per-thread "last viewed at" timestamps from localStorage. We bump
   // `readTick` whenever a thread is opened so the UI re-evaluates which
@@ -1134,7 +1146,7 @@ export const SmsInboxPage = () => {
                                 {thread.counterpartyDisplay}
                               </StyledThreadPhone>
                             )}
-                            {person && (
+                            {isDefined(person) && (
                               <StyledRowOpenButton
                                 type="button"
                                 title="Open profile & timeline"
@@ -1169,29 +1181,27 @@ export const SmsInboxPage = () => {
             <StyledDetailColumn>
               <StyledDetailHeader>
                 <StyledDetailHeaderText>
-                  {peopleByDigits[selectedThread.counterpartyDigits]?.name
-                    ? `${peopleByDigits[selectedThread.counterpartyDigits].name} · ${selectedThread.counterpartyDisplay}`
-                    : selectedThread.counterpartyDisplay}
+                  {[
+                    peopleByDigits[selectedThread.counterpartyDigits]?.name,
+                    selectedThread.counterpartyDisplay,
+                  ]
+                    .filter(isNonEmptyString)
+                    .join(' · ')}
                 </StyledDetailHeaderText>
                 {threadCustomer?.personId &&
                   threadCustomer.digits ===
                     selectedThread.counterpartyDigits && (
-                    <StyledCustomerButton
-                      type="button"
+                    <StyledCustomerLink
                       title={
                         threadCustomer.name
                           ? t`Open ${threadCustomer.name}'s record`
                           : t`Open customer record`
                       }
-                      onClick={() =>
-                        navigate(
-                          `/object/person/${threadCustomer.personId}?from=sms`,
-                        )
-                      }
+                      to={`/object/person/${threadCustomer.personId}?from=sms`}
                     >
                       <IconUser size={13} />
                       Open profile & timeline
-                    </StyledCustomerButton>
+                    </StyledCustomerLink>
                   )}
                 <StyledBlockButton
                   type="button"

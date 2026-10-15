@@ -740,9 +740,7 @@ export class TelnyxWebhookController {
   @Post('people-by-phones')
   @HttpCode(HttpStatus.OK)
   @UseGuards(PublicEndpointGuard, NoPermissionGuard)
-  async getPeopleByPhones(
-    @Body() body: { phones?: unknown },
-  ): Promise<{
+  async getPeopleByPhones(@Body() body: { phones?: unknown }): Promise<{
     matches: Record<string, { personId: string; name: string | null }>;
   }> {
     const phones = Array.isArray(body?.phones)
