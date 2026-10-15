@@ -2177,6 +2177,134 @@ export class TelnyxWebhookService {
     }
   }
 
+  // Phone matcher shared by findPersonByPhone and findPeopleByPhones.
+  // Phones composite type stores:
+  // primaryPhoneNumber (local digits, e.g., "5148947978")
+  // primaryPhoneCallingCode (e.g., "+1")
+  // additionalPhones: [{number, countryCode, callingCode}]
+  private personMatchesPhoneDigits(
+    person: PersonWorkspaceEntity,
+    digitsOnly: string,
+  ): boolean {
+    const phones = person.phones as {
+      primaryPhoneNumber?: string;
+      primaryPhoneCallingCode?: string;
+      additionalPhones?: Array<{
+        number?: string;
+        callingCode?: string;
+      }> | null;
+    } | null;
+
+    if (!phones) return false;
+
+    // Build full primary phone: callingCode + number
+    const primaryDigits = (phones.primaryPhoneNumber || '').replace(/\D/g, '');
+    const callingCode = (phones.primaryPhoneCallingCode || '').replace(
+      /\D/g,
+      '',
+    );
+    const fullPrimary = callingCode + primaryDigits;
+
+    if (
+      primaryDigits &&
+      (digitsOnly === fullPrimary ||
+        digitsOnly.endsWith(primaryDigits) ||
+        fullPrimary.endsWith(digitsOnly))
+    ) {
+      return true;
+    }
+
+    // Check additional phones
+    const additional = phones.additionalPhones || [];
+
+    for (const extra of additional) {
+      const extraDigits = (extra.number || '').replace(/\D/g, '');
+      const extraCalling = (extra.callingCode || '').replace(/\D/g, '');
+      const fullExtra = extraCalling + extraDigits;
+
+      if (
+        extraDigits &&
+        (digitsOnly === fullExtra ||
+          digitsOnly.endsWith(extraDigits) ||
+          fullExtra.endsWith(digitsOnly))
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // Bulk version of findPersonByPhone + findPersonNameByPhone for the SMS
+  // inbox list (board card e50e78f5: every conversation shows the CRM name).
+  // Loads the people table ONCE for all numbers — findPersonByPhone scans
+  // every person per call, which is too slow to repeat per thread. Numbers
+  // shorter than 7 digits (short codes, sender ids) are skipped: the
+  // suffix match would pin them to an arbitrary person.
+  async findPeopleByPhones(
+    phoneNumbers: string[],
+  ): Promise<Record<string, { personId: string; name: string | null }>> {
+    const wanted = [
+      ...new Set(
+        phoneNumbers
+          .map((phone) => phone.replace(/\D/g, ''))
+          .filter((digits) => digits.length >= 7),
+      ),
+    ];
+
+    if (wanted.length === 0) return {};
+
+    const workspaceId = await this.getWorkspaceId();
+
+    if (!workspaceId) return {};
+
+    const authContext = buildSystemAuthContext(workspaceId);
+
+    try {
+      const people =
+        await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+          async () => {
+            const personRepository =
+              await this.globalWorkspaceOrmManager.getRepository(
+                workspaceId,
+                PersonWorkspaceEntity,
+                { shouldBypassPermissionChecks: true },
+              );
+
+            return personRepository.find();
+          },
+          authContext,
+        );
+
+      const matches: Record<
+        string,
+        { personId: string; name: string | null }
+      > = {};
+
+      for (const digits of wanted) {
+        const person = people.find((candidate) =>
+          this.personMatchesPhoneDigits(candidate, digits),
+        );
+
+        if (person) {
+          matches[digits] = {
+            personId: person.id,
+            name: computeDisplayName(person.name).trim() || null,
+          };
+        }
+      }
+
+      return matches;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      this.logger.error(`Failed bulk person-by-phone lookup: ${errorMessage}`);
+
+      return {};
+    }
+  }
+
   async findPersonByPhone(phoneNumber: string): Promise<string | null> {
     const workspaceId = await this.getWorkspaceId();
 
@@ -2198,10 +2326,6 @@ export class TelnyxWebhookService {
                 { shouldBypassPermissionChecks: true },
               );
 
-            // Phones composite type stores:
-            // primaryPhoneNumber (local digits, e.g., "5148947978")
-            // primaryPhoneCallingCode (e.g., "+1")
-            // additionalPhones: [{number, countryCode, callingCode}]
             return personRepository.find();
           },
           authContext,
@@ -2211,53 +2335,8 @@ export class TelnyxWebhookService {
       const digitsOnly = phoneNumber.replace(/\D/g, '');
 
       for (const person of people) {
-        const phones = person.phones as {
-          primaryPhoneNumber?: string;
-          primaryPhoneCallingCode?: string;
-          additionalPhones?: Array<{
-            number?: string;
-            callingCode?: string;
-          }> | null;
-        } | null;
-
-        if (!phones) continue;
-
-        // Build full primary phone: callingCode + number
-        const primaryDigits = (phones.primaryPhoneNumber || '').replace(
-          /\D/g,
-          '',
-        );
-        const callingCode = (phones.primaryPhoneCallingCode || '').replace(
-          /\D/g,
-          '',
-        );
-        const fullPrimary = callingCode + primaryDigits;
-
-        if (
-          primaryDigits &&
-          (digitsOnly === fullPrimary ||
-            digitsOnly.endsWith(primaryDigits) ||
-            fullPrimary.endsWith(digitsOnly))
-        ) {
+        if (this.personMatchesPhoneDigits(person, digitsOnly)) {
           return person.id;
-        }
-
-        // Check additional phones
-        const additional = phones.additionalPhones || [];
-
-        for (const extra of additional) {
-          const extraDigits = (extra.number || '').replace(/\D/g, '');
-          const extraCalling = (extra.callingCode || '').replace(/\D/g, '');
-          const fullExtra = extraCalling + extraDigits;
-
-          if (
-            extraDigits &&
-            (digitsOnly === fullExtra ||
-              digitsOnly.endsWith(extraDigits) ||
-              fullExtra.endsWith(digitsOnly))
-          ) {
-            return person.id;
-          }
         }
       }
 

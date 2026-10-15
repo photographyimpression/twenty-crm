@@ -734,6 +734,28 @@ export class TelnyxWebhookController {
     }
   }
 
+  // Bulk lookup for the SMS inbox list: every conversation shows the CRM
+  // name of the number it's with (board card e50e78f5). One people scan for
+  // all threads instead of one person-by-phone call per row.
+  @Post('people-by-phones')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async getPeopleByPhones(
+    @Body() body: { phones?: unknown },
+  ): Promise<{
+    matches: Record<string, { personId: string; name: string | null }>;
+  }> {
+    const phones = Array.isArray(body?.phones)
+      ? body.phones
+          .filter((phone): phone is string => typeof phone === 'string')
+          .slice(0, 500)
+      : [];
+
+    return {
+      matches: await this.telnyxWebhookService.findPeopleByPhones(phones),
+    };
+  }
+
   @Post('blocked')
   @HttpCode(HttpStatus.OK)
   @UseGuards(PublicEndpointGuard, NoPermissionGuard)

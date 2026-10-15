@@ -61,6 +61,8 @@ type ThreadCustomer = {
   name: string | null;
 };
 
+type PersonMatch = { personId: string; name: string | null };
+
 const POLL_INTERVAL_MS = 5000;
 
 const StyledLayout = styled.div`
@@ -208,6 +210,30 @@ const StyledThreadName = styled.div<{ isUnread: boolean }>`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+`;
+
+const StyledThreadPhone = styled.span`
+  color: ${themeCssVariables.font.color.tertiary};
+  flex-shrink: 0;
+  font-size: ${themeCssVariables.font.size.sm};
+  white-space: nowrap;
+`;
+
+const StyledRowOpenButton = styled.button`
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: ${themeCssVariables.border.radius.sm};
+  color: ${themeCssVariables.font.color.tertiary};
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  padding: 2px;
+
+  &:hover {
+    border-color: ${themeCssVariables.color.blue};
+    color: ${themeCssVariables.color.blue};
+  }
 `;
 
 const StyledThreadTime = styled.div<{ isUnread: boolean }>`
@@ -600,7 +626,11 @@ const groupBySmsThreads = (records: SmsRecord[]): SmsThread[] => {
   );
 };
 
-const filterThreads = (threads: SmsThread[], search: string): SmsThread[] => {
+const filterThreads = (
+  threads: SmsThread[],
+  search: string,
+  peopleByDigits: Record<string, PersonMatch>,
+): SmsThread[] => {
   if (search.trim().length === 0) {
     return threads;
   }
@@ -617,6 +647,14 @@ const filterThreads = (threads: SmsThread[], search: string): SmsThread[] => {
     }
 
     if (thread.counterpartyDisplay.toLowerCase().includes(needle)) {
+      return true;
+    }
+
+    if (
+      peopleByDigits[thread.counterpartyDigits]?.name
+        ?.toLowerCase()
+        .includes(needle)
+    ) {
       return true;
     }
 
@@ -657,6 +695,13 @@ export const SmsInboxPage = () => {
   const [threadCustomer, setThreadCustomer] = useState<ThreadCustomer | null>(
     null,
   );
+  // CRM names for every conversation in the list (board card e50e78f5),
+  // keyed by counterparty digits. Each number is looked up once per page
+  // visit — the 5s poll only asks about numbers it hasn't seen yet.
+  const [peopleByDigits, setPeopleByDigits] = useState<
+    Record<string, PersonMatch>
+  >({});
+  const lookedUpDigitsRef = useRef<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -688,9 +733,39 @@ export const SmsInboxPage = () => {
 
   const threads = useMemo(() => groupBySmsThreads(records), [records]);
   const visibleThreads = useMemo(
-    () => filterThreads(threads, debouncedSearch),
-    [threads, debouncedSearch],
+    () => filterThreads(threads, debouncedSearch, peopleByDigits),
+    [threads, debouncedSearch, peopleByDigits],
   );
+
+  useEffect(() => {
+    const newDigits = threads
+      .map((thread) => thread.counterpartyDigits)
+      .filter((digits) => !lookedUpDigitsRef.current.has(digits));
+
+    if (newDigits.length === 0) {
+      return;
+    }
+
+    newDigits.forEach((digits) => lookedUpDigitsRef.current.add(digits));
+
+    void fetch(`${serverUrl}/telnyx/people-by-phones`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phones: newDigits }),
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { matches?: Record<string, PersonMatch> } | null) => {
+        if (data?.matches && Object.keys(data.matches).length > 0) {
+          setPeopleByDigits((previous) => ({ ...previous, ...data.matches }));
+        }
+      })
+      .catch(() => {
+        // Let the next poll try these numbers again.
+        newDigits.forEach((digits) =>
+          lookedUpDigitsRef.current.delete(digits),
+        );
+      });
+  }, [threads, serverUrl]);
 
   // Per-thread "last viewed at" timestamps from localStorage. We bump
   // `readTick` whenever a thread is opened so the UI re-evaluates which
@@ -986,7 +1061,7 @@ export const SmsInboxPage = () => {
                     onChange={(event) => setSearchInput(event.target.value)}
                     onKeyDown={stopFieldKeyEventUnlessModifier}
                     onKeyUp={stopFieldKeyEventUnlessModifier}
-                    placeholder={t`Search by number or message…`}
+                    placeholder="Search by name, number or message…"
                     aria-label={t`Search SMS`}
                   />
                   {searchInput.length > 0 && (
@@ -1032,6 +1107,7 @@ export const SmsInboxPage = () => {
                     const isUnread = unreadDigits.has(
                       thread.counterpartyDigits,
                     );
+                    const person = peopleByDigits[thread.counterpartyDigits];
 
                     return (
                       <StyledThreadRow
@@ -1051,8 +1127,27 @@ export const SmsInboxPage = () => {
                               />
                             )}
                             <StyledThreadName isUnread={isUnread}>
-                              {thread.counterpartyDisplay}
+                              {person?.name ?? thread.counterpartyDisplay}
                             </StyledThreadName>
+                            {person?.name && (
+                              <StyledThreadPhone>
+                                {thread.counterpartyDisplay}
+                              </StyledThreadPhone>
+                            )}
+                            {person && (
+                              <StyledRowOpenButton
+                                type="button"
+                                title="Open profile & timeline"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  navigate(
+                                    `/object/person/${person.personId}?from=sms`,
+                                  );
+                                }}
+                              >
+                                <IconUser size={13} />
+                              </StyledRowOpenButton>
+                            )}
                           </StyledThreadNameRow>
                           <StyledThreadTime isUnread={isUnread}>
                             {formatTimestamp(thread.lastMessage.timestamp)}
@@ -1074,7 +1169,9 @@ export const SmsInboxPage = () => {
             <StyledDetailColumn>
               <StyledDetailHeader>
                 <StyledDetailHeaderText>
-                  {selectedThread.counterpartyDisplay}
+                  {peopleByDigits[selectedThread.counterpartyDigits]?.name
+                    ? `${peopleByDigits[selectedThread.counterpartyDigits].name} · ${selectedThread.counterpartyDisplay}`
+                    : selectedThread.counterpartyDisplay}
                 </StyledDetailHeaderText>
                 {threadCustomer?.personId &&
                   threadCustomer.digits ===
@@ -1093,7 +1190,7 @@ export const SmsInboxPage = () => {
                       }
                     >
                       <IconUser size={13} />
-                      {threadCustomer.name ?? t`Customer`}
+                      Open profile & timeline
                     </StyledCustomerButton>
                   )}
                 <StyledBlockButton
