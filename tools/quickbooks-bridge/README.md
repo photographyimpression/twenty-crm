@@ -1,7 +1,7 @@
 # QuickBooks bridge (studio Mac)
 
 Local helper behind the CRM's QuickBooks card (person record, right rail).
-Three actions, all driven through Moshe's logged-in Safari session:
+Four actions, all driven through Moshe's logged-in Safari session:
 
 - **Add to QuickBooks** (`/quickbooks`) — opens the QBO Customers list in a
   dedicated tab, clicks **New customer**, fills First/Last name, Company,
@@ -12,6 +12,11 @@ Three actions, all driven through Moshe's logged-in Safari session:
   the person — the card then switches to the two actions below.
 - **Open in QuickBooks** (`/open?nameId=…`) — deep-links the bridge tab to
   `customerdetail?nameId=…`.
+- **Find & link** (`/find?name=…`, and automatically when Add hits a
+  duplicate) — searches the Customers list (types the name into
+  `#simple-search-input` and presses Enter — typing alone does not filter),
+  takes the row whose display name matches exactly, and reports its `nameId`
+  as `linked` so the CRM stores it like a fresh save. Read-only.
 - **Create invoice** (`/invoice?nameId=…`) — deep-links to
   `invoice?nameId=…`; QuickBooks pre-fills the customer when the form loads
   in the active tab. Finishing the invoice (lines, Save) happens in Safari.

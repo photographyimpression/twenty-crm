@@ -152,6 +152,11 @@ const OverviewCard = ({ rows }: { rows: OverviewRow[] }) => (
 // v2 (2026-09-23): once the person's QuickBooks customer id is known
 // (quickbooksNameId, stored automatically after a successful push), the card
 // switches to "Open in QuickBooks" + "Create invoice".
+// v3 (2026-10-15, board card 8ca4611a): a client who is ALREADY in
+// QuickBooks gets linked too — "Add" finds the existing customer when
+// QuickBooks reports a duplicate, and "Already in QuickBooks? Link it" looks
+// them up directly (bridge /find), so the card switches to Open / Create
+// invoice instead of stopping at "already exists".
 const QUICKBOOKS_BRIDGE_ORIGIN = 'http://127.0.0.1:8788';
 
 const StyledQuickBooksButton = styled.button`
@@ -182,6 +187,21 @@ const StyledQuickBooksButton = styled.button`
 const StyledQuickBooksButtonRow = styled.div`
   display: flex;
   gap: ${themeCssVariables.spacing[2]};
+`;
+
+const StyledQuickBooksLinkButton = styled.button`
+  background: none;
+  border: none;
+  color: ${themeCssVariables.font.color.secondary};
+  cursor: pointer;
+  font-size: ${themeCssVariables.font.size.xs};
+  padding: 0;
+  text-decoration: underline;
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
 `;
 
 const StyledQuickBooksHint = styled.span`
@@ -251,7 +271,10 @@ const QuickBooksCard = ({
         nameId?: string | null;
       } | null;
       if (data?.source !== 'crm-quickbooks-bridge') return;
-      if (data.status === 'saved' && isNonEmptyString(data.nameId)) {
+      if (
+        (data.status === 'saved' || data.status === 'linked') &&
+        isNonEmptyString(data.nameId)
+      ) {
         void updateOneRecord({
           objectNameSingular: CoreObjectNameSingular.Person,
           idToUpdate: recordId,
@@ -281,6 +304,15 @@ const QuickBooksCard = ({
     if (isNonEmptyString(phone)) params.set('phone', phone);
 
     open('/quickbooks', params);
+  };
+
+  const handleFindInQuickBooks = () => {
+    const params = new URLSearchParams();
+    if (isNonEmptyString(displayName)) params.set('name', displayName);
+    if (isNonEmptyString(firstName)) params.set('first', firstName);
+    if (isNonEmptyString(lastName)) params.set('last', lastName);
+
+    open('/find', params);
   };
 
   const handleBridgeAction = (path: 'open' | 'invoice') => {
@@ -326,13 +358,19 @@ const QuickBooksCard = ({
             disabled={busy}
           >
             <IconCoins size={15} />
-            {busy ? 'Adding…' : 'Add to QuickBooks'}
+            {busy ? 'Working in Safari…' : 'Add to QuickBooks'}
           </StyledQuickBooksButton>
           <StyledQuickBooksHint>
             {isCustomer
               ? 'Creates this customer in QuickBooks (via Safari).'
               : 'Sets Contact Type to Customer and creates them in QuickBooks (via Safari).'}
           </StyledQuickBooksHint>
+          <StyledQuickBooksLinkButton
+            onClick={handleFindInQuickBooks}
+            disabled={busy}
+          >
+            Already in QuickBooks? Link it
+          </StyledQuickBooksLinkButton>
         </>
       )}
     </StyledCard>

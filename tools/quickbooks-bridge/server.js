@@ -288,6 +288,99 @@ const LABEL_FINDER = `
   }`;
 
 // ---------------------------------------------------------------------------
+// Find an EXISTING customer's QuickBooks id (board card 8ca4611a: "if the
+// client is already in QuickBooks I should have the link to open it").
+// The Customers list has a search box (#simple-search-input) and every row
+// is <tr data-testid="list-ui-plugin-row-<nameId>" id="<nameId>"> with the
+// display name in [data-testid^="name-cell-link-"] (verified live
+// 2026-10-15). Read-only: types into the search box, presses Enter, and
+// reads the rows.
+
+const searchCustomersJs = (name) => `
+  var input = document.getElementById('simple-search-input');
+  if (!input) return JSON.stringify({ search: false });
+  var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  input.focus();
+  setter.call(input, ${JSON.stringify(name)});
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  // The list only filters on Enter (typing alone does nothing — verified live).
+  ['keydown', 'keypress', 'keyup'].forEach(function(type){
+    input.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+  });
+  return JSON.stringify({ search: true });`;
+
+const matchingRowsJs = (name) => `
+  function norm(s){ return (s||'').replace(/\\s+/g,' ').trim().toLowerCase(); }
+  var target = norm(${JSON.stringify(name)});
+  var input = document.getElementById('simple-search-input');
+  var rows = document.querySelectorAll('tr[data-testid^="list-ui-plugin-row-"]');
+  var hits = [];
+  Array.prototype.forEach.call(rows, function(r){
+    var cell = r.querySelector('[data-testid^="name-cell-link-"]');
+    if (cell && norm(cell.textContent) === target && /^\\d+$/.test(r.id)) hits.push(r.id);
+  });
+  return JSON.stringify({ href: location.href, searched: input ? input.value : null, rows: rows.length, hits: hits });`;
+
+// Searches the Customers list already on screen (the add flow's duplicate
+// case leaves the list under the open form). Returns the nameId, null when
+// no customer has exactly this display name, or 'NO_SEARCH' when the page
+// has no search box (caller then loads the list first).
+const findCustomerIdOnPage = async (name) => {
+  const set = await runJsJson(searchCustomersJs(name));
+  if (!set?.search) return 'NO_SEARCH';
+  let last = null;
+  for (let i = 0; i < 12; i++) {
+    await sleep(1500);
+    last = await runJsJson(matchingRowsJs(name));
+    if (last?.hits?.length) return last.hits[0];
+  }
+  return null;
+};
+
+const findInQuickBooks = async (contact) => {
+  beginRun();
+  const opened = await openBridgeTab(QBO_CUSTOMERS_URL);
+  if (!opened.ok || opened.stdout !== 'OK') {
+    return {
+      status: 'error',
+      message: `Could not open a Safari tab (${opened.stderr.slice(0, 200) || 'Safari did not respond'})`,
+    };
+  }
+  for (let i = 0; i < 30; i++) {
+    await sleep(1500);
+    const page = await runJsJson(
+      `return JSON.stringify({ href: location.href, search: !!document.getElementById('simple-search-input'), rows: document.querySelectorAll('tr[data-testid^="list-ui-plugin-row-"]').length });`,
+    );
+    if (!page) continue;
+    if (page.href.includes('accounts.intuit.com')) {
+      return {
+        status: 'not-logged-in',
+        message:
+          'QuickBooks needs a login — the Safari session has expired. Log into QuickBooks in Safari, then press the button again.',
+      };
+    }
+    if (page.search && page.rows > 0) break;
+    if (i === 29) {
+      return { status: 'error', message: 'The QuickBooks Customers page never finished loading.' };
+    }
+  }
+  const nameId = await findCustomerIdOnPage(contact.name);
+  return linkResult(contact, nameId === 'NO_SEARCH' ? null : nameId);
+};
+
+const linkResult = (contact, nameId) =>
+  nameId
+    ? {
+        status: 'linked',
+        message: `"${contact.name}" is already in QuickBooks — linked to this contact. The QuickBooks box now opens them directly.`,
+        nameId,
+      }
+    : {
+        status: 'not-found',
+        message: `No QuickBooks customer is named exactly "${contact.name}". If they are in QuickBooks under another name, rename one side to match and press again.`,
+      };
+
+// ---------------------------------------------------------------------------
 // The QuickBooks flow. Serialized: one run at a time (one bridge tab anyway).
 
 let queue = Promise.resolve();
@@ -434,9 +527,17 @@ const addToQuickBooks = async (contact) => {
     if (outOfBudget()) break;
     const errText = (state.errs || []).join(' ');
     if (/already (exists|in use|using)|duplicate/i.test(errText)) {
+      // Nothing new was created — find the existing customer so the CRM can
+      // link to them instead of just saying "already exists".
+      let nameId = await findCustomerIdOnPage(contact.name);
+      if (nameId === 'NO_SEARCH') {
+        const found = await findInQuickBooks(contact);
+        nameId = found.status === 'linked' ? found.nameId : null;
+      }
+      if (nameId) return linkResult(contact, nameId);
       return {
         status: 'duplicate',
-        message: `"${contact.name}" looks like it already exists in QuickBooks — nothing new was created.`,
+        message: `"${contact.name}" looks like it already exists in QuickBooks — nothing new was created (and no customer by exactly that name was found to link; it may be a vendor or employee).`,
       };
     }
     const landed =
@@ -508,6 +609,17 @@ const enqueueAdd = (contact) =>
     queue = queue.then(async () => {
       try {
         resolve(await addToQuickBooks(contact));
+      } catch (error) {
+        resolve({ status: 'error', message: String(error.message || error) });
+      }
+    });
+  });
+
+const enqueueFind = (contact) =>
+  new Promise((resolve) => {
+    queue = queue.then(async () => {
+      try {
+        resolve(await findInQuickBooks(contact));
       } catch (error) {
         resolve({ status: 'error', message: String(error.message || error) });
       }
@@ -586,14 +698,16 @@ const page = ({ heading, running, runUrl, origin, closeMs }) => `<!doctype html>
   <h1>${escapeHtml(heading)}</h1>
   <div id="msg">${escapeHtml(running)}</div>
   <script>
-    var OK = ['saved', 'opened', 'invoice-ready'];
+    var OK = ['saved', 'linked', 'opened', 'invoice-ready'];
+    var INFO = ['duplicate', 'not-found'];
     fetch(${JSON.stringify(runUrl)})
       .then((r) => r.json())
       .then((res) => {
         var ok = OK.indexOf(res.status) !== -1;
         document.querySelector('#st').className = '';
-        document.body.className = ok ? 'ok' : res.status === 'duplicate' ? 'info' : 'bad';
-        document.querySelector('#st').textContent = ok ? '✓' : res.status === 'duplicate' ? 'ℹ' : '✕';
+        var info = INFO.indexOf(res.status) !== -1;
+        document.body.className = ok ? 'ok' : info ? 'info' : 'bad';
+        document.querySelector('#st').textContent = ok ? '✓' : info ? 'ℹ' : '✕';
         document.querySelector('h1').textContent = 'QuickBooks';
         document.querySelector('#msg').textContent = res.message || res.status;
         try {
@@ -649,6 +763,26 @@ const server = http.createServer((req, res) => {
     );
     return;
   }
+  if (url.pathname === '/find') {
+    const contact = readContact(url.searchParams);
+    if (!contact) {
+      res.writeHead(400, { 'content-type': 'text/plain' });
+      res.end('missing name');
+      return;
+    }
+    const params = new URLSearchParams(url.search);
+    params.set('mode', 'find');
+    sendHtml(
+      page({
+        heading: `Looking for ${contact.name} in QuickBooks…`,
+        running: 'Searching your QuickBooks customers in Safari — about 10 seconds.',
+        runUrl: `/run?${params.toString()}`,
+        origin: readOrigin(url.searchParams),
+        closeMs: 4500,
+      }),
+    );
+    return;
+  }
   if (url.pathname === '/open' || url.pathname === '/invoice') {
     const nameId = (url.searchParams.get('nameId') || '').replace(/\D/g, '');
     const name = (url.searchParams.get('name') || '').slice(0, 120);
@@ -697,7 +831,7 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ status: 'error', message: 'missing name' }));
       return;
     }
-    enqueueAdd(contact).then((result) => {
+    (mode === 'find' ? enqueueFind(contact) : enqueueAdd(contact)).then((result) => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(result));
     });
