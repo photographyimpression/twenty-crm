@@ -37,7 +37,7 @@
 //   POST   /api/board {id, status}        -> claim/move a card between
 //                                             non-delivered columns
 //   POST   /api/board {clearBuildNow:true}-> lower the owner's build-now flag
-//   POST   /api/board/deliver {id, note}  -> deliver through the SAME path as
+//   POST   /api/board/deliver {id, note, subject?} -> deliver through the SAME path as
 //                                             the UI move (screenshot cleanup +
 //                                             delivered email fire)
 //   POST   /api/build-now                 -> OWNER action (URL-secret gated,
@@ -123,6 +123,22 @@ function getWhatShipped(card) {
   return '';
 }
 
+// Delivery emails are read from the inbox list, so the subject alone has to
+// say what changed (owner request 2026-10-15). Prefer the deliverer's short
+// summary, else the delivery note's first sentence, else the card title.
+function shortDeliverySubject(summary, note, title, max = 72) {
+  const clean = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  let s = clean(summary);
+  if (!s) {
+    const n = clean(note).replace(/^(done|delivered|shipped|fixed)\s*[-—–:,.]\s*/i, '');
+    s = (n.match(/^.*?[.!?](?=\s|$)/) ?? [n])[0];
+  }
+  if (!s) s = clean(title);
+  if (s.length > max) s = s.slice(0, max - 1).replace(/\s+\S*$/, '') + '…';
+  s = s.replace(/\.$/, '');
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Request delivered';
+}
+
 // Fire-and-forget: never blocks or fails the HTTP response.
 function sendDeliveredEmail(card) {
   if (!MAIL_ENABLED) return;
@@ -153,7 +169,7 @@ function sendDeliveredEmail(card) {
     .sendMail({
       from: MAIL.from,
       to: MAIL.to,
-      subject: '✅ Delivered: ' + title,
+      subject: '✅ CRM: ' + shortDeliverySubject(card.deliveredSubject, whatShipped, title),
       text: textParts.join('\n'),
       html,
     })
@@ -646,6 +662,10 @@ api.post('/board/deliver', machineAuth, (req, res) => {
   }
   card.column = 'delivered';
   card.updatedAt = nowIso();
+  // subject: a few words saying what changed — becomes the email subject.
+  if (typeof body.subject === 'string' && body.subject.trim()) {
+    card.deliveredSubject = body.subject.replace(/\s+/g, ' ').trim().slice(0, 200);
+  }
   enterDelivered(card, body.note);
   writeBoard(cards);
   res.json({ ok: true, card });
