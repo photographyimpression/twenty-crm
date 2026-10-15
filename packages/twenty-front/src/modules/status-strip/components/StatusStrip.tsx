@@ -77,6 +77,24 @@ type BoardCard = {
   createdAt?: string;
 };
 
+// The version's date next to the version (owner request 2026-10-15: "the date
+// of that version — this way I know if it's the latest version").
+const formatVersionDate = (iso: string | undefined | null): string => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
+
+const shortVersion = (version: string | undefined | null): string =>
+  (version ?? '').slice(0, 10);
+
 type CrmVersion = {
   version: string;
   notes: string;
@@ -810,11 +828,7 @@ export const StatusStrip = () => {
         focusId: QUICK_REQUEST_FOCUS_ID,
       });
     };
-  }, [
-    popupOpen,
-    pushFocusItemToFocusStack,
-    removeFocusItemFromFocusStackById,
-  ]);
+  }, [popupOpen, pushFocusItemToFocusStack, removeFocusItemFromFocusStackById]);
 
   // Closing the popup KEEPS the draft — text, pasted screenshots, type and
   // urgent all survive, so the flow Moshe asked for works: open the popup,
@@ -1124,9 +1138,9 @@ export const StatusStrip = () => {
           }}
           title={
             updateReady
-              ? 'Update ready — click to reload and apply'
+              ? `Update ready${formatVersionDate(crmVersion?.builtAt) ? ` — new version from ${formatVersionDate(crmVersion?.builtAt)}` : ''} — click to reload and apply`
               : crmVersion?.version
-                ? `Up to date (${crmVersion.version})`
+                ? `Up to date — version ${shortVersion(crmVersion.version)}${formatVersionDate(crmVersion.builtAt) ? ` from ${formatVersionDate(crmVersion.builtAt)}` : ''}`
                 : 'Version info unavailable'
           }
         >
@@ -1145,8 +1159,10 @@ export const StatusStrip = () => {
               <StyledPopoverTitle>Update ready</StyledPopoverTitle>
               <StyledPopoverListItem>
                 <span>
-                  {crmVersion?.version}
-                  {crmVersion?.builtAt ? ` — built ${crmVersion.builtAt}` : ''}
+                  Version {shortVersion(crmVersion?.version)}
+                  {formatVersionDate(crmVersion?.builtAt)
+                    ? ` · ${formatVersionDate(crmVersion?.builtAt)}`
+                    : ''}
                 </span>
               </StyledPopoverListItem>
               {crmVersion?.notes ? (
@@ -1164,7 +1180,7 @@ export const StatusStrip = () => {
               <StyledPopoverTitle>CRM build</StyledPopoverTitle>
               <StyledMore>
                 {crmVersion?.version
-                  ? `✓ Up to date (${crmVersion.version})`
+                  ? `✓ Up to date — version ${shortVersion(crmVersion.version)}${formatVersionDate(crmVersion.builtAt) ? ` · ${formatVersionDate(crmVersion.builtAt)}` : ''}`
                   : 'Version info unavailable — is /crm-version.json being served?'}
               </StyledMore>
               <StyledPopoverLink onClick={openBoard}>

@@ -708,20 +708,31 @@ async function checkVersion() {
   }
 }
 
+// The version's date next to the version (owner request 2026-10-15: "the date
+// of that version — this way I know if it's the latest version").
+function versionDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 function renderUpdateLight() {
   const btn = document.getElementById('lightUpdate');
   const pop = document.getElementById('popUpdate');
   if (!btn || !pop) return;
   btn.classList.toggle('lit', updateReady);
+  const when = versionDate(versionInfo && versionInfo.builtAt);
   btn.title = updateReady
-    ? 'Update ready — click to reload and apply'
+    ? 'Update ready' + (when ? ' — new version from ' + when : '') + ' — click to reload and apply'
     : versionInfo && versionInfo.sha
-      ? 'Up to date (' + versionInfo.sha + ')'
+      ? 'Up to date — version ' + versionInfo.sha + (when ? ' from ' + when : '')
       : 'Version info unavailable';
 
   let html;
   if (updateReady) {
-    html = '<p class="pop-title">Update ready</p>';
+    html = '<p class="pop-title">Update ready</p>' +
+      (when ? '<p class="pop-empty" style="margin:0 0 6px">New version from ' + esc(when) + '</p>' : '');
     const shipped = (versionInfo.recentlyDelivered || []).slice(0, 8);
     if (shipped.length) {
       html += '<p class="pop-empty" style="margin:0 0 6px">Recently shipped:</p>' +
@@ -730,8 +741,10 @@ function renderUpdateLight() {
     }
     html += '<button class="pop-reload" id="popReload" type="button">Reload to apply</button>';
   } else {
-    html = '<p class="pop-uptodate">✓ You’re up to date' +
-      (versionInfo && versionInfo.sha ? ' (' + esc(versionInfo.sha) + ')' : '') + '</p>';
+    html = '<p class="pop-uptodate">✓ You’re up to date</p>' +
+      (versionInfo && versionInfo.sha
+        ? '<p class="pop-empty" style="margin:4px 0 0">Version ' + esc(versionInfo.sha) + (when ? ' · ' + esc(when) : '') + '</p>'
+        : '');
   }
   pop.innerHTML = html;
 }
